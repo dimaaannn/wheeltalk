@@ -1,0 +1,107 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Чистый .NET для Android, без MAUI — см. docs/native-rewrite-inventory.md. Тот же приём,
+		     что в WheelTalk.Native: обычный android.view.View и Canvas вместо GraphicsView. -->
+		<TargetFramework>net10.0-android</TargetFramework>
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>WheelTalk.Droid</RootNamespace>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+
+		<!-- Просто «WheelTalk»: приписка «N» стояла на период сосуществования с MAUI-приложением
+		     com.wheeltalk.app, а оно снято с телефона и заморожено. Имя обязано оставаться
+		     единственным в семействе — стенды (`WheelTalk Lab`, `WheelTalk FPS`) называются иначе,
+		     см. AGENTS.md: два одинаково подписанных значка в списке приложений — это выезд не с тем
+		     приложением. -->
+		<ApplicationTitle>WheelTalk</ApplicationTitle>
+		<ApplicationId>com.wheeltalk.droid</ApplicationId>
+		<!-- Единственное место, где живут номера: отсюда сборка кладёт их в манифест как
+		     versionCode/versionName. Порядок ведения — в AGENTS.md, «Версии и теги»; коротко:
+		     номер меняет владелец, коммит с изменением помечается тегом `v<версия>`.
+
+		     ApplicationVersion — versionCode, целое, растёт на единицу на каждую выпущенную
+		     сборку и никогда не убывает: по нему Android решает, обновление это или откат.
+		     ApplicationDisplayVersion — versionName, то, что видит человек. -->
+		<ApplicationVersion>5</ApplicationVersion>
+		<ApplicationDisplayVersion>1.2.1</ApplicationDisplayVersion>
+
+		<!-- То же обоснование, что в WheelTalk.App: 23 хватило бы транспорту, но проверка включённых
+		     служб геолокации перед сканом (Android ≤11) хочет 28. -->
+		<SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+	  <!-- APK, а не AAB: сборка ставится на телефон напрямую, магазина в этой истории нет. -->
+	  <AndroidPackageFormat>apk</AndroidPackageFormat>
+
+	  <!-- Одна архитектура, и это лечит не размер, а воспроизводимость. По умолчанию .NET кладёт в
+	       релизный APK и arm64-v8a, и x86_64; собираются они порознь, а потом сверяются между собой
+	       (`JCWGenerator.EnsureAllArchitecturesAreIdentical`). Если в obj остались следы сборки под
+	       другую архитектуру — а они остаются, стоит разок собрать под эмулятор между релизами, —
+	       сверка падает с `XAGJS7009: classifier for template architecture 'Arm64' contains 0
+	       marshal methods, but the one for 'X86_64' has 62`. Публикация при этом обрывается, но
+	       **старый APK в папке остаётся**, и его легко принять за новый (так и вышло 31.07.2026).
+	       С одной архитектурой сверять нечего и падать негде.
+
+	       Оба телефона (BV6600, Huawei PLR-L29) — arm64, как и всё, что вышло после 2016 года.
+	       Эмулятор x86_64: релизная сборка под него не соберётся, и это осознанно — замер кадров на
+	       эмуляторе делается разовым переопределением, см. AGENTS.md, «Публикация». -->
+	  <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+	</PropertyGroup>
+
+	<!-- Подпись боевой сборки. Файла может не быть — тогда Release подписывается отладочным ключом,
+	     как было раньше, и репозиторий остаётся собираемым на машине без хранилища. Что в нём
+	     должно лежать — в signing.props.example рядом; сам он в git не берётся, потому что это
+	     пути конкретной машины, а пароль в нём не хранится вовсе (ссылка на файл вне репозитория). -->
+	<Import Project="signing.props" Condition="Exists('signing.props')" />
+
+	<ItemGroup>
+		<!-- Данные дефолтов конфигурации — то же содержимое, что у WheelTalk.App, только без
+		     механизма MauiAsset: обычный AndroidAsset, читается Context.Assets.Open(...). -->
+		<AndroidAsset Include="Resources\Raw\appsettings.json" Link="Assets\appsettings.json" />
+	</ItemGroup>
+
+	<!-- Строки интерфейса. Тот же генератор строгого типа, что у WheelTalk.App — опечатка в ключе
+	     должна быть ошибкой сборки, а не пустой надписью на экране. Работает вне MAUI: это обычный
+	     .NET resx + ResourceManager. -->
+	<ItemGroup>
+		<EmbeddedResource Update="Resources\Strings\AppStrings.resx">
+			<Generator>MSBuild:Compile</Generator>
+			<StronglyTypedFileName>$(IntermediateOutputPath)\AppStrings.Designer.cs</StronglyTypedFileName>
+			<StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+			<StronglyTypedNamespace>WheelTalk.Droid.Resources.Strings</StronglyTypedNamespace>
+			<StronglyTypedClassName>AppStrings</StronglyTypedClassName>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Ничего сверх того, что уже есть в солюшене (см. WheelTalk.App.csproj): DI и биндинг
+		     конфигурации там приходили транзитивно через Microsoft.Maui.Controls, здесь — прямыми
+		     ссылками на те же Microsoft.Extensions.*. -->
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+
+		<!-- Стандарт платформы (см. задачу): ActivityCompat/ContextCompat/NotificationCompat/
+		     FileProvider — то, что MAUI-приложение получало транзитивно через Microsoft.Maui.Controls. -->
+		<PackageReference Include="Xamarin.AndroidX.Core" Version="1.19.0.1" />
+
+		<!-- Решения владельца по docs/native-ui-libraries.md (шапка): RecyclerView — список поездок,
+		     Material — контролы настроек варианта B (сегмент-переключатель слоя, слайдеры) и вид
+		     «как у системы». Больше ничего из исследования сейчас не берём. -->
+		<PackageReference Include="Xamarin.AndroidX.RecyclerView" Version="1.4.0.6" />
+		<PackageReference Include="Xamarin.Google.Android.Material" Version="1.13.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Панель (TwinTapesDashboard) и связанный с ней слой настроек (Configuration/SettingsCatalogue.cs,
+		     Dashboard/DashboardFrame.cs) — см. docs/native-rewrite-inventory.md §1, §3. -->
+		<ProjectReference Include="..\WheelTalk.Core\WheelTalk.Core.csproj" />
+		<ProjectReference Include="..\WheelTalk.Storage\WheelTalk.Storage.csproj" />
+		<ProjectReference Include="..\WheelTalk.Dashboard.Droid\WheelTalk.Dashboard.Droid.csproj" />
+	</ItemGroup>
+
+</Project>

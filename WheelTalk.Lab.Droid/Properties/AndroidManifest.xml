@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<!-- Разрешений нет ни одного, и это свойство стенда: он не разговаривает с колесом, не пишет
+	     базу и не сигналит — только проигрывает то, что лежит в пакете. -->
+	<application android:allowBackup="false" android:supportsRtl="true" android:icon="@mipmap/appicon" android:theme="@style/LabTheme" />
+</manifest>

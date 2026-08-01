@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Пути, которые FileProvider готов отдать диалогу «поделиться» (DiagnosticsShare): внешний
+     каталог приложения, где лежат diagnostics.log и файлы поездок (LogFiles.Root). -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+	<external-files-path name="files" path="." />
+</paths>

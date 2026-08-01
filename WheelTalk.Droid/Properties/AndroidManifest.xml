@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<!-- allowBackup="false", в отличие от WheelTalk.App — план 11 §8.1: rides.db лежит в WAL, и
+	     автобэкап Android подхватывает основной файл без -wal/-shm, то есть заведомо неполную базу.
+	     Это известный дефект боевого манифеста, а не то, что стоит унести сюда по инерции копирования. -->
+	<!-- Имя и описание — ссылками на строковые ресурсы, а не текстом: их читает система (список
+	     приложений, «Сведения о приложении», экран разрешений), и когда появится второй язык,
+	     переводиться они должны там же, где остальные строки, а не правкой манифеста.
+	     Версия здесь не пишется намеренно: versionCode/versionName подставляются сборкой из
+	     ApplicationVersion/ApplicationDisplayVersion в WheelTalk.Droid.csproj — второе место для
+	     номера означало бы две версии, расходящиеся при первой же спешке. -->
+	<application
+		android:allowBackup="false"
+		android:icon="@mipmap/appicon"
+		android:label="@string/app_name"
+		android:description="@string/app_description"
+		android:supportsRtl="true">
+		<!-- Для диалога «поделиться» (DiagnosticsShare, §1.2): MAUI Essentials заводил временный
+		     FileProvider сам, здесь он не подставляется ничем и должен быть объявлен явно. -->
+		<provider
+			android:name="androidx.core.content.FileProvider"
+			android:authorities="com.wheeltalk.droid.fileprovider"
+			android:exported="false"
+			android:grantUriPermissions="true">
+			<meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+		</provider>
+	</application>
+
+	<!-- Android 11 и старше: скан — операция «геолокационного» класса, поэтому нужны старые
+	     Bluetooth-разрешения плюс точная геолокация (и включённые службы геолокации — это проверяет
+	     BleReadiness во время скана). Android 12+ заменил все три на _SCAN/_CONNECT ниже. Оба набора
+	     объявлены, чтобы одна сборка работала на обоих диапазонах версий — перенесено из
+	     WheelTalk.App без изменений (опись §6). -->
+	<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+	<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+	<!-- neverForLocation обязателен: без него Android 12+ считает скан способом определить
+	     местоположение и требует ACCESS_FINE_LOCATION (которое выше ограничено maxSdkVersion=30) —
+	     а без него молча отдаёт пустые результаты: скан «идёт», колбэков нет, ошибок нет.
+	     Проявилось 31.07.2026 на втором телефоне (Android 12+): список поиска всегда пуст. -->
+	<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+	<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+	<uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+	<!-- Соединение обязано пережить погашенный экран, а это на Android только foreground-сервис.
+	     Тип connectedDevice и разрешение к нему обязательны с API 34, POST_NOTIFICATIONS — с 33. -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<uses-permission android:name="android.permission.VIBRATE" />
+
+	<!-- Без этого разрешения системный запрос ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS не
+	     показывается вовсе (план 11 §2.4). Оно ограничено политикой Google Play: подавая
+	     приложение в магазин, разрешение надо либо обосновать, либо снять вместе с запросом —
+	     тогда просьба уходит на экран «О приложении». Оригинал объявляет его так же. -->
+	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+</manifest>

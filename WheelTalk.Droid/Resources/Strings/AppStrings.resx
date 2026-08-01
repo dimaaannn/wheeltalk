@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata"><xsd:complexType><xsd:sequence><xsd:element name="value" type="xsd:string" minOccurs="0" /></xsd:sequence><xsd:attribute name="name" use="required" type="xsd:string" /><xsd:attribute name="type" type="xsd:string" /><xsd:attribute name="mimetype" type="xsd:string" /><xsd:attribute ref="xml:space" /></xsd:complexType></xsd:element>
+          <xsd:element name="assembly"><xsd:complexType><xsd:attribute name="alias" type="xsd:string" /><xsd:attribute name="name" type="xsd:string" /></xsd:complexType></xsd:element>
+          <xsd:element name="data"><xsd:complexType><xsd:sequence><xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" /><xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" /></xsd:sequence><xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" /><xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" /><xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" /><xsd:attribute ref="xml:space" /></xsd:complexType></xsd:element>
+          <xsd:element name="resheader"><xsd:complexType><xsd:sequence><xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" /></xsd:sequence><xsd:attribute name="name" type="xsd:string" use="required" /></xsd:complexType></xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a2c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a2c561934e089</value></resheader>
+  <data name="ButtonLight" xml:space="preserve"><value>Фара</value></data>
+  <data name="ButtonLightOn" xml:space="preserve"><value>Фара вкл</value></data>
+  <data name="ButtonBeep" xml:space="preserve"><value>Бип</value></data>
+  <data name="ButtonRecord" xml:space="preserve"><value>Запись</value></data>
+  <data name="ButtonStopRecording" xml:space="preserve"><value>Стоп</value></data>
+  <data name="ButtonResetPeaks" xml:space="preserve"><value>Сброс пиков</value></data>
+  <data name="ButtonConnect" xml:space="preserve"><value>Подключить</value></data>
+  <data name="ButtonDisconnect" xml:space="preserve"><value>Отключить</value></data>
+  <data name="ButtonSettings" xml:space="preserve"><value>Настройки</value></data>
+  <data name="ButtonPin" xml:space="preserve"><value>Не закрывать</value></data>
+  <data name="ValueTripKm" xml:space="preserve"><value>{0:F2} км</value></data>
+  <data name="ValueSpeedKmh" xml:space="preserve"><value>{0:F1} км/ч</value></data>
+  <data name="ValueSeconds" xml:space="preserve"><value>{0} с</value></data>
+  <data name="StateDisconnected" xml:space="preserve"><value>Отключено</value></data>
+  <data name="StateConnected" xml:space="preserve"><value>Подключено</value></data>
+  <data name="StateNoData" xml:space="preserve"><value>Нет данных</value></data>
+  <data name="StateConnecting" xml:space="preserve"><value>Подключение…</value></data>
+  <data name="StateReconnecting" xml:space="preserve"><value>Переподключение…</value></data>
+  <data name="StateNoWheelSelected" xml:space="preserve"><value>Колесо не выбрано — нажмите, чтобы найти</value></data>
+  <data name="StripWheelAlarm" xml:space="preserve"><value>Тревога колеса</value></data>
+  <data name="StripBackAgainToExit" xml:space="preserve"><value>Нажмите «назад» ещё раз, чтобы выйти</value></data>
+  <data name="DisconnectTitle" xml:space="preserve"><value>Отключиться от колеса?</value></data>
+  <data name="DisconnectMessageMoving" xml:space="preserve"><value>Колесо едет.</value></data>
+  <data name="DisconnectConfirm" xml:space="preserve"><value>Отключиться</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Отмена</value></data>
+  <data name="Ok" xml:space="preserve"><value>Понятно</value></data>
+  <data name="WheelRefusedTitle" xml:space="preserve"><value>Колесо не подошло</value></data>
+  <data name="RecordingTitle" xml:space="preserve"><value>Запись</value></data>
+  <data name="RecordingRideSection" xml:space="preserve"><value>История поездки</value></data>
+  <data name="RecordingStart" xml:space="preserve"><value>Начать запись</value></data>
+  <data name="RecordingStop" xml:space="preserve"><value>Остановить запись</value></data>
+  <data name="RecordingAutoStart" xml:space="preserve"><value>Включать запись автоматически</value></data>
+  <data name="RecordingAutoStartHint" xml:space="preserve"><value>При подключении к колесу</value></data>
+  <data name="RecordingAutoStartMovingHint" xml:space="preserve"><value>Когда колесо поедет быстрее {0:0.#} км/ч</value></data>
+  <data name="RecordingWaitForMoving" xml:space="preserve"><value>Ждать начала движения</value></data>
+  <data name="RecordingRawSection" xml:space="preserve"><value>Сырой дамп BLE</value></data>
+  <data name="RecordingRawHint" xml:space="preserve"><value>Все кадры до декодирования — по ним потом проверяется декодер. Около мегабайта на десять минут, ротации нет.</value></data>
+  <data name="RecordingFolderSection" xml:space="preserve"><value>Где лежат файлы</value></data>
+  <data name="RecordingIdle" xml:space="preserve"><value>Не пишется</value></data>
+  <data name="RecordingWaiting" xml:space="preserve"><value>Ждём данных с колеса</value></data>
+  <data name="RecordingActive" xml:space="preserve"><value>Пишется · {0} строк</value></data>
+  <data name="SettingsTitle" xml:space="preserve"><value>Настройки</value></data>
+  <data name="ReplayStart" xml:space="preserve"><value>Пуск</value></data>
+  <data name="ReplayStop" xml:space="preserve"><value>Стоп</value></data>
+  <data name="StateReplayReady" xml:space="preserve"><value>Запись готова — нажмите для пуска</value></data>
+  <data name="SettingsOpen" xml:space="preserve"><value>Настройки</value></data>
+  <data name="SettingsPageWheel" xml:space="preserve"><value>Колесо</value></data>
+  <data name="SectionWheelIdentity" xml:space="preserve"><value>Колесо</value></data>
+  <data name="SettingWheelName" xml:space="preserve"><value>Имя колеса</value></data>
+  <data name="SettingWheelNameHint" xml:space="preserve"><value>Показывается на панели, пока колесо стоит. Пусто — берётся имя из Bluetooth-анонса, а оно одинаковое у колёс одной марки.</value></data>
+  <data name="SettingsPageWarnings" xml:space="preserve"><value>Предупреждения</value></data>
+  <data name="SettingsPageApplication" xml:space="preserve"><value>Приложение</value></data>
+  <data name="SettingsPageDisplay" xml:space="preserve"><value>Отображение</value></data>
+  <data name="SettingsDisplayHint" xml:space="preserve"><value>«Отображение» — вид приборной панели: шкалы, цифры, палитра.</value></data>
+  <data name="SettingsScopeGlobal" xml:space="preserve"><value>Колесо не выбрано — правится общее значение</value></data>
+  <data name="SettingsScopeWheel" xml:space="preserve"><value>Настройки колеса {0}</value></data>
+  <data name="SettingsOverridden" xml:space="preserve"><value>Своё значение у этого колеса</value></data>
+  <data name="SettingsGlobalValue" xml:space="preserve"><value>Общее значение для всех колёс</value></data>
+  <data name="SettingsUseGlobal" xml:space="preserve"><value>Вернуть общее значение</value></data>
+  <data name="SettingsUseFactory" xml:space="preserve"><value>Вернуть заводское значение</value></data>
+  <data name="SettingsMakeGlobal" xml:space="preserve"><value>Сделать общим для всех колёс</value></data>
+  <data name="SettingsRowMenu" xml:space="preserve"><value>⋮</value></data>
+  <data name="SettingsEmpty" xml:space="preserve"><value>Здесь пока нечего настраивать</value></data>
+  <data name="SettingsAccept" xml:space="preserve"><value>Сохранить</value></data>
+  <data name="SettingsRange" xml:space="preserve"><value>От {0} до {1}</value></data>
+  <data name="SettingsLayerGlobal" xml:space="preserve"><value>Общее</value></data>
+  <data name="SettingsLayerWheel" xml:space="preserve"><value>Колесо {0}</value></data>
+  <data name="SettingsLayerFactory" xml:space="preserve"><value>Заводское</value></data>
+  <data name="SettingsSummaryOverrides" xml:space="preserve"><value>{0} для этого колеса</value></data>
+  <data name="SettingsSummaryCount" xml:space="preserve"><value>{0} настроек</value></data>
+  <data name="SettingsSectionsHint" xml:space="preserve"><value>Разделы</value></data>
+  <data name="SectionCurrent" xml:space="preserve"><value>Ток и напряжение</value></data>
+  <data name="SectionBattery" xml:space="preserve"><value>Батарея</value></data>
+  <data name="SectionReported" xml:space="preserve"><value>Сообщает колесо</value></data>
+  <data name="SectionConnection" xml:space="preserve"><value>Соединение</value></data>
+  <data name="SectionPwmAlarm" xml:space="preserve"><value>Тревога по ШИМ</value></data>
+  <data name="SectionPwmModel" xml:space="preserve"><value>Расчёт ШИМ</value></data>
+  <data name="SectionCustomPercents" xml:space="preserve"><value>Свой расчёт заряда</value></data>
+  <data name="SectionInMotion" xml:space="preserve"><value>InMotion</value></data>
+  <data name="SettingsAdvanced" xml:space="preserve"><value>Дополнительно</value></data>
+  <data name="SectionSpeedWarning" xml:space="preserve"><value>Предупреждение по скорости</value></data>
+  <data name="SectionChannels" xml:space="preserve"><value>Чем предупреждать</value></data>
+  <data name="SettingGotwayNegative" xml:space="preserve"><value>Знак скорости и тока</value></data>
+  <data name="SettingGotwayNegativeHint" xml:space="preserve"><value>Если при езде вперёд скорость и ток показываются отрицательными — переключите на другой вариант.</value></data>
+  <data name="SettingSignStraight" xml:space="preserve"><value>Прямой</value></data>
+  <data name="SettingSignAbsolute" xml:space="preserve"><value>Модуль</value></data>
+  <data name="SettingSignReverse" xml:space="preserve"><value>Обратный</value></data>
+  <data name="SettingAutoVoltage" xml:space="preserve"><value>Автоопределение напряжения</value></data>
+  <data name="SettingAutoVoltageHint" xml:space="preserve"><value>По числу ячеек, которое сообщает BMS колеса</value></data>
+  <data name="SettingGotwayVoltage" xml:space="preserve"><value>Напряжение пака</value></data>
+  <data name="SettingVoltage672" xml:space="preserve"><value>67,2 В</value></data>
+  <data name="SettingVoltage840" xml:space="preserve"><value>84 В</value></data>
+  <data name="SettingVoltage1008" xml:space="preserve"><value>100,8 В</value></data>
+  <data name="SettingVoltage1176" xml:space="preserve"><value>117,6 В</value></data>
+  <data name="SettingVoltage1344" xml:space="preserve"><value>134,4 В</value></data>
+  <data name="SettingVoltage1680" xml:space="preserve"><value>168 В</value></data>
+  <data name="SettingVoltage1512" xml:space="preserve"><value>151,2 В</value></data>
+  <data name="SettingUseRatio" xml:space="preserve"><value>Поправка для плат MCM</value></data>
+  <data name="SettingUseRatioHint" xml:space="preserve"><value>Пробег и скорость на платах MCM считаются с другим коэффициентом</value></data>
+  <data name="SettingInMotionPassword" xml:space="preserve"><value>Пароль колеса</value></data>
+  <data name="SettingInMotionPasswordHint" xml:space="preserve"><value>Шесть цифр, задаются в родном приложении InMotion — без них колесо не отвечает.</value></data>
+  <data name="SettingUseBetterPercents" xml:space="preserve"><value>Улучшенные проценты заряда</value></data>
+  <data name="SettingUseBetterPercentsHint" xml:space="preserve"><value>Кривая ближе к настоящей, чем линейная по напряжению</value></data>
+  <data name="SettingCustomPercents" xml:space="preserve"><value>Своя кривая заряда</value></data>
+  <data name="SettingCustomPercentsHint" xml:space="preserve"><value>Проценты по напряжению ячейки вместо формулы производителя. Напряжение пустой ячейки задаётся ниже.</value></data>
+  <data name="SettingCellVoltageTiltbackHint" xml:space="preserve"><value>Напряжение на ячейке, при котором колесо поднимает педали. Отсюда считается ноль заряда.</value></data>
+  <data name="SettingRotationVoltageHint" xml:space="preserve"><value>Напряжение, при котором измерялась скорость раскрута.</value></data>
+  <data name="SettingCellVoltageTiltback" xml:space="preserve"><value>Напряжение пустой ячейки</value></data>
+  <data name="SettingHwPwm" xml:space="preserve"><value>Аппаратный ШИМ</value></data>
+  <data name="SettingAlexovikFw" xml:space="preserve"><value>Прошивка Alexovik</value></data>
+  <data name="SettingLightEnabled" xml:space="preserve"><value>Фара</value></data>
+  <data name="SettingHwPwmHint" xml:space="preserve"><value>Колесо считает скважность само — расчётные величины тогда скрыты.</value></data>
+  <data name="SettingAlexovikFwHint" xml:space="preserve"><value>SmirnoV или Freestyl3r. Их ветки декодера не портированы — показания идут по стоковой.</value></data>
+  <data name="SettingLightEnabledHint" xml:space="preserve"><value>Сообщено колесом. Включается кнопкой на главном экране.</value></data>
+  <data name="SettingFirstRetryDelay" xml:space="preserve"><value>Пауза перед первым повтором</value></data>
+  <data name="SettingFirstRetryDelayHint" xml:space="preserve"><value>Длиннее максимальной паузы не бывает.</value></data>
+  <data name="SettingRetryDelay" xml:space="preserve"><value>Максимальная пауза</value></data>
+  <data name="SettingRetryDelayHint" xml:space="preserve"><value>Пауза удваивается после каждой неудачи до этого предела</value></data>
+  <data name="SettingPwmWarning" xml:space="preserve"><value>Порог тревоги</value></data>
+  <data name="SettingPwmWarningHint" xml:space="preserve"><value>Скважность, с которой тревога начинается. Должна быть ниже порога полной тревоги.</value></data>
+  <data name="SettingPwmCritical" xml:space="preserve"><value>Порог полной тревоги</value></data>
+  <data name="SettingPwmCriticalHint" xml:space="preserve"><value>Скважность, на которой тревога становится непрерывной. Между двумя порогами она нарастает плавно.</value></data>
+  <data name="SettingBorderCoverage" xml:space="preserve"><value>Ширина полос тревоги</value></data>
+  <data name="SettingBorderCoverageHint" xml:space="preserve"><value>Доля короткой стороны экрана на полной тревоге</value></data>
+  <data name="SettingRotationSpeed" xml:space="preserve"><value>Скорость раскрута</value></data>
+  <data name="SettingRotationSpeedHint" xml:space="preserve"><value>Своя у каждого колеса: Sherman L — 1,00 км/ч на вольт, MTen3 — 0,590</value></data>
+  <data name="SettingRotationVoltage" xml:space="preserve"><value>Напряжение раскрута</value></data>
+  <data name="SettingPowerFactor" xml:space="preserve"><value>Множитель мощности</value></data>
+  <data name="SettingPowerFactorHint" xml:space="preserve"><value>Расчёт идёт в безопасную сторону — ШИМ может выйти выше ста</value></data>
+  <data name="SettingSpeedThreshold" xml:space="preserve"><value>Порог скорости</value></data>
+  <data name="SettingSpeedRepeat" xml:space="preserve"><value>Период повтора</value></data>
+  <data name="SettingSuppressSpeed" xml:space="preserve"><value>Уступать тревоге по ШИМ</value></data>
+  <data name="SettingSpeedThresholdHint" xml:space="preserve"><value>Скорость, с которой начинается предупреждение. Ноль выключает.</value></data>
+  <data name="SettingSpeedRepeatHint" xml:space="preserve"><value>Как часто повторять предупреждение, пока скорость выше порога</value></data>
+  <data name="SettingSuppressSpeedHint" xml:space="preserve"><value>Пока идёт тревога по ШИМ, предупреждение по скорости молчит</value></data>
+  <data name="SettingChannelSound" xml:space="preserve"><value>Звук</value></data>
+  <data name="SettingChannelVibration" xml:space="preserve"><value>Вибрация</value></data>
+  <data name="SettingChannelTorch" xml:space="preserve"><value>Вспышка камеры</value></data>
+  <data name="SettingChannelTorchHint" xml:space="preserve"><value>Моргает в такт тревоге по ШИМ. На предупреждение по скорости не реагирует.</value></data>
+  <data name="UnitKmh" xml:space="preserve"><value>км/ч</value></data>
+  <data name="UnitVolts" xml:space="preserve"><value>В</value></data>
+  <data name="UnitPercent" xml:space="preserve"><value>%</value></data>
+  <data name="UnitSeconds" xml:space="preserve"><value>с</value></data>
+  <data name="UnitWattHours" xml:space="preserve"><value>Вт·ч</value></data>
+  <data name="RecordingExportDone" xml:space="preserve"><value>Выгружено · {0}</value></data>
+  <data name="RecordingExportFailed" xml:space="preserve"><value>Не удалось выгрузить: {0}</value></data>
+  <data name="SwitchOn" xml:space="preserve"><value>Включён</value></data>
+  <data name="SwitchOff" xml:space="preserve"><value>Выключен</value></data>
+  <data name="ScanTitle" xml:space="preserve"><value>Поиск колеса</value></data>
+  <data name="ScanProtocol" xml:space="preserve"><value>Протокол:</value></data>
+  <data name="ScanReady" xml:space="preserve"><value>Готово к сканированию</value></data>
+  <data name="ScanBluetoothOff" xml:space="preserve"><value>Bluetooth выключен — включите его и повторите.</value></data>
+  <data name="ScanInProgress" xml:space="preserve"><value>Идёт поиск…</value></data>
+  <data name="ScanFailed" xml:space="preserve"><value>Поиск не удался: {0}</value></data>
+  <data name="ScanFound" xml:space="preserve"><value>Найдено устройств: {0}</value></data>
+  <data name="ScanConnecting" xml:space="preserve"><value>Подключение к {0}…</value></data>
+  <data name="ScanConnectFailed" xml:space="preserve"><value>Не удалось подключиться: {0}</value></data>
+  <data name="TelemetryTitle" xml:space="preserve"><value>Телеметрия</value></data>
+  <data name="TelemetryWaiting" xml:space="preserve"><value>Ожидание данных…</value></data>
+  <data name="TelemetryBack" xml:space="preserve"><value>← На главный</value></data>
+  <data name="TelemetryNoLink" xml:space="preserve"><value>НЕТ СВЯЗИ · {0} · последние данные, получено: {1}</value></data>
+  <data name="TelemetryNoConnection" xml:space="preserve"><value>Нет подключения.</value></data>
+  <data name="Yes" xml:space="preserve"><value>ДА</value></data>
+  <data name="No" xml:space="preserve"><value>нет</value></data>
+  <data name="BleNoBluetoothPermission" xml:space="preserve"><value>Нет разрешения на Bluetooth — выдайте его в настройках приложения.</value></data>
+  <data name="BleNoLocationPermission" xml:space="preserve"><value>Нет разрешения на геолокацию — без него Android не отдаёт результаты поиска.</value></data>
+  <data name="BleLocationDisabled" xml:space="preserve"><value>Включите геолокацию — без неё поиск Bluetooth ничего не найдёт.</value></data>
+  <data name="ServiceNotification" xml:space="preserve"><value>Соединение с колесом активно</value></data>
+  <data name="ServiceNotificationData" xml:space="preserve"><value>{0} · заряд {1} %</value></data>
+  <data name="ServiceChannelName" xml:space="preserve"><value>Связь с колесом</value></data>
+  <data name="ServiceChannelDescription" xml:space="preserve"><value>Держит соединение с колесом, пока приложение работает</value></data>
+  <data name="RateFormat" xml:space="preserve"><value>данные {0:F1} Гц ({1}) · кадры {2:F1} Гц ({3})</value></data>
+  <data name="ActionFailed" xml:space="preserve"><value>Не получилось — подробности в логе</value></data>
+  <data name="UnitKm" xml:space="preserve"><value>км</value></data>
+  <data name="UnitWatts" xml:space="preserve"><value>Вт</value></data>
+  <data name="UnitAmperes" xml:space="preserve"><value>А</value></data>
+  <data name="UnitWattHoursPerKm" xml:space="preserve"><value>Вт·ч/км</value></data>
+  <data name="RidesTitle" xml:space="preserve"><value>Поездки</value></data>
+  <data name="RidesLoading" xml:space="preserve"><value>Читаем…</value></data>
+  <data name="RidesEmpty" xml:space="preserve"><value>Записанных поездок пока нет</value></data>
+  <data name="RidesCount" xml:space="preserve"><value>Поездок · {0}</value></data>
+  <data name="RidesRecording" xml:space="preserve"><value>Пишется сейчас · {0} строк</value></data>
+  <data name="RidesToday" xml:space="preserve"><value>Сегодня</value></data>
+  <data name="RidesYesterday" xml:space="preserve"><value>Вчера</value></data>
+  <data name="RidesExport" xml:space="preserve"><value>Выгрузить в CSV</value></data>
+  <data name="RidesExporting" xml:space="preserve"><value>Выгружаем…</value></data>
+  <data name="RidesDelete" xml:space="preserve"><value>Удалить</value></data>
+  <data name="RidesDeleteConfirm" xml:space="preserve"><value>Удалить поездку {0} — {1} строк? Восстановить будет неоткуда.</value></data>
+  <data name="RideTitle" xml:space="preserve"><value>Поездка</value></data>
+  <data name="RideExportHint" xml:space="preserve"><value>Файл ляжет в папку колеса, в формате WheelLog.</value></data>
+  <data name="RidePlay" xml:space="preserve"><value>Воспроизвести</value></data>
+  <data name="PlaybackPlay" xml:space="preserve"><value>Пуск</value></data>
+  <data name="PlaybackPause" xml:space="preserve"><value>Пауза</value></data>
+  <data name="PlaybackLoading" xml:space="preserve"><value>Читаем поездку…</value></data>
+  <data name="PlaybackEmpty" xml:space="preserve"><value>В этой поездке нет записанных показаний</value></data>
+  <data name="PlaybackFailed" xml:space="preserve"><value>Не удалось открыть поездку: {0}</value></data>
+  <data name="RideHoursMinutes" xml:space="preserve"><value>{0} ч {1} мин</value></data>
+  <data name="RideMinutes" xml:space="preserve"><value>{0} мин</value></data>
+  <data name="RideSeconds" xml:space="preserve"><value>{0} с</value></data>
+  <data name="RideDistance" xml:space="preserve"><value>Пробег</value></data>
+  <data name="RideDuration" xml:space="preserve"><value>Всего времени</value></data>
+  <data name="RideMoving" xml:space="preserve"><value>В движении</value></data>
+  <data name="RideAvgSpeed" xml:space="preserve"><value>Средняя скорость</value></data>
+  <data name="RideMaxSpeed" xml:space="preserve"><value>Максимум скорости</value></data>
+  <data name="RideMaxPwm" xml:space="preserve"><value>Максимум ШИМ</value></data>
+  <data name="RideMaxPower" xml:space="preserve"><value>Максимум мощности</value></data>
+  <data name="RideMaxCurrent" xml:space="preserve"><value>Максимум тока</value></data>
+  <data name="RideConsumption" xml:space="preserve"><value>Израсходовано</value></data>
+  <data name="RideConsumptionPerKm" xml:space="preserve"><value>Расход на километр</value></data>
+  <data name="RideRows" xml:space="preserve"><value>Строк записано</value></data>
+  <data name="UnitHertz" xml:space="preserve"><value>Гц</value></data>
+  <data name="UnitDegrees" xml:space="preserve"><value>°</value></data>
+  <data name="SectionPwmTape" xml:space="preserve"><value>Шкала ШИМ</value></data>
+  <data name="SectionVoltageTape" xml:space="preserve"><value>Шкала напряжения</value></data>
+  <data name="SectionTechniques" xml:space="preserve"><value>Что рисуется поверх шкал</value></data>
+  <data name="SectionDigits" xml:space="preserve"><value>Цифры</value></data>
+  <data name="SectionAlertBars" xml:space="preserve"><value>Полосы тревоги</value></data>
+  <data name="SectionLook" xml:space="preserve"><value>Оформление</value></data>
+  <data name="SectionMotion" xml:space="preserve"><value>Сглаживание</value></data>
+  <data name="SettingPwmGreyBelow" xml:space="preserve"><value>Серая ниже</value></data>
+  <data name="SettingPwmGreyBelowHint" xml:space="preserve"><value>Ниже этого значения шкала серая</value></data>
+  <data name="SettingBarberPolePwm" xml:space="preserve"><value>Штриховка выше</value></data>
+  <data name="SettingBarberPolePwmHint" xml:space="preserve"><value>Выше этого значения шкала заштрихована косыми полосами</value></data>
+  <data name="SettingPwmDpPerUnit" xml:space="preserve"><value>Плотность шкалы, точек на %</value></data>
+  <data name="SettingPwmDpPerUnitHint" xml:space="preserve"><value>Сколько экрана приходится на процент ШИМ. Больше — крупнее деления, но уже диапазон: при 12 видно около ±26 %.</value></data>
+  <data name="SettingSagWindow" xml:space="preserve"><value>Размах шкалы</value></data>
+  <data name="SettingSagWindowHint" xml:space="preserve"><value>Сколько вольт укладывается в высоту экрана. Меньше — просадка виднее, но шкала уезжает чаще.</value></data>
+  <data name="SettingWarnVolts" xml:space="preserve"><value>Жёлтая ниже</value></data>
+  <data name="SettingWarnVoltsHint" xml:space="preserve"><value>Напряжение пакета, ниже которого шкала желтеет. Ноль — зона выключена.</value></data>
+  <data name="SettingDangerVolts" xml:space="preserve"><value>Красная ниже</value></data>
+  <data name="SettingEmptyVolts" xml:space="preserve"><value>Пак пуст ниже</value></data>
+  <data name="SettingEmptyVoltsHint" xml:space="preserve"><value>Ниже этого напряжения шкала красная до конца поездки. Ноль выключает.</value></data>
+  <data name="SettingSagAutoScale" xml:space="preserve"><value>Растягивать под размах поездки</value></data>
+  <data name="SettingSagAutoScaleHint" xml:space="preserve"><value>Шкала растягивается под размах поездки — со временем его задаёт разряд, и просадка на нём теряется.</value></data>
+  <data name="SettingShowTrend" xml:space="preserve"><value>Стрелка тренда и просадки</value></data>
+  <data name="SettingShowTrendHint" xml:space="preserve"><value>На ШИМ — куда идёт значение, на напряжении — насколько просело от холостого.</value></data>
+  <data name="SettingTrendSeconds" xml:space="preserve"><value>Стрелка смотрит на</value></data>
+  <data name="SettingTrendSecondsHint" xml:space="preserve"><value>На сколько секунд вперёд смотрит стрелка</value></data>
+  <data name="SettingShowBug" xml:space="preserve"><value>Следы поездки</value></data>
+  <data name="SettingShowBugHint" xml:space="preserve"><value>Риски там, где значение уже побывало: на ШИМ — максимум, на напряжении — минимум и максимум.</value></data>
+  <data name="SettingShowBarberPole" xml:space="preserve"><value>Штриховка выше критического</value></data>
+  <data name="SettingHideTenths" xml:space="preserve"><value>Прятать десятые выше</value></data>
+  <data name="SettingHideTenthsHint" xml:space="preserve"><value>Выше этой скорости десятые не показываются. Ноль выключает.</value></data>
+  <data name="SettingHideExtras" xml:space="preserve"><value>Прятать справочные выше</value></data>
+  <data name="SettingHideExtrasHint" xml:space="preserve"><value>Выше этой скорости остаётся только скорость. Ноль выключает.</value></data>
+  <data name="SettingShowAlertBars" xml:space="preserve"><value>Полосы тревоги</value></data>
+  <data name="SettingBlinkHz" xml:space="preserve"><value>Частота моргания</value></data>
+  <data name="SettingBlinkHzHint" xml:space="preserve"><value>Чаще трёх вспышек в секунду не стоит — это граница безопасного моргания.</value></data>
+  <data name="SettingPalette" xml:space="preserve"><value>Палитра</value></data>
+  <data name="SettingPaletteHint" xml:space="preserve"><value>«Ванг» различима при дальтонизме, «WheelLog» — цвета оригинала.</value></data>
+  <data name="SettingTilt" xml:space="preserve"><value>Наклон панели</value></data>
+  <data name="SettingTiltHint" xml:space="preserve"><value>Поворот панели целиком — для телефона на запястье.</value></data>
+  <data name="SettingTapeSmooth" xml:space="preserve"><value>Сглаживание хода шкал</value></data>
+  <data name="SettingTapeSmoothHint" xml:space="preserve"><value>За это время шкала доходит до нового значения. Цифра в окне не сглаживается. Ноль — шкала прыгает.</value></data>
+  <data name="SettingPwmSmooth" xml:space="preserve"><value>Сглаживание данных ШИМ</value></data>
+  <data name="SettingPwmSmoothHint" xml:space="preserve"><value>Задерживает и цифру, и цвет, и стрелку тренда. Ноль — значение как есть.</value></data>
+  <data name="TelemetryPackCells" xml:space="preserve"><value>Пакет {0} · {1} банок</value></data>
+  <data name="SectionDiagnostics" xml:space="preserve"><value>Разбор поломок</value></data>
+  <data name="SettingsRun" xml:space="preserve"><value>Передать</value></data>
+  <data name="SettingShareDiagnostics" xml:space="preserve"><value>Отладочная информация</value></data>
+  <data name="SettingShareDiagnosticsHint" xml:space="preserve"><value>Собирает журнал приложения в файл и предлагает отправить. После падения собирается сам, при следующем запуске.</value></data>
+  <data name="ScreenTitleFormat" xml:space="preserve"><value>WheelTalk — {0}</value></data>
+  <data name="PlaybackTitle" xml:space="preserve"><value>Воспроизведение</value></data>
+  <data name="ScreenTitleTelemetry" xml:space="preserve"><value>Данные</value></data>
+  <data name="ScreenTitleScan" xml:space="preserve"><value>Поиск</value></data>
+  <data name="SettingsTextEmpty" xml:space="preserve"><value>не задано</value></data>
+  <data name="SectionScreen" xml:space="preserve"><value>Экран</value></data>
+  <data name="SettingKeepScreenOn" xml:space="preserve"><value>Не гасить экран</value></data>
+  <data name="SettingKeepScreenOnHint" xml:space="preserve"><value>Пока приложение открыто, экран не гаснет по таймауту. Сбрасывается при запуске. То же — кнопкой в шторке.</value></data>
+  <data name="ButtonKeepScreen" xml:space="preserve"><value>Не гасить</value></data>
+  <data name="ButtonKeepScreenOn" xml:space="preserve"><value>Не гаснет</value></data>
+  <data name="SettingShowOverLock" xml:space="preserve"><value>Закрепить экран</value></data>
+  <data name="SettingShowOverLockHint" xml:space="preserve"><value>Панель видна поверх замка — и команды в шторке тоже, без разблокировки. Сбрасывается при запуске. То же — кнопкой в шторке.</value></data>
+  <data name="TelemetrySectionMotion" xml:space="preserve"><value>Движение</value></data>
+  <data name="TelemetrySectionPower" xml:space="preserve"><value>Питание</value></data>
+  <data name="TelemetrySectionHeat" xml:space="preserve"><value>Температура</value></data>
+  <data name="TelemetrySectionDistance" xml:space="preserve"><value>Пробег</value></data>
+  <data name="TelemetrySectionWheel" xml:space="preserve"><value>Колесо</value></data>
+  <data name="TelemetrySectionBms1" xml:space="preserve"><value>Батарея 1</value></data>
+  <data name="TelemetrySectionBms2" xml:space="preserve"><value>Батарея 2</value></data>
+  <data name="TelemetrySpeed" xml:space="preserve"><value>Скорость</value></data>
+  <data name="TelemetryTopSpeed" xml:space="preserve"><value>Максимальная</value></data>
+  <data name="TelemetryPwm" xml:space="preserve"><value>ШИМ</value></data>
+  <data name="TelemetryMaxPwm" xml:space="preserve"><value>ШИМ, максимум</value></data>
+  <data name="TelemetryAngle" xml:space="preserve"><value>Наклон</value></data>
+  <data name="TelemetryVoltage" xml:space="preserve"><value>Напряжение</value></data>
+  <data name="TelemetryCurrent" xml:space="preserve"><value>Ток</value></data>
+  <data name="TelemetryPhaseCurrent" xml:space="preserve"><value>Фазный ток</value></data>
+  <data name="TelemetryPower" xml:space="preserve"><value>Мощность</value></data>
+  <data name="TelemetryBattery" xml:space="preserve"><value>Заряд</value></data>
+  <data name="TelemetryCharging" xml:space="preserve"><value>Зарядка</value></data>
+  <data name="TelemetryBoardTemp" xml:space="preserve"><value>Плата</value></data>
+  <data name="TelemetryMotorTemp" xml:space="preserve"><value>Двигатель</value></data>
+  <data name="TelemetryTrip" xml:space="preserve"><value>За поездку</value></data>
+  <data name="TelemetryFromStart" xml:space="preserve"><value>С подключения</value></data>
+  <data name="TelemetryTotal" xml:space="preserve"><value>Одометр</value></data>
+  <data name="TelemetryModel" xml:space="preserve"><value>Модель</value></data>
+  <data name="TelemetryFirmware" xml:space="preserve"><value>Прошивка</value></data>
+  <data name="TelemetryProtocol" xml:space="preserve"><value>Протокол</value></data>
+  <data name="TelemetrySleep" xml:space="preserve"><value>Автовыключение</value></data>
+  <data name="TelemetryAlarm" xml:space="preserve"><value>Тревога колеса</value></data>
+  <data name="TelemetryAlert" xml:space="preserve"><value>Сообщение</value></data>
+  <data name="TelemetryBmsVoltage" xml:space="preserve"><value>Напряжение</value></data>
+  <data name="TelemetryBmsCurrent" xml:space="preserve"><value>Ток</value></data>
+  <data name="TelemetryBmsCharge" xml:space="preserve"><value>Заряд</value></data>
+  <data name="TelemetryBmsCells" xml:space="preserve"><value>Банка, мин / макс</value></data>
+  <data name="TelemetryBmsSpread" xml:space="preserve"><value>Разброс банок</value></data>
+  <data name="TelemetryBmsHealth" xml:space="preserve"><value>Здоровье</value></data>
+  <data name="ButtonData" xml:space="preserve"><value>Данные</value></data>
+  <data name="ButtonRides" xml:space="preserve"><value>Поездки</value></data>
+  <data name="SettingWarnBatterySaver" xml:space="preserve"><value>Просить исключение из экономии заряда</value></data>
+  <data name="SettingWarnBatterySaverHint" xml:space="preserve"><value>Без исключения Android усыпляет приложение при погашенном экране, и связь с колесом рвётся. Просьба приходит при каждом запуске, пока его не выдали.</value></data>
+  <data name="ButtonLockScreen" xml:space="preserve"><value>Закрепить экран</value></data>
+  <data name="ButtonLockScreenOn" xml:space="preserve"><value>Экран закреплён</value></data>
+</root>

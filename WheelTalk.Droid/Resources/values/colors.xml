@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#512BD4</color>
+    <color name="colorPrimaryDark">#2B0B98</color>
+    <color name="colorAccent">#2B0B98</color>
+
+    <!-- Задний слой адаптивной иконки — фон панели из палитры «Ванг». Отдельным цветом, а не
+         рисунком: launcher анимирует слои друг относительно друга, и заливке для этого нечего
+         рисовать сверх одного цвета. -->
+    <color name="appicon_background">#101010</color>
+</resources>

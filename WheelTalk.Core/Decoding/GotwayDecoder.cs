@@ -1,0 +1,637 @@
+using System.Globalization;
+using System.Text;
+using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Contracts;
+using WheelTalk.Core.Diagnostics;
+using WheelTalk.Core.Ports;
+
+namespace WheelTalk.Core.Decoding;
+
+/// <summary>
+/// Port of GotwayAdapter.java 1:1 (decode() + command builders) for the Gotway/Begode
+/// protocol family — used by Begode MTen3. Unlike Veteran, this protocol is NOT passive:
+/// on connect the wheel is silent until queried with "V" (firmware) / "N" (model name), so
+/// the decoder actively writes through <see cref="WriteRequested"/> while it bootstraps.
+/// Scope of this port (vertical slice, matches plan §5 depth for Veteran):
+///   - Full live-telemetry path: frames 0x00 (speed/voltage/current/temp), 0x01 (BMS
+///     voltage/current), 0x02/0x03 (BMS cells), 0x04 (total distance + alarm bits),
+///     0x07 (motor current/temp).
+///   - NOT ported: frame 0xFF (PID/tuning parameter echoes) and the Alexovik custom-firmware
+///     (SmirnoV/Freestyl3r) branches beyond firmware-string detection — stock Begode firmware
+///     ("GW" handshake, what MTen3 reports) never takes those branches, so they are stubbed
+///     rather than fully translated. Likewise the settings-echo half of frame 0x04 (pedals
+///     mode/speed alarms/roll angle/LED mode/light mode/miles) is not pushed back into
+///     IWheelConfig — those are UI preference mirrors, not telemetry.
+/// </summary>
+public sealed partial class GotwayDecoder : IWheelDecoder
+{
+    private const double RatioGw = 0.875;
+    private const int LightModeOff = 0;
+    private const int LightModeOn = 1;
+    private const int LightModeStrobe = 2;
+
+    private readonly WheelState _state;
+    private readonly IWheelConfig _config;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<GotwayDecoder> _logger;
+    private readonly GotwayUnpacker _unpacker;
+
+    private string _model = "";
+    private string _imu = "";
+    private string _fw = "";
+    private string _fwprot = "";
+    private int _smartBmsCells;
+    private bool _trueVoltage;
+    private bool _trueCurrent;
+    private bool _bmsCurrent;
+    private bool _truePwm;
+    private bool _isReady;
+    private long _lastTryTimestamp;
+    private int _attempt;
+    private int _lightMode = LightModeOff;
+
+    /// <summary>Last wheel-alert text actually logged — lets <see cref="DecodeFrameB"/> throttle
+    /// the Warning to alarm-state transitions instead of once per frame while an alarm is active.</summary>
+    private string? _lastLoggedAlert;
+
+    public event Action<byte[]>? WriteRequested;
+
+    public GotwayDecoder(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<GotwayDecoder> logger)
+    {
+        _state = state;
+        _config = config;
+        _timeProvider = timeProvider;
+        _logger = logger;
+        _state.WheelType = WheelType.GotWay;
+        // GotwayUnpacker is a private implementation detail (never independently DI-resolved), so
+        // it shares the owning decoder's typed logger category rather than needing its own ILoggerFactory.
+        _unpacker = new GotwayUnpacker(logger);
+    }
+
+    public bool IsReady => _isReady && _state.Voltage != 0;
+
+    /// <summary>Port of GotwayAdapter.decode(byte[]).</summary>
+    public bool Decode(byte[] data)
+    {
+        // Identity scope is opened once per call (rather than held in a field across calls) because
+        // BLE DataReceived invocations land on different thread-pool threads with a fresh
+        // ExecutionContext each time — an AsyncLocal-backed MEL/Serilog scope opened in one call would
+        // never actually wrap the next call's log records, and disposing it outside the synchronous
+        // frame that opened it is unsupported. See §2.4 of the logging plan.
+        using IDisposable? identityScope = BeginIdentityScope();
+        LogDecodeInvoked();
+        _state.ResetRideTime();
+        bool newDataFound = false;
+
+        // IMU is sent at the very beginning, no need to re-check once model/fw are known.
+        if (_model.Length == 0 || _fw.Length == 0)
+        {
+            HandleHandshakeText(data);
+        }
+
+        // Parsed once per Decode() call rather than once per completed frame in the loop below —
+        // config.GotwayNegative doesn't change mid-call, and an unparsable value now falls back
+        // to "0" (abs) instead of throwing partway through the frame loop.
+        if (!int.TryParse(_config.GotwayNegative, NumberStyles.Integer, CultureInfo.InvariantCulture, out int gotwayNegative))
+        {
+            gotwayNegative = 0;
+        }
+
+        foreach (byte c in data)
+        {
+            if (!_unpacker.AddChar(c)) continue;
+
+            byte[] buff = _unpacker.GetBuffer();
+            if (buff.Length <= 19) continue; // frame type always lives at buff[18]; 24-byte frames only
+
+            bool isAlexovikFw = _config.IsAlexovikFW;
+            bool useRatio = _config.UseRatio;
+            bool useBetterPercents = _config.UseBetterPercents;
+            bool autoVoltage = !isAlexovikFw && _config.AutoVoltage;
+
+            byte frameType = buff[18];
+            if (frameType == 0x00)
+            {
+                newDataFound = DecodeFrameA(buff, isAlexovikFw, useRatio, useBetterPercents, autoVoltage, gotwayNegative);
+            }
+            else if (frameType == 0x01)
+            {
+                DecodeFrame01(buff, isAlexovikFw, autoVoltage, ref newDataFound);
+            }
+            else if (frameType == 0x02 || frameType == 0x03)
+            {
+                DecodeBmsCells(buff);
+            }
+            else if (frameType == 0x04)
+            {
+                DecodeFrameB(buff, useRatio, isAlexovikFw);
+            }
+            else if (frameType == 0x07)
+            {
+                DecodeFrame07(buff, isAlexovikFw, gotwayNegative, ref newDataFound);
+            }
+            // frameType == 0xFF: advanced PID/tuning settings — out of scope for this slice.
+
+            if (newDataFound)
+            {
+                _state.CalculatePower();
+                if (_config.HwPwm || _truePwm) _state.UpdatePwm();
+                else _state.CalculatePwm();
+            }
+
+            RunHandshakeAttempt();
+        }
+        return newDataFound;
+    }
+
+    private void HandleHandshakeText(byte[] data)
+    {
+        string dataS = Encoding.ASCII.GetString(data).Trim();
+        if (dataS.StartsWith("NAME"))
+        {
+            _attempt = 1000; // stop retrying
+            _model = dataS.Length > 5 ? dataS[5..].Trim() : "";
+            _state.SetModel(_model);
+            LogHandshake("NAME", _model);
+        }
+        else if (dataS.StartsWith("GW"))
+        {
+            _fw = dataS.Length > 2 ? dataS[2..].Trim() : "";
+            _state.SetVersion(_fw);
+            _fwprot = "Begode";
+            _config.HwPwm = false;
+            _config.IsAlexovikFW = false;
+            _isReady = true;
+            _attempt = 0;
+            LogHandshake("GW", _fw);
+        }
+        else if (dataS.StartsWith("JN"))
+        {
+            _fw = dataS.Length > 2 ? dataS[2..].Trim() : "";
+            _state.SetVersion(_fw);
+            _fwprot = "ExtremeBull";
+            _config.HwPwm = false;
+            _config.IsAlexovikFW = false;
+            _isReady = true;
+            _attempt = 0;
+            LogHandshake("JN", _fw);
+        }
+        else if (dataS.StartsWith("CF"))
+        {
+            _fw = dataS.Length > 2 ? dataS[2..].Trim() : "";
+            _state.SetVersion(_fw);
+            _fwprot = "Freestyl3r";
+            _config.HwPwm = true;
+            _config.IsAlexovikFW = false;
+            _isReady = true;
+            _attempt = 0;
+            LogHandshake("CF", _fw);
+        }
+        else if (dataS.StartsWith("BF"))
+        {
+            _fw = dataS.Length > 2 ? dataS[2..].Trim() : "";
+            _state.SetVersion(_fw);
+            _fwprot = "SV";
+            _config.HwPwm = true;
+            _config.IsAlexovikFW = true;
+            _isReady = true;
+            _attempt = 0;
+            LogHandshake("BF", _fw);
+        }
+        else if (dataS.StartsWith("MPU"))
+        {
+            _imu = dataS.Length >= 7 ? dataS[1..7].Trim() : dataS.Trim();
+            LogHandshake("MPU", _imu);
+        }
+    }
+
+    /// <summary>Frame A — live data (GotwayAdapter.java:119-204).</summary>
+    private bool DecodeFrameA(byte[] buff, bool isAlexovikFw, bool useRatio, bool useBetterPercents,
+        bool autoVoltage, int gotwayNegative)
+    {
+        LogFrameA(_model, _fw);
+        int voltage = MathsUtil.ShortFromBytesBE(buff, 2);
+        int speed = (int)Math.Round(MathsUtil.SignedShortFromBytesBE(buff, 4) * 3.6);
+        int distance = 0;
+        if (!isAlexovikFw)
+        {
+            distance = MathsUtil.ShortFromBytesBE(buff, 8);
+        }
+        else if ((buff[7] & 0x01) == 1)
+        {
+            int batteryCurrent = MathsUtil.SignedShortFromBytesBE(buff, 8);
+            _state.SetCurrent(batteryCurrent);
+            _trueCurrent = true;
+        }
+
+        int phaseCurrent = MathsUtil.SignedShortFromBytesBE(buff, 10);
+        int temperature = !isAlexovikFw
+            ? (int)Math.Round((MathsUtil.SignedShortFromBytesBE(buff, 12) / 340.0 + 36.53) * 100) // mpu6050
+            : (int)Math.Round((MathsUtil.SignedShortFromBytesBE(buff, 12) / 333.87 + 21.00) * 100); // mpu6500 (Alexovik "trick" byte 16 not ported)
+
+        int hwPwm = MathsUtil.SignedShortFromBytesBE(buff, 14) * 10;
+
+        if (gotwayNegative == 0)
+        {
+            speed = Math.Abs(speed);
+            phaseCurrent = Math.Abs(phaseCurrent);
+            hwPwm = Math.Abs(hwPwm);
+        }
+        else
+        {
+            phaseCurrent *= gotwayNegative;
+            if (!isAlexovikFw)
+            {
+                speed *= gotwayNegative;
+                hwPwm *= gotwayNegative;
+            }
+        }
+
+        int battery = CalculateBattery(voltage, useBetterPercents);
+
+        if (useRatio)
+        {
+            distance = (int)Math.Round(distance * RatioGw);
+            speed = (int)Math.Round(speed * RatioGw);
+        }
+        voltage = (int)Math.Round(GetScaledVoltage(voltage));
+
+        _state.SetSpeed(speed);
+        _state.SetTopSpeed(speed);
+        _state.SetWheelDistance(distance);
+        _state.SetTemperature(temperature);
+        _state.SetPhaseCurrent(isAlexovikFw ? phaseCurrent * 10 : phaseCurrent);
+        if (!(_trueVoltage && autoVoltage))
+        {
+            _state.SetVoltage(voltage);
+        }
+        _state.SetBatteryLevel(battery, GetCellsForWheel());
+        if (!_truePwm)
+        {
+            _state.SetOutput(hwPwm);
+        }
+        if (!isAlexovikFw && (!_trueCurrent || !_bmsCurrent))
+        {
+            _state.CalculateCurrent();
+        }
+        return !((_trueVoltage && autoVoltage) || _trueCurrent || _bmsCurrent) || isAlexovikFw;
+    }
+
+    /// <summary>Frame 0x01 — BMS pack voltage/current (GotwayAdapter.java:205-237).</summary>
+    private void DecodeFrame01(byte[] buff, bool isAlexovikFw, bool autoVoltage, ref bool newDataFound)
+    {
+        if (isAlexovikFw)
+        {
+            // Alexovik-firmware pedals-mode echo — not ported in this slice (stock Begode never hits this).
+            return;
+        }
+
+        newDataFound = _bmsCurrent || (!_trueCurrent && _trueVoltage && autoVoltage);
+        _trueVoltage = true;
+        int batVoltage = MathsUtil.ShortFromBytesBE(buff, 6);
+        if (autoVoltage) _state.SetVoltage(batVoltage * 10);
+
+        int bmsnum = buff[19] & 0xFF;
+        SmartBms bms = bmsnum < 2 ? _state.Bms1 : _state.Bms2;
+        int bmsCurrentM = MathsUtil.SignedShortFromBytesBE(buff, 8);
+        LogFrame01(bmsnum, batVoltage, bmsCurrentM);
+        bms.Current = bmsCurrentM / 10.0;
+        if (bmsCurrentM > 0) _bmsCurrent = false;
+        if (_bmsCurrent) _state.SetCurrent(bmsCurrentM * 20); // double current, taking into account 2 BMS packs
+
+        if (bmsnum % 2 == 0)
+        {
+            bms.Temp1 = MathsUtil.SignedShortFromBytesBE(buff, 10);
+            bms.Temp2 = MathsUtil.SignedShortFromBytesBE(buff, 12);
+            bms.SemiVoltage1 = MathsUtil.SignedShortFromBytesBE(buff, 14) / 10.0;
+        }
+        else
+        {
+            bms.Temp3 = MathsUtil.SignedShortFromBytesBE(buff, 10);
+            bms.Temp4 = MathsUtil.SignedShortFromBytesBE(buff, 12);
+            bms.SemiVoltage2 = MathsUtil.SignedShortFromBytesBE(buff, 14) / 10.0;
+        }
+    }
+
+    /// <summary>Frames 0x02/0x03 — BMS cell voltages, 8 cells per page (GotwayAdapter.java:238-281).</summary>
+    private void DecodeBmsCells(byte[] buff)
+    {
+        int bmsnum = (buff[18] & 0xFF) - 0x01;
+        SmartBms bms = bmsnum == 1 ? _state.Bms1 : _state.Bms2;
+        int pNum = buff[19] & 0xFF;
+        LogBmsCells(bmsnum, pNum);
+
+        for (int i = 0; i < 8; i++)
+        {
+            int cellNum = i + pNum * 8;
+            double cellVal = MathsUtil.ShortFromBytesBE(buff, (i + 1) * 2) / 1000.0;
+            if (cellNum >= bms.Cells.Length) continue; // defensive; Android's array is a fixed 56 too
+            bms.Cells[cellNum] = cellVal;
+            if (_smartBmsCells <= cellNum && cellVal != 0)
+            {
+                _smartBmsCells = cellNum + 1;
+            }
+            else if (_smartBmsCells == cellNum + 1 && bms.CellNum != _smartBmsCells)
+            {
+                bms.CellNum = _smartBmsCells;
+                // wd.reconfigureBMSPage() — Android UI hook, not applicable to a console test port.
+            }
+        }
+
+        bms.MinCell = bms.Cells[0];
+        bms.MaxCell = bms.Cells[0];
+        bms.MaxCellNum = 1;
+        bms.MinCellNum = 1;
+        double totalVolt = 0.0;
+        for (int i2 = 0; i2 < _smartBmsCells; i2++)
+        {
+            double cell = bms.Cells[i2];
+            if (cell > 0.0)
+            {
+                totalVolt += cell;
+                if (bms.MaxCell < cell) { bms.MaxCell = cell; bms.MaxCellNum = i2 + 1; }
+                if (bms.MinCell > cell) { bms.MinCell = cell; bms.MinCellNum = i2 + 1; }
+            }
+        }
+        bms.CellDiff = bms.MaxCell - bms.MinCell;
+        bms.AvgCell = totalVolt / _smartBmsCells; // NaN until the first cell page arrives, matches original
+        bms.Voltage = totalVolt;
+    }
+
+    /// <summary>Frame 0x04 — total distance + alarm bits (GotwayAdapter.java:282-338, settings-echo half omitted).</summary>
+    private void DecodeFrameB(byte[] buff, bool useRatio, bool isAlexovikFw)
+    {
+        LogFrameB();
+        int totalDistance = MathsUtil.GetInt4(buff, 2);
+        _state.SetTotalDistance(useRatio ? (long)Math.Round(totalDistance * RatioGw) : totalDistance);
+
+        if (isAlexovikFw) return;
+
+        int alert = buff[14] & 0xFF;
+        _state.SetWheelAlarm((alert & 0x01) == 1);
+
+        var alertLine = new StringBuilder();
+        if (((alert >> 1) & 0x01) == 1) alertLine.Append("Speed2 ");
+        if (((alert >> 2) & 0x01) == 1) alertLine.Append("Speed1 ");
+        if (((alert >> 3) & 0x01) == 1) alertLine.Append("LowVoltage ");
+        if (((alert >> 4) & 0x01) == 1) alertLine.Append("OverVoltage ");
+        if (((alert >> 5) & 0x01) == 1) alertLine.Append("OverTemperature ");
+        if (((alert >> 6) & 0x01) == 1) alertLine.Append("errHallSensors ");
+        if (((alert >> 7) & 0x01) == 1) alertLine.Append("TransportMode");
+        _state.SetAlert(alertLine.ToString());
+
+        if (alertLine.Length > 0)
+        {
+            // Throttled to alarm-state transitions — a sustained alarm would otherwise re-log
+            // the same Warning on every single decoded frame.
+            string alertText = alertLine.ToString();
+            if (alertText != _lastLoggedAlert)
+            {
+                LogWheelAlert(alertText);
+                _lastLoggedAlert = alertText;
+            }
+        }
+        else
+        {
+            _lastLoggedAlert = null;
+        }
+
+        // Pedals mode / speed alarms / roll angle / miles / LED mode / light mode / power-off
+        // time / tiltback speed are settings *echoes* the Android app mirrors into AppConfig —
+        // out of scope for this telemetry-focused slice.
+    }
+
+    /// <summary>Frame 0x07 — motor current/temperature (GotwayAdapter.java:339-360).</summary>
+    private void DecodeFrame07(byte[] buff, bool isAlexovikFw, int gotwayNegative, ref bool newDataFound)
+    {
+        if (isAlexovikFw) return;
+
+        newDataFound = _trueCurrent && !_bmsCurrent;
+        _trueCurrent = true;
+        int batteryCurrent = MathsUtil.SignedShortFromBytesBE(buff, 2);
+        int motorTemp = MathsUtil.SignedShortFromBytesBE(buff, 6);
+        int hwPwmB = MathsUtil.SignedShortFromBytesBE(buff, 8);
+        LogFrame07(batteryCurrent, motorTemp, hwPwmB);
+        if (Math.Abs(hwPwmB) > 0) _truePwm = true;
+        if (_truePwm)
+        {
+            hwPwmB = gotwayNegative == 0 ? Math.Abs(hwPwmB) : hwPwmB * gotwayNegative * -1;
+            _state.SetOutput(hwPwmB * 100);
+        }
+        if (!_bmsCurrent) _state.SetCurrent(-1 * batteryCurrent);
+        _state.SetTemperature2(motorTemp * 100);
+    }
+
+    /// <summary>Port of the battery-percent branches (GotwayAdapter.java:158-177).</summary>
+    private int CalculateBattery(int voltage, bool useBetterPercents)
+    {
+        if (useBetterPercents)
+        {
+            if (voltage > 6680) return 100;
+            if (voltage > 5440) return (int)Math.Round((voltage - 5320) / 13.6);
+            if (voltage > 5120) return (voltage - 5120) / 36; // integer division, matches original (no rounding)
+            return 0;
+        }
+        if (voltage <= 5290) return 0;
+        if (voltage >= 6580) return 100;
+        return (voltage - 5290) / 13; // integer division, matches original (no rounding)
+    }
+
+    private double GetScaledVoltage(int value) => value * (_config.GotwayVoltage switch
+    {
+        "0" => 1.0,
+        "1" => 1.25,
+        "2" => 1.5,
+        "3" => 1.7380952380952380952380952380952,
+        "4" => 2.0,
+        "5" => 2.5,
+        "6" => 2.25,
+        _ => 1.0,
+    });
+
+    public int GetCellsForWheel()
+    {
+        if (_smartBmsCells != 0) return _smartBmsCells;
+        return _config.GotwayVoltage switch
+        {
+            "0" => 16,
+            "1" => 20,
+            "2" => 24,
+            "3" => 32,
+            "4" => 32,
+            "5" => 40,
+            "6" => 36,
+            _ => 24,
+        };
+    }
+
+    /// <summary>Port of the "V"/"N" handshake polling loop (GotwayAdapter.java:395-422), run once per completed frame.</summary>
+    private void RunHandshakeAttempt()
+    {
+        if (_attempt < 50)
+        {
+            long nowTimestamp = _timeProvider.GetTimestamp();
+            if (_timeProvider.GetElapsedTime(_lastTryTimestamp) > TimeSpan.FromMilliseconds(40))
+            {
+                if (_fw.Length == 0) SendCommand("V", "", 0);
+                else if (_model.Length == 0) SendCommand("N", "", 0);
+                _attempt += 1;
+                _lastTryTimestamp = nowTimestamp;
+            }
+        }
+        else
+        {
+            if (_model.Length == 0)
+            {
+                _model = _fwprot.Length == 0 ? "Begode" : _fwprot;
+                _state.SetVersion(_model); // mirrors GotwayAdapter.java:415 (likely upstream setModel/setVersion mix-up, preserved 1:1)
+                LogHandshake("Fallback-Model", _model);
+            }
+            else if (_fw.Length == 0)
+            {
+                _fw = "-";
+                _state.SetVersion(_fw);
+                _config.HwPwm = false;
+                _isReady = true;
+                LogHandshake("Fallback-Fw", _fw);
+            }
+        }
+    }
+
+    /// <summary>Opens the identity <see cref="ILogger.BeginScope{TState}"/> for the current
+    /// <see cref="Decode"/> call, using whatever model/fw the handshake has already resolved by the
+    /// time this call started. Returns null (no scope) until both are known — see the remark on
+    /// <see cref="Decode"/> for why this is per-call rather than a long-lived field.</summary>
+    private IDisposable? BeginIdentityScope()
+    {
+        if (_model.Length == 0 && _fw.Length == 0) return null;
+
+        return _logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["WheelType"] = _state.WheelType,
+            ["Model"] = _model,
+            ["Fw"] = _fw,
+        });
+    }
+
+    // --- Commands ---
+
+    public byte[] BuildWheelBeep() => Encoding.ASCII.GetBytes("b");
+
+    public byte[] BuildSetLightState(bool enabled)
+    {
+        // Как у Veteran: эха от колеса нет, единственный источник правды про свет —
+        // IWheelConfig.LightEnabled, пишется при построении команды.
+        _config.LightEnabled = enabled;
+        _lightMode = enabled ? LightModeOn : LightModeOff;
+        return BuildLightModeCommand(_lightMode);
+    }
+
+    public byte[] BuildSwitchFlashlight()
+    {
+        _lightMode = _lightMode + 1 > LightModeStrobe ? LightModeOff : _lightMode + 1;
+        return BuildLightModeCommand(_lightMode);
+    }
+
+    private byte[] BuildLightModeCommand(int mode)
+    {
+        string command = mode switch
+        {
+            LightModeOn => "Q",
+            LightModeStrobe => "T",
+            _ => "E",
+        };
+        DelayedSend(Encoding.ASCII.GetBytes("b"), 100); // setLightMode() always follows up via sendCommand()'s default "b" + 100ms
+        return Encoding.ASCII.GetBytes(command);
+    }
+
+    public byte[]? BuildUpdatePedalsMode(int pedalsMode)
+    {
+        string? command = pedalsMode switch { 0 => "h", 1 => "f", 2 => "s", 3 => "i", _ => null };
+        if (command is null) return null;
+        DelayedSend(Encoding.ASCII.GetBytes("b"), 100);
+        return Encoding.ASCII.GetBytes(command);
+    }
+
+    /// <summary>No resetTrip() in GotwayAdapter — BaseAdapter doesn't declare that hook either.</summary>
+    public byte[]? BuildResetTrip() => null;
+
+    public byte[]? BuildCalibrate()
+    {
+        DelayedSend(Encoding.ASCII.GetBytes("y"), 300);
+        return Encoding.ASCII.GetBytes("c");
+    }
+
+    private void DelayedSend(byte[] bytes, int delayMs)
+    {
+        _ = DelayedSendAsync(bytes, delayMs);
+    }
+
+    private async Task DelayedSendAsync(byte[] bytes, int delayMs)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(delayMs), _timeProvider);
+            RequestWrite(bytes);
+        }
+        catch (Exception ex)
+        {
+            LogDelayedSendFailed(ex);
+        }
+    }
+
+    /// <summary>
+    /// Only raises the request — it cannot log a confirmed Cmd.Sent, because it has no way to know
+    /// whether the write actually landed. That confirmation exists only where <see cref="WriteRequested"/>
+    /// is consumed (<c>WheelService.WriteSafe</c>, which awaits the transport), so that is where the
+    /// event is logged now. Logging it here — before the transport had even been asked — is exactly
+    /// the bug roadmap "Пункт 9" describes for user commands, just for the decoder's own handshake
+    /// polling and two-step follow-ups instead.
+    /// </summary>
+    private void RequestWrite(byte[] bytes) => WriteRequested?.Invoke(bytes);
+
+    private void SendCommand(string primary, string delayed = "b", int timerMs = 100)
+    {
+        RequestWrite(Encoding.ASCII.GetBytes(primary));
+        if (timerMs > 0 && delayed.Length > 0)
+        {
+            DelayedSend(Encoding.ASCII.GetBytes(delayed), timerMs);
+        }
+    }
+
+    [LoggerMessage(EventId = LogEvents.Decoding.DecodeInvokedId, EventName = LogEvents.Decoding.DecodeInvokedName,
+        Level = LogLevel.Trace, Message = "Decode Gotway/Begode")]
+    private partial void LogDecodeInvoked();
+
+    [LoggerMessage(EventId = LogEvents.Decoding.FrameAId, EventName = LogEvents.Decoding.FrameAName,
+        Level = LogLevel.Debug, Message = "Begode frame A found (live data). Model {Model} FW {Fw}")]
+    private partial void LogFrameA(string model, string fw);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.FrameBId, EventName = LogEvents.Decoding.FrameBName,
+        Level = LogLevel.Debug, Message = "Begode frame B found (total distance and flags)")]
+    private partial void LogFrameB();
+
+    [LoggerMessage(EventId = LogEvents.Decoding.Frame01Id, EventName = LogEvents.Decoding.Frame01Name,
+        Level = LogLevel.Debug, Message = "Begode frame 01 found (BMS voltage/current). Bms#{BmsNum} Voltage={Voltage} Current={Current}")]
+    private partial void LogFrame01(int bmsNum, int voltage, int current);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.Frame07Id, EventName = LogEvents.Decoding.Frame07Name,
+        Level = LogLevel.Debug, Message = "Begode frame 07 found (motor current/temperature). Current={Current} MotorTemp={MotorTemp} Pwm={Pwm}")]
+    private partial void LogFrame07(int current, int motorTemp, int pwm);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.BmsCellsId, EventName = LogEvents.Decoding.BmsCellsName,
+        Level = LogLevel.Debug, Message = "Begode BMS cells frame. Bms#{BmsNum} Page={Page}")]
+    private partial void LogBmsCells(int bmsNum, int page);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.HandshakeId, EventName = LogEvents.Decoding.HandshakeName,
+        Level = LogLevel.Debug, Message = "Handshake {Kind} recognized: {Value}")]
+    private partial void LogHandshake(string kind, string value);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.WheelAlertId, EventName = LogEvents.Decoding.WheelAlertName,
+        Level = LogLevel.Warning, Message = "Wheel alert: {Alert}")]
+    private partial void LogWheelAlert(string alert);
+
+    [LoggerMessage(EventId = LogEvents.Service.DelayedSendFailedId, EventName = LogEvents.Service.DelayedSendFailedName,
+        Level = LogLevel.Error, Message = "Delayed send failed")]
+    private partial void LogDelayedSendFailed(Exception ex);
+}

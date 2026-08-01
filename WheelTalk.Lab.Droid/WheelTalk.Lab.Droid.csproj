@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Чистый .NET для Android, без MAUI — тем же составом, что WheelTalk.Droid. Стенд
+		     пересобран поверх WheelTalk.Dashboard.Droid по решению плана 12 §1: держать MAUI ради
+		     одного стенда дороже, чем собрать его заново. -->
+		<TargetFramework>net10.0-android</TargetFramework>
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>WheelTalk.Lab.Droid</RootNamespace>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+
+		<!-- Отдельный пакет, чтобы стенд стоял на телефоне рядом с рабочим приложением: их
+		     сравнивают друг с другом, а не по очереди переустанавливают. -->
+		<ApplicationTitle>WheelTalk Lab</ApplicationTitle>
+		<ApplicationId>com.wheeltalk.lab.droid</ApplicationId>
+		<ApplicationVersion>1</ApplicationVersion>
+		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+
+		<SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+	  <AndroidPackageFormat>apk</AndroidPackageFormat>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Нарезка поездок едет внутри пакета: стенд должен работать сразу после установки, без
+		     adb push и без правки настроек. У MAUI это был MauiAsset, здесь обычный AndroidAsset —
+		     читается через Context.Assets.Open("replay/…"). -->
+		<AndroidAsset Include="..\replay\*.csv" Link="Assets\replay\%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Логгеры сценариев (NullLoggerFactory) приходят с Microsoft.Extensions.Logging.Abstractions,
+		     который тянет WheelTalk.Core; ничего сверх ссылок ниже стенду не нужно — ни BLE, ни базы,
+		     ни настроек приложения. -->
+		<ProjectReference Include="..\WheelTalk.Core\WheelTalk.Core.csproj" />
+		<ProjectReference Include="..\WheelTalk.Dashboard.Droid\WheelTalk.Dashboard.Droid.csproj" />
+	</ItemGroup>
+
+</Project>

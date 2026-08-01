@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "AndroidEmulator": {
+      "commandName": "AndroidEmulator"
+    }
+  }
+}

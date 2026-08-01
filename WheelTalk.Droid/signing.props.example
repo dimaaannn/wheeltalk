@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Образец. Настоящий файл называется signing.props, лежит рядом и в репозиторий не берётся
+  (см. .gitignore): в нём пути этой конкретной машины, а в чужих руках он бесполезен и вреден.
+
+  Без signing.props сборка не ломается: Release просто подписывается отладочным ключом, как было
+  до 01.08.2026. Это нарочно — чтобы репозиторий оставался собираемым на машине без хранилища.
+
+  ЧТО ЗАПОЛНИТЬ
+
+  1. AndroidSigningKeyStore — путь к хранилищу (у нас C:\Work\repos\key\wheeltalk-release.keystore).
+     Вне репозитория, и там же его резервная копия быть НЕ должна: копию держать на другом носителе.
+  2. AndroidSigningKeyAlias — псевдоним ключа внутри хранилища (у нас wheeltalk).
+  3. Пароли — ссылкой на файл, а не текстом: `file:<путь>`, где по пути лежит файл, содержащий
+     только пароль. Так сам пароль не появляется ни в одном файле дерева репозитория, даже
+     исключённом из git: исключённый файл всё ещё можно закоммитить одной опечаткой в `git add -f`
+     или утащить копированием папки.
+
+     ВНИМАНИЕ, ГРАБЛИ. В файле пароль должен быть записан ДВАЖДЫ, на двух строках. apksigner
+     читает такой файл последовательно: `--ks-pass` забирает первую строку, `--key-pass` — вторую.
+     С одной строкой сборка падает с `java.io.IOException: Failed to read Key ... password for
+     signer #1 : end of file reached`. Убрать второй параметр нельзя: SDK требует его непустым
+     (`error XA4314`). Для PKCS12 обе строки одинаковые — пароль ключа там и есть пароль хранилища.
+
+     Файл без BOM: в Windows PowerShell 5.1 `Set-Content -Encoding UTF8` дописывает три служебных
+     байта в начало, и они попадут в пароль. Писать через
+     `[System.IO.File]::WriteAllText(путь, текст, (New-Object System.Text.UTF8Encoding($false)))`.
+-->
+<Project>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore>ПУТЬ\К\wheeltalk-release.keystore</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>wheeltalk</AndroidSigningKeyAlias>
+    <AndroidSigningStorePass>file:ПУТЬ\К\storepass.txt</AndroidSigningStorePass>
+    <AndroidSigningKeyPass>file:ПУТЬ\К\storepass.txt</AndroidSigningKeyPass>
+  </PropertyGroup>
+</Project>

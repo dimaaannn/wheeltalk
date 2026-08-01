@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Передний слой адаптивной иконки. Рисунок — то же, что показывает сама панель: кольцо колеса и
+     сектор ШИМ, который идёт из спокойного синего в жёлтый и киноварь. Цвета взяты из палитры
+     «Ванг» (DashboardPalette.Wong), а не подобраны отдельно: иконка и приборы обязаны читаться как
+     одна вещь, и различимость при дейтеранопии нужна им одинаково.
+
+     Вся графика держится внутри центрального круга 72 dp из 108: launcher обрезает адаптивную
+     иконку своей маской, и то, что вышло за этот круг, на части прошивок просто срезается.
+     Кольцо: центр 54,54, радиус 24, обводка 8 — внешний край 28, то есть с запасом. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="108dp"
+	android:height="108dp"
+	android:viewportWidth="108"
+	android:viewportHeight="108">
+
+	<!-- Кольцо целиком — шкала, по которой идёт сектор. -->
+	<path
+		android:pathData="M30,54 a24,24 0 1,0 48,0 a24,24 0 1,0 -48,0"
+		android:strokeColor="#0072B2"
+		android:strokeWidth="8" />
+
+	<!-- Сектор ШИМ: от верха по часовой стрелке. Жёлтая часть — предупреждение, киноварь на конце —
+	     предел; тот же порядок, что у зон на ленте. -->
+	<path
+		android:pathData="M54,30 A24,24 0 0,1 76.55,62.21"
+		android:strokeColor="#E69F00"
+		android:strokeWidth="8"
+		android:strokeLineCap="butt" />
+	<path
+		android:pathData="M76.55,62.21 A24,24 0 0,1 67.77,73.66"
+		android:strokeColor="#D55E00"
+		android:strokeWidth="8"
+		android:strokeLineCap="round" />
+
+	<!-- Ступица: без неё кольцо читается как буква «О». -->
+	<path
+		android:pathData="M54,49 a5,5 0 1,0 0,10 a5,5 0 1,0 0,-10"
+		android:fillColor="#F2F2F2" />
+</vector>

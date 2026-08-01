@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Адаптивная иконка, как у боевого приложения: свой значок нужен каждому пакету, иначе на
+     телефоне их различает только подпись, а её видно хуже всего (AGENTS.md). -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+	<background android:drawable="@color/appicon_background" />
+	<foreground android:drawable="@drawable/appicon_foreground" />
+	<monochrome android:drawable="@drawable/appicon_foreground" />
+</adaptive-icon>

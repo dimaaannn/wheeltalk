@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Тёмная тема на всё приложение. В MAUI-версии это была строка `UserAppTheme = AppTheme.Dark`;
+         здесь то же самое приходится сказать теме, потому что хром стенда — системные Spinner,
+         SeekBar и Button, и на светлой теме они дали бы тёмный текст на чёрном фоне панели.
+         NoActionBar — заголовок стенду не нужен: на снимке должна остаться панель. -->
+    <style name="LabTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#101010</item>
+
+        <!-- Прозрачная подложка системной строки — как у боевого приложения. Без неё окно стенда
+             начиналось чёрной полосой, и это читалось как окно не во весь экран (замечание
+             владельца 01.08.2026). Фон стенда уходит под бар, органы управления остаются ниже:
+             верхний инсет им отдаёт EdgeToEdge.Apply в LabActivity. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+</resources>

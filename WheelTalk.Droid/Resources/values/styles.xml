@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Тема приложения. Заведена 01.08.2026, потому что её отсутствие было дефектом, а не
+         экономией: без темы платформа даёт светлую по умолчанию, то есть textColorPrimary почти
+         чёрный, — а фон страниц приложение красит само по системному ночному режиму
+         (ScreenKit.PageBackground). Два источника правды о том, темно ли сейчас, и в тёмном режиме
+         всякий TextView, которому цвет не проставили руками, оказывался чёрным по #1f1f1f.
+         Измерено на снимке с телефона: самый яркий пиксель строки итогов — 31 при фоне 31, то есть
+         текст был не бледный, а ровно цвета фона.
+
+         Пара values/values-night, а не Theme.DeviceDefault.DayNight: последняя появилась в API 29,
+         а minSdk у нас 28. И не Material Components (как у SettingsTheme ниже): экраны — обычные
+         Activity с системным ActionBar'ом, а темы AppCompat распоряжаются заголовком по-своему. -->
+    <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light.DarkActionBar">
+        <!-- Прозрачная подложка статус-бара: окно и так рисуется под ним
+             (EdgeToEdge.SetDecorFitsSystemWindows(false)), закрывал панель только фон самого бара.
+             Значки времени и заряда ложатся поверх приборов, читаемость им обеспечивает градиент
+             в DashboardView.DrawStatusScrim.
+
+             На Android 15 и новее это свойство уже не действует — там полноэкранный режим
+             обязателен и бары прозрачны сами. Строка нужна для Android 11 и 12, то есть ровно для
+             телефонов, на которых приложение живёт. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+    <!-- Тема только для экранов настроек (SettingsCategoryActivity): MaterialButtonToggleGroup/
+         MaterialButton/Chip требуют Theme.MaterialComponents (или потомка) в самой Activity —
+         иначе они бросают исключение при создании. Остальные экраны приложения используют системную
+         тему по умолчанию и её не трогают: у них нет виджетов Material Components. -->
+    <style name="SettingsTheme" parent="Theme.MaterialComponents.DayNight">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+</resources>

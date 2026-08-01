@@ -1,0 +1,210 @@
+using Android.Content;
+using Android.Hardware.Camera2;
+using Android.Media;
+using Android.OS;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using WheelTalk.Droid.Configuration;
+using WheelTalk.Core.Alerts;
+using Application = Android.App.Application;
+
+namespace WheelTalk.Droid.Alerts;
+
+/// <summary>
+/// Everything the phone does about an alert while it is not being looked at: sound, vibration and
+/// the camera flash. Driven purely by the state the core publishes — nothing here decides whether
+/// there is an alarm, only how loud it is — so a signal cannot outlive the condition that raised it.
+/// </summary>
+public sealed class AlertSignals : IDisposable
+{
+    /// <summary>
+    /// Заметно чаще самого короткого сигнала (20 мс на пороге тревоги — см. <see cref="AlertRhythm"/>),
+    /// чтобы ритм задавался расчётом, а не тем, когда проснулся таймер. Такая частота оправдана
+    /// только звучащей тревогой, поэтому таймер взводится в <see cref="Apply"/> её приходом и
+    /// гасится тишиной — постоянный он давал сто пробуждений в секунду всё время жизни процесса,
+    /// с колесом и без.
+    /// </summary>
+    private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(10);
+
+    private readonly AlertOptions _options;
+    private readonly AlertSignalOptions _channels;
+    private readonly ILogger<AlertSignals> _logger;
+    private readonly TimeProvider _timeProvider;
+    private readonly System.Threading.Timer _timer;
+
+    private readonly AlarmTone _alarmTone = new();
+
+    private ToneGenerator? _tones;
+    private Vibrator? _vibrator;
+    private CameraManager? _cameras;
+    private string? _torchCameraId;
+
+    private AlertState _state = AlertState.Quiet;
+    private long _periodStartedAt;
+    private long _lastSpeedBeepAt;
+    private bool _torchOn;
+
+    public AlertSignals(
+        IOptions<AlertOptions> options,
+        IOptions<AlertSignalOptions> channels,
+        TimeProvider timeProvider,
+        ILogger<AlertSignals> logger)
+    {
+        _options = options.Value;
+        // The live instance, read on every tick: a channel switched off has to fall silent now,
+        // not after a restart.
+        _channels = channels.Value;
+        _timeProvider = timeProvider;
+        _logger = logger;
+        _periodStartedAt = timeProvider.GetTimestamp();
+        _lastSpeedBeepAt = timeProvider.GetTimestamp();
+        _timer = new System.Threading.Timer(_ => Tick(), state: null,
+            Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    }
+
+    public void Apply(AlertState state)
+    {
+        bool wasTicking = _state.Any;
+        _state = state;
+        if (state.Any)
+        {
+            // Отметки ритма не сбрасываются нарочно: первый тик новой тревоги застаёт «период
+            // давно истёк» и сигналит сразу — ровно как при постоянном таймере.
+            if (!wasTicking) _timer.Change(TimeSpan.Zero, TickInterval);
+        }
+        else
+        {
+            _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            Silence();
+        }
+    }
+
+    public void Dispose()
+    {
+        _timer.Dispose();
+        Silence();
+        _alarmTone.Dispose();
+        _tones?.Release();
+        _tones?.Dispose();
+        _tones = null;
+    }
+
+    private void Tick()
+    {
+        try
+        {
+            var state = _state;
+            if (!state.Any)
+            {
+                Silence();
+                return;
+            }
+
+            if (state.PwmAlarming)
+            {
+                SignalPwm(state.PwmIntensity);
+            }
+            else if (state.SpeedExceeded)
+            {
+                SignalSpeed();
+            }
+        }
+        catch (Exception ex)
+        {
+            // A phone that refuses to beep must not take the ride telemetry down with it.
+            _logger.LogWarning(ex, "Alert.SignalFailed");
+        }
+    }
+
+    /// <summary>
+    /// Два режима одним тоном: на потолке — сплошной, ниже — сигналы, которые удлиняются, а
+    /// тишина между ними сокращается. Ритм считает <see cref="AlertRhythm"/>, звук выдаёт
+    /// <see cref="AlarmTone"/>.
+    /// </summary>
+    /// <summary>
+    /// Звуку отдаётся только интенсивность: ритм он считает сам, по счётчику отсчётов, и это
+    /// единственный способ уложить двадцатимиллисекундный писк в сетку — отсюда, из-за буфера в
+    /// девяносто миллисекунд, точности не хватает и не хватит.
+    /// <para>
+    /// Вспышка и вибрация, наоборот, остаются здесь: им хватает точности тика, а разъехаться со
+    /// звуком на десяток миллисекунд они могут незаметно.
+    /// </para>
+    /// </summary>
+    private void SignalPwm(double intensity)
+    {
+        _alarmTone.SetIntensity(_channels.Sound ? intensity : 0);
+
+        var since = _timeProvider.GetElapsedTime(_periodStartedAt);
+        if (AlertRhythm.IsPeriodOver(since))
+        {
+            _periodStartedAt = _timeProvider.GetTimestamp();
+            since = TimeSpan.Zero;
+            Vibrate(60);
+        }
+
+        SetTorch(AlertRhythm.IsSounding(since, intensity));
+    }
+
+    private void SignalSpeed()
+    {
+        _alarmTone.SetIntensity(0);
+        SetTorch(false);
+
+        if (_timeProvider.GetElapsedTime(_lastSpeedBeepAt) < _options.SpeedRepeatInterval) return;
+
+        _lastSpeedBeepAt = _timeProvider.GetTimestamp();
+        Tones?.StartTone(Tone.PropBeep, 150);
+    }
+
+    private void Silence()
+    {
+        _alarmTone.SetIntensity(0);
+        SetTorch(false);
+    }
+
+    // Alarm stream on purpose: an alert that a silent phone swallows is worse than no alert.
+    // Null while the channel is off, which is what makes every `Tones?.` below a no-op.
+    private ToneGenerator? Tones =>
+        _channels.Sound ? _tones ??= new ToneGenerator(Android.Media.Stream.Alarm, volume: 100) : null;
+
+    private void Vibrate(int milliseconds)
+    {
+        if (!_channels.Vibration) return;
+
+        // VibratorManager only exists from API 31; the phone this is developed against is on 30,
+        // so the older service is the one that has to work.
+#pragma warning disable CA1422
+        _vibrator ??= (Vibrator?)Application.Context.GetSystemService(Context.VibratorService);
+#pragma warning restore CA1422
+        _vibrator?.Vibrate(VibrationEffect.CreateOneShot(milliseconds, VibrationEffect.DefaultAmplitude));
+    }
+
+    private void SetTorch(bool on)
+    {
+        // Switched off mid-blink the lamp would stay lit, so the request is turned into "off"
+        // rather than dropped.
+        if (!_channels.Torch) on = false;
+        if (_torchOn == on) return;
+
+        _cameras ??= (CameraManager?)Application.Context.GetSystemService(Context.CameraService);
+        _torchCameraId ??= FindTorchCamera();
+        if (_cameras is null || _torchCameraId is null) return;
+
+        _torchOn = on;
+        _cameras.SetTorchMode(_torchCameraId, on);
+    }
+
+    private string? FindTorchCamera()
+    {
+        if (_cameras?.GetCameraIdList() is not { } ids) return null;
+
+        foreach (string id in ids)
+        {
+            var hasFlash = (Java.Lang.Boolean?)_cameras.GetCameraCharacteristics(id)
+                .Get(CameraCharacteristics.FlashInfoAvailable!);
+            if (hasFlash?.BooleanValue() == true) return id;
+        }
+
+        return null;
+    }
+}

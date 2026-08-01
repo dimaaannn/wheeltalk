@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Передний слой иконки стенда. От боевой отличается тем же, чем стенд от приложения: вместо
+     живого кольца с сектором ШИМ — две ленты по краям и деления между ними, то есть то, что стенд
+     и показывает. Цвета из палитры «Ванг», как у боевой: приборы у них общие.
+
+     Вся графика внутри центрального круга 72 dp из 108 — launcher режет иконку своей маской. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="108dp"
+	android:height="108dp"
+	android:viewportWidth="108"
+	android:viewportHeight="108">
+
+	<!-- Левая лента: напряжение, синяя. -->
+	<path
+		android:pathData="M36,32 L36,76"
+		android:strokeColor="#0072B2"
+		android:strokeWidth="9"
+		android:strokeLineCap="round" />
+
+	<!-- Правая лента: ШИМ, жёлтая сверху и киноварь на конце — тот же порядок зон. -->
+	<path
+		android:pathData="M72,32 L72,58"
+		android:strokeColor="#E69F00"
+		android:strokeWidth="9"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M72,58 L72,76"
+		android:strokeColor="#D55E00"
+		android:strokeWidth="9"
+		android:strokeLineCap="round" />
+
+	<!-- Деления между лентами — то, ради чего стенд и смотрят: как читается разметка. -->
+	<path
+		android:pathData="M48,42 L60,42 M48,54 L60,54 M48,66 L60,66"
+		android:strokeColor="#F2F2F2"
+		android:strokeWidth="4"
+		android:strokeLineCap="round" />
+</vector>

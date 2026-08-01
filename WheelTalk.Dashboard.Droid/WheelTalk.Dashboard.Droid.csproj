@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Порт WheelTalk.Dashboard (MAUI IDrawable/ICanvas) на чистый Android Canvas/Paint —
+		     см. docs/native-rewrite-inventory.md §4. Библиотека отдаёт готовый android.view.View,
+		     а не абстракции: живёт она только внутри нативного Android-приложения. Ни UseMaui,
+		     ни пакета Microsoft.Maui.Controls здесь больше нет — в этом весь смысл переноса. -->
+		<TargetFramework>net10.0-android</TargetFramework>
+
+		<RootNamespace>WheelTalk.Dashboard.Droid</RootNamespace>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- WindowCompat/ViewCompat для Screen/EdgeToEdge: единственная механика окна, общая у
+		     приложения и стенда. До 01.08.2026 она жила в приложении, и стенд из-за этого выглядел
+		     иначе — не полноэкранным, с чёрной полосой вместо системной строки. Приложение этот
+		     пакет и так тянет; стенд получает его отсюда. -->
+		<PackageReference Include="Xamarin.AndroidX.Core" Version="1.19.0.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- DashboardReading.From(TelemetrySnapshot, ...) читает контракт ядра напрямую — та же
+		     зависимость, что у WheelTalk.Dashboard (MAUI) и у WheelTalk.Native. -->
+		<ProjectReference Include="..\WheelTalk.Core\WheelTalk.Core.csproj" />
+	</ItemGroup>
+
+</Project>

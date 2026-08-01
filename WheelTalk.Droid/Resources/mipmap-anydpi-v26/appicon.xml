@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Адаптивная иконка — то, что видит launcher на всех поддерживаемых версиях (минимум приложения
+     API 28, адаптивные появились в 26). Слой <monochrome> нужен темам Android 13+: без него система
+     рисует в монохромном режиме уменьшенную цветную иконку в белом кружке. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+	<background android:drawable="@color/appicon_background" />
+	<foreground android:drawable="@drawable/appicon_foreground" />
+	<monochrome android:drawable="@drawable/appicon_foreground" />
+</adaptive-icon>

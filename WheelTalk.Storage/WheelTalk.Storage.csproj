@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WheelTalk.Storage</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
+    <!--
+      Direct, and ahead of what Microsoft.Data.Sqlite asks for: the 2.1.11 it would pull in carries
+      GHSA-2m69-gcr7-jv3q against the native e_sqlite3. This is the same package one major version
+      on, and it is the thing that actually ships the SQLite binary into the APK.
+    -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WheelTalk.Core\WheelTalk.Core.csproj" />
+  </ItemGroup>
+
+</Project>
