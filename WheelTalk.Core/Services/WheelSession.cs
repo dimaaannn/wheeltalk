@@ -37,6 +37,13 @@ public sealed partial class WheelSession : IDisposable
     private WheelService? _service;
     private IDisposable? _serviceTelemetry;
 
+    /// <summary>
+    /// Состояние текущего подключения — сессия держит его ради одного: точки отсчёта «от старта»,
+    /// которую наследует состояние следующей попытки (<see cref="BuildService"/>). Живёт до
+    /// <see cref="DisconnectAsync"/>, то есть ровно столько же, сколько намерение быть на связи.
+    /// </summary>
+    private WheelState? _wheelState;
+
     /// <summary>Пауза между кадрами, о которой стоит написать в журнал.</summary>
     private static readonly TimeSpan NoticeableGap = TimeSpan.FromSeconds(4);
 
@@ -127,6 +134,11 @@ public sealed partial class WheelSession : IDisposable
         lock (_chaseGate) _chase = null;
 
         TearDownService();
+
+        // Здесь и только здесь кончается поездка — обрыв связи её не заканчивает, потому и точка
+        // отсчёта «от старта» переживает погоню, но не это.
+        _wheelState = null;
+
         Address = null;
         await _transport.DisconnectAsync(ct);
         _state.OnNext(ConnectionState.Disconnected);
@@ -228,6 +240,13 @@ public sealed partial class WheelSession : IDisposable
     private WheelService BuildService(WheelFamily? family)
     {
         var state = new WheelState(_config, _timeProvider);
+
+        // Поездку заканчивает райдер, а не обрыв связи: новое состояние продолжает считать «от
+        // старта» с той же точки, иначе автопереподключение обнуляло бы пробег посреди поездки.
+        // Наследуется только она: максимумы уходят вместе с состоянием, как и раньше.
+        state.SetStartTotalDistance(_wheelState?.StartTotalDistance ?? 0);
+        _wheelState = state;
+
         var decoder = new Decoder(state, BuildProtocolDecoder(family, state), _eventSink, _loggerFactory.CreateLogger<Decoder>());
         return new WheelService(_transport, decoder, _loggerFactory.CreateLogger<WheelService>());
     }

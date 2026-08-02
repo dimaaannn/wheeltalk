@@ -111,6 +111,16 @@ public sealed class WheelState
 
     public long DistanceFromStart => TotalDistance - StartTotalDistance;
 
+    /// <summary>
+    /// Точка отсчёта «от старта», унаследованная от прежнего состояния. Нужна потому, что здесь
+    /// состояние строится заново на каждую попытку подключения
+    /// (<c>WheelSession.BuildService</c>), а у оригинала <c>WheelData</c> живёт всё время работы
+    /// приложения: без переноса «от старта» обнулялся бы на каждом автопереподключении посреди
+    /// поездки. Ноль означает «отсчёта ещё не было» — его выставит первый ненулевой одометр
+    /// (<see cref="SetTotalDistance"/>).
+    /// </summary>
+    public void SetStartTotalDistance(long startTotalDistance) => StartTotalDistance = startTotalDistance;
+
     public void SetTemperature(int value) => Temperature = value;
 
     public void SetPhaseCurrent(int value) => PhaseCurrent = value;
