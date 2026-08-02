@@ -46,6 +46,27 @@ public class RideTotalsTests
     }
 
     /// <summary>
+    /// The gap is not only a start-of-ride thing: every automatic reconnect hands the decoder a
+    /// fresh <c>WheelState</c> (<c>WheelSession.BuildService</c>), so a ride that survives a drop —
+    /// "продолжение записи после обрыва в тот же файл" — reopens the same zero gap in the middle of
+    /// the same file. <c>firstOdometer</c> is set once and never revisited, so a second placeholder
+    /// later in the ride must be ignored rather than mistaken for a fresh start.
+    /// </summary>
+    [Fact]
+    public async Task A_reconnect_mid_ride_does_not_reopen_the_zero_gap()
+    {
+        var totals = await Record([
+            (Riding, 12_000), (Riding, 12_010), (Riding, 12_020),  // до обрыва
+            (Riding, 0), (Riding, 0),                              // связь оборвалась, WheelState свежий
+            (Riding, 12_030), (Riding, 12_040),                    // колесо снова назвало одометр
+        ]);
+
+        // Без защиты «однажды выставлено — не трогать» второй ноль читался бы как новый старт, и
+        // пробег обрезался бы до 12 040 − 12 030 = 10 метров вместо честных 40.
+        Assert.Equal(40, totals.DistanceMetres);
+    }
+
+    /// <summary>
     /// One garbled frame at the end must not become the whole ride. The end of the odometer comes
     /// off the last ten rows, not off the last one.
     /// </summary>

@@ -103,9 +103,13 @@ internal static class RideTotalsWriter
             maxCurrent = Math.Max(maxCurrent, Math.Abs(reader.GetInt64(3) / 100.0));
             maxPwm = Math.Max(maxPwm, Math.Abs(reader.GetInt64(4) / 100.0));
 
-            // The odometer is silent for the first frames of some protocols, and a zero there would
-            // make the ride as long as the wheel's whole life. The first one that says anything is
-            // where this ride started.
+            // A snapshot is written after any decoded frame, and the odometer arrives in only one
+            // of them — so the first rows of every connection carry a placeholder 0 no reader can
+            // tell from a wheel that genuinely reports zero. Every reconnect opens that gap again,
+            // mid-ride included: each connection attempt gets a fresh WheelState. Fixed here and
+            // not at write time, as in the original (TripParser.kt's firstTotalDistance): the
+            // stored row and the CSV export must keep saying what the wheel said. The first
+            // reading that says anything is where this ride started.
             if (firstOdometer == 0 && odometer > 0) firstOdometer = odometer;
             tail[rows % TailRows] = odometer;
 
