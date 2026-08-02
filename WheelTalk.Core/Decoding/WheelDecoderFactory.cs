@@ -56,10 +56,17 @@ public static class WheelDecoderFactory
                 logger.LogInformation(protocolSelected, "Protocol.Selected {Protocol}", protocol);
                 return new InMotionDecoderV2(state, config, timeProvider, logger);
             }
+            case WheelProtocol.InMotionV2_1:
+            {
+                var logger = loggerFactory.CreateLogger<InMotionDecoderV2_1>();
+                logger.LogInformation(protocolSelected, "Protocol.Selected {Protocol}", protocol);
+                return new InMotionDecoderV2_1(state, config, timeProvider, loggerFactory);
+            }
             default:
                 throw new ArgumentOutOfRangeException(nameof(protocol), protocol,
                     $"No decoder is ported for protocol '{protocol}'. Supported: " +
-                    $"{WheelProtocol.Veteran}, {WheelProtocol.Gotway}, {WheelProtocol.KingSong}, {WheelProtocol.InMotion}, {WheelProtocol.InMotionV2}.");
+                    $"{WheelProtocol.Veteran}, {WheelProtocol.Gotway}, {WheelProtocol.KingSong}, {WheelProtocol.InMotion}, " +
+                    $"{WheelProtocol.InMotionV2}, {WheelProtocol.InMotionV2_1}.");
         }
     }
 }

@@ -164,5 +164,11 @@ public static class LogEvents
 
         public const int ImV2TotalStatsId = 3020;
         public const string ImV2TotalStatsName = "ImV2TotalStats";
+
+        public const int ImV2CarTypeId = 3021;
+        public const string ImV2CarTypeName = "ImV2CarType";
+
+        public const int ImV2ModelUnknownId = 3022;
+        public const string ImV2ModelUnknownName = "ImV2ModelUnknown";
     }
 }

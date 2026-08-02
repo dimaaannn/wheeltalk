@@ -45,4 +45,12 @@ public enum WheelProtocol
     /// polling on a timer.
     /// </summary>
     InMotionV2 = 4,
+
+    /// <summary>
+    /// InMotion V2-1 — не порт, а наша надстройка над <see cref="InMotionV2"/> для колёс, которых
+    /// нет в таблице <c>carType</c> оригинала (первое такое — InMotion P6). Тот же провод и то же
+    /// рукопожатие; отличие одно — телеметрия неопознанной модели не разбирается раскладкой V11,
+    /// см. <see cref="Decoding.InMotionDecoderV2_1"/>.
+    /// </summary>
+    InMotionV2_1 = 5,
 }

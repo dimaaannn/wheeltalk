@@ -108,6 +108,15 @@ public sealed class DecoderHarness
         return Build(WheelProtocol.InMotionV2, config, timeProvider);
     }
 
+    public static DecoderHarness ForInMotionV2_1(Action<AppWheelConfig>? configure = null)
+    {
+        var config = new AppWheelConfig();
+        configure?.Invoke(config);
+
+        var timeProvider = new FakeTimeProvider();
+        return Build(WheelProtocol.InMotionV2_1, config, timeProvider);
+    }
+
     /// <summary>Same decoder selection the composition root uses (<see cref="WheelDecoderFactory"/>).</summary>
     private static DecoderHarness Build(WheelProtocol protocol, AppWheelConfig config, TimeProvider timeProvider)
     {

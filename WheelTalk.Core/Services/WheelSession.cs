@@ -243,7 +243,11 @@ public sealed partial class WheelSession : IDisposable
     private static WheelProtocol? DirectProtocolFor(WheelFamily family) => family switch
     {
         WheelFamily.InMotion => WheelProtocol.InMotion,
-        WheelFamily.InMotionV2 => WheelProtocol.InMotionV2,
+        // V2-1, а не V2: по дереву GATT колесо вне таблицы carType (P6) неотличимо от V11/V12, а
+        // сам carType приходит уже после рукопожатия — значит выбор делается не здесь, а внутри
+        // InMotionDecoderV2_1, когда колесо назовёт себя. Для моделей из таблицы оригинала он
+        // прозрачен и отдаёт всё нетронутому InMotionDecoderV2.
+        WheelFamily.InMotionV2 => WheelProtocol.InMotionV2_1,
         _ => null,
     };
 
