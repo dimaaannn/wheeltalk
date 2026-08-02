@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using WheelTalk.Core.Logging;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Logging;
 
@@ -17,6 +18,11 @@ public static class RecordingServiceCollectionExtensions
 
         services.AddSingleton<RideRecorder>();
         services.AddSingleton<RawFrameRecorder>();
+
+        // Always on, no setting — unlike RawFrameRecorder, which is a file the rider has to
+        // remember to switch on ahead of time. This is the "already there" tail for the debug
+        // report button; see BleFrameTail's own class doc for why.
+        services.AddSingleton<BleFrameTail>();
 
         return services;
     }

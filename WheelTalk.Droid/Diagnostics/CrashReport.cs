@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using WheelTalk.Core.Logging;
 using WheelTalk.Droid.Logging;
 
 namespace WheelTalk.Droid.Diagnostics;
@@ -43,6 +44,14 @@ public static class CrashReport
 
     private static bool _activityAlive;
     private static bool _serviceAlive;
+
+    /// <summary>
+    /// Wired once, from <c>CrashGuard.SubscribeAppLevelHandlers</c>, right after the container is
+    /// built — <see cref="BleFrameTail.FormatSection"/> itself, not a snapshot taken now. Left
+    /// unset (as in tests, or if collection races container startup), the section is just skipped
+    /// — a diagnostics report that can't show the ring is still a report.
+    /// </summary>
+    public static Func<string>? BleFrames { get; set; }
 
     public static string Path => System.IO.Path.Combine(RideFiles.Root, "diagnostics.log");
 
@@ -167,6 +176,8 @@ public static class CrashReport
 
                 file.WriteLine("----- журнал приложения -----");
                 file.WriteLine(ReadJournal(from));
+                string bleFrames = BleFrames?.Invoke() ?? "";
+                if (bleFrames.Length > 0) file.Write(bleFrames);
                 file.WriteLine("----- системный буфер, только свой uid -----");
                 file.WriteLine(ReadOwnBuffer(from));
                 file.Flush();

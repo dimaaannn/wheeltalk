@@ -4,6 +4,7 @@ using Android.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Alerts;
+using WheelTalk.Core.Logging;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
 using WheelTalk.Droid.Alerts;
@@ -107,6 +108,13 @@ public static class CrashGuard
         // Same reason, plus one of its own: the dump has to catch the frames of a connection that
         // happens before any screen is up, and survive every reconnect after it.
         MainApplication.Services.GetRequiredService<RawFrameRecorder>().Apply();
+
+        // No .Apply() needed — BleFrameTail starts listening from its own constructor, no setting
+        // gates it. Resolving it here (rather than waiting for CrashReport to need it) is what
+        // makes the subscription happen at all: a singleton nobody has asked for yet has not run
+        // its constructor, and the ring would stay empty forever.
+        var bleFrames = MainApplication.Services.GetRequiredService<BleFrameTail>();
+        CrashReport.BleFrames = bleFrames.FormatSection;
 
         var session = MainApplication.Services.GetRequiredService<WheelSession>();
 
