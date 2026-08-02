@@ -56,7 +56,14 @@ namespace WheelTalk.Droid.Main;
 /// </summary>
 // Label — подпись под значком в списке приложений: тем же ресурсом, что имя приложения в манифесте,
 // иначе они разойдутся при первом же переименовании.
-[Activity(Label = "@string/app_name", MainLauncher = true, LaunchMode = LaunchMode.SingleTop,
+//
+// Name задано руками, потому что на это имя ссылаются снаружи — командный вход для агентских
+// прогонов (см. HandleCommand и AGENTS.md, «Как гонять приложение без колеса»). Без него .NET for
+// Android сам собирает имя Java-класса из crc64-хеша пространства имён (`crc64….MainActivity`), и
+// хеш меняется вместе с этим пространством имён: `am start -n …` начал бы отвечать «Activity class
+// does not exist» после обычного переименования папки. Имя компонента — контракт, а не деталь сборки.
+[Activity(Name = "com.wheeltalk.droid.MainActivity",
+    Label = "@string/app_name", MainLauncher = true, LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 public sealed class MainActivity : Activity, IPanelSource
 {
@@ -173,9 +180,81 @@ public sealed class MainActivity : Activity, IPanelSource
         _lastSnapshotAt = _timeProvider.GetTimestamp();
         _snapshotClock = _session.Telemetry.Subscribe(_ => _lastSnapshotAt = _timeProvider.GetTimestamp());
 
+        // Приложение подняли самой командой — тогда extras лежат в стартовом Intent, и OnNewIntent
+        // не будет вовсе.
+        HandleCommand(Intent);
+
         // Последним в сборке экрана, как и у оригинала: сперва экран, потом системный диалог поверх
         // него, а не наоборот.
         AskAboutBatterySaver();
+    }
+
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+
+        // SetIntent намеренно не зовём: extras разбираются тут же и больше никем не читаются, а
+        // подменённый Intent пережил бы пересоздание Activity и повторил бы команду при
+        // восстановлении экрана.
+        HandleCommand(intent);
+    }
+
+    /// <summary>
+    /// Командный вход для прогонов без касаний (план 22 §2):
+    /// <c>am start -n com.wheeltalk.droid/.MainActivity --es replay start|stop</c> и
+    /// <c>--es open rides|data|settings|sheet</c>. Заведён потому, что <c>input swipe/tap</c> по
+    /// координатам и таймингу промахивается хронически, а каждый промах — потерянный прогон.
+    /// <para>
+    /// Существует только у реплей-транспорта: на живом колесе внешней команды нет вовсе — не
+    /// спрятана, а не создана, тем же правилом, что кнопка «Пуск» в шторке.
+    /// </para>
+    /// <para>
+    /// Своей логики здесь нет — команда зовёт ровно то же, что кнопка. Отличие одно: «start» и
+    /// «stop» названы явно, а не переключают. Тумблер на уже запущенном реплее остановил бы его,
+    /// то есть команда промахивалась бы ровно так же, как касание по координатам.
+    /// </para>
+    /// </summary>
+    private void HandleCommand(Intent? intent)
+    {
+        if (intent is null || !_transport.IsReplay) return;
+
+        if (intent.GetStringExtra("replay") is { } replay) RunReplayCommand(replay);
+        if (intent.GetStringExtra("open") is { } screen) RunOpenCommand(screen);
+    }
+
+    private async void RunReplayCommand(string value)
+    {
+        _logger.LogInformation("Ui.Command replay={Value} State={State}", value, _session.CurrentState);
+
+        if (value is not ("start" or "stop"))
+        {
+            _logger.LogWarning("Ui.CommandUnknown replay={Value}", value);
+            return;
+        }
+
+        try
+        {
+            await ReplaySetRunningAsync(value == "start");
+        }
+        catch
+        {
+            // Причина уже в журнале (ReplaySetRunningAsync), а из async void исключение уронило бы
+            // приложение — командный вход отладочный и ронять его не должен.
+        }
+    }
+
+    private void RunOpenCommand(string value)
+    {
+        _logger.LogInformation("Ui.Command open={Value}", value);
+
+        switch (value)
+        {
+            case "rides": OpenScreen(typeof(RidesActivity)); break;
+            case "data": OpenScreen(typeof(TelemetryActivity)); break;
+            case "settings": OpenScreen(typeof(SettingsActivity)); break;
+            case "sheet": _sheet.Toggle(); break;
+            default: _logger.LogWarning("Ui.CommandUnknown open={Value}", value); break;
+        }
     }
 
     protected override void OnDestroy()
@@ -859,14 +938,25 @@ public sealed class MainActivity : Activity, IPanelSource
     }
 
     /// <summary>
-    /// Пуск и стоп записанной поездки. Стоп нужен не меньше пуска: это единственное, чем можно
-    /// оборвать тревогу, когда она звучит в полный голос.
+    /// Пуск и стоп записанной поездки кнопкой шторки. Стоп нужен не меньше пуска: это единственное,
+    /// чем можно оборвать тревогу, когда она звучит в полный голос.
     /// </summary>
-    private async Task ReplayToggleAsync()
+    private Task ReplayToggleAsync() =>
+        ReplaySetRunningAsync(_session.CurrentState == ConnectionState.Disconnected);
+
+    /// <summary>
+    /// Единственное место, где реплей пускается и останавливается: кнопка приходит сюда с
+    /// «наоборот, чем сейчас», команда — с явным «start»/«stop». Уже действующее состояние не
+    /// трогается, поэтому повтор команды ничего не меняет.
+    /// </summary>
+    private async Task ReplaySetRunningAsync(bool run)
     {
+        bool running = _session.CurrentState != ConnectionState.Disconnected;
+        if (running == run) return;
+
         try
         {
-            if (_session.CurrentState == ConnectionState.Disconnected)
+            if (run)
             {
                 await Connect(_wheel.Address);
             }
