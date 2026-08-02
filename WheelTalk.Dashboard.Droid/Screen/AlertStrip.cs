@@ -18,6 +18,8 @@ public sealed class AlertStrip : TextView
     public static readonly Color Notice = Color.ParseColor("#696969");
 
     private Color _color = Danger;
+    private readonly int _basePaddingTopPx;
+    private int _topInsetPx;
 
     public AlertStrip(Context context) : base(context)
     {
@@ -25,9 +27,26 @@ public sealed class AlertStrip : TextView
         SetTextColor(Color.White);
         SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         SetTextSize(ComplexUnitType.Sp, 14);
-        SetPadding(context.Dp(6), context.Dp(2), context.Dp(6), context.Dp(2));
+        _basePaddingTopPx = context.Dp(2);
+        SetPadding(context.Dp(6), _basePaddingTopPx, context.Dp(6), context.Dp(2));
         SetBackgroundColor(_color);
         Visibility = ViewStates.Gone;
+    }
+
+    /// <summary>
+    /// Высота системного статус-бара в пикселях: полоса стоит у той же верхней кромки, что и
+    /// панель, и компенсирует бар тем же значением (<see cref="DashboardView.TopInset"/>) —
+    /// иначе часы ложатся на её текст (план 22 §1).
+    /// </summary>
+    public int TopInset
+    {
+        get => _topInsetPx;
+        set
+        {
+            if (_topInsetPx == value) return;
+            _topInsetPx = value;
+            SetPadding(PaddingLeft, _basePaddingTopPx + value, PaddingRight, PaddingBottom);
+        }
     }
 
     /// <summary>Правка свойств только при изменении (план 11 §0): вызывается на каждом отсчёте телеметрии.</summary>

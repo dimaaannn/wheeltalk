@@ -197,10 +197,14 @@ public sealed class LabActivity : Activity, IPanelSource
         if (_source is not { } current || _dashboard is null) return;
 
         // Полоса тревоги колеса — часть экрана, а не панели: есть только в режиме «экран целиком».
+        // Инсет ей — тем же путём и под тем же тумблером, что панели (см. IPanelSource.Chrome):
+        // «Панель под системной строкой» решает, стоит ли экран стенда под реальным баром прямо
+        // сейчас (план 22 §1).
         if (_screen is { } screen)
         {
             if (_settings.WheelAlarm) screen.Alert.Show("Тревога колеса", AlertStrip.Danger);
             else screen.Alert.Hide();
+            screen.Alert.TopInset = _settings.UnderSystemBar ? _barInset : 0;
         }
 
         _fps.PanelDrawMs = _dashboard.LastDrawMs;
