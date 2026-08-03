@@ -18,7 +18,6 @@ public sealed class AlertStrip : TextView
     public static readonly Color Notice = Color.ParseColor("#696969");
 
     private Color _color = Danger;
-    private readonly int _basePaddingTopPx;
     private int _topInsetPx;
 
     public AlertStrip(Context context) : base(context)
@@ -27,16 +26,16 @@ public sealed class AlertStrip : TextView
         SetTextColor(Color.White);
         SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         SetTextSize(ComplexUnitType.Sp, 14);
-        _basePaddingTopPx = context.Dp(2);
-        SetPadding(context.Dp(6), _basePaddingTopPx, context.Dp(6), context.Dp(2));
+        SetPadding(context.Dp(6), context.Dp(2), context.Dp(6), context.Dp(2));
         SetBackgroundColor(_color);
         Visibility = ViewStates.Gone;
     }
 
     /// <summary>
-    /// Высота системного статус-бара в пикселях: полоса стоит у той же верхней кромки, что и
-    /// панель, и компенсирует бар тем же значением (<see cref="DashboardView.TopInset"/>) —
-    /// иначе часы ложатся на её текст (план 22 §1).
+    /// Высота системного статус-бара в пикселях: полоса стоит ниже него, а не под ним (иначе часы
+    /// ложатся на её текст, план 22 §1). Отступ — <em>margin</em>, а не паддинг: паддинг красится
+    /// фоном полосы и раздувал её на весь инсет (на эмуляторе — в четверть экрана), margin остаётся
+    /// прозрачным, и высота цветной полосы растёт от текста вниз, а не от верхней кромки.
     /// </summary>
     public int TopInset
     {
@@ -45,7 +44,11 @@ public sealed class AlertStrip : TextView
         {
             if (_topInsetPx == value) return;
             _topInsetPx = value;
-            SetPadding(PaddingLeft, _basePaddingTopPx + value, PaddingRight, PaddingBottom);
+            if (LayoutParameters is ViewGroup.MarginLayoutParams margin)
+            {
+                margin.TopMargin = value;
+                LayoutParameters = margin;
+            }
         }
     }
 

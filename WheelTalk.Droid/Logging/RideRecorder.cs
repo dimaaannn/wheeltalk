@@ -38,8 +38,12 @@ public sealed partial class RideRecorder : IDisposable
 
     private readonly IDisposable _subscription;
 
-    /// <summary>Идёт ли разметка — то, что человек видит кнопкой «Запись».</summary>
-    private bool _marking;
+    /// <summary>
+    /// Идёт ли разметка — то, что человек видит кнопкой «Запись». Volatile, потому что снять её
+    /// может и поток записи: разрыв дольше порога закрывает поездку и отжимает кнопку
+    /// (<see cref="RideStore.MarkingBrokenOff"/>).
+    /// </summary>
+    private volatile bool _marking;
 
     public RideRecorder(
         WheelSession session,
@@ -54,6 +58,7 @@ public sealed partial class RideRecorder : IDisposable
         _timeProvider = timeProvider;
         _logger = logger;
         _subscription = _session.Telemetry.Subscribe(Write);
+        _store.MarkingBrokenOff += OnMarkingBrokenOff;
     }
 
     /// <summary>
@@ -120,7 +125,27 @@ public sealed partial class RideRecorder : IDisposable
     public void Dispose()
     {
         _marking = false;
+        _store.MarkingBrokenOff -= OnMarkingBrokenOff;
         _subscription.Dispose();
+    }
+
+    /// <summary>
+    /// Поездку закрыл разрыв, а не кнопка (план 23 §5.4, решение владельца 04.08.2026). Кнопка
+    /// обязана показать правду: запись прекратилась — значит она не нажата. Возобновлять здесь
+    /// нечего: явное нажатие было разовым намерением, а постоянное живёт флагом автозаписи, и она
+    /// нажмёт сама, когда колесо снова поедет быстрее порога (<c>CrashGuard</c>).
+    /// <para>
+    /// Приходит с потока записи; наружу это уходит тем же <see cref="Changed"/>, что и кнопка, —
+    /// экраны на нём уже сидят.
+    /// </para>
+    /// </summary>
+    private void OnMarkingBrokenOff()
+    {
+        if (!_marking) return;
+
+        _marking = false;
+        LogBrokenOff();
+        Changed?.Invoke();
     }
 
     private void Write(TelemetrySnapshot snapshot)
@@ -152,4 +177,8 @@ public sealed partial class RideRecorder : IDisposable
     [LoggerMessage(EventId = 1501, EventName = "Ride.RecordingStopped", Level = LogLevel.Information,
         Message = "Ride.RecordingStopped")]
     private partial void LogStopped();
+
+    [LoggerMessage(EventId = 1502, EventName = "Ride.RecordingBrokenOff", Level = LogLevel.Warning,
+        Message = "Ride.RecordingBrokenOff — silence longer than the gap; the button is released")]
+    private partial void LogBrokenOff();
 }

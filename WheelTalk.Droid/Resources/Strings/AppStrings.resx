@@ -208,6 +208,7 @@
   <data name="RidesEmpty" xml:space="preserve"><value>Записанных поездок пока нет</value></data>
   <data name="RidesCount" xml:space="preserve"><value>Поездок · {0}</value></data>
   <data name="RidesRecording" xml:space="preserve"><value>Пишется сейчас · {0} строк</value></data>
+  <data name="RidesNoDetails" xml:space="preserve"><value>Подробностей больше нет</value></data>
   <data name="RidesToday" xml:space="preserve"><value>Сегодня</value></data>
   <data name="RidesYesterday" xml:space="preserve"><value>Вчера</value></data>
   <data name="RidesExport" xml:space="preserve"><value>Выгрузить в CSV</value></data>

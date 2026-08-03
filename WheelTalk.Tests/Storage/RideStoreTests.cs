@@ -363,6 +363,82 @@ public class RideStoreTests
     }
 
     /// <summary>
+    /// Колесо замолчало дольше порога, а приложение не перезапускали — правило конца обязано
+    /// сработать и здесь, на приходе кадра. Иначе открытая поездка тянется «до сейчас» и забирает
+    /// себе кадры, пришедшие через часы после того, как она кончилась.
+    /// <para>
+    /// Вместе с поездкой снимается и разметка (решение владельца 04.08.2026): нажатие — намерение
+    /// разовое, и обрыв его исчерпывает. Сама запись не возобновляется; поднимет её новое нажатие —
+    /// человеком или автозаписью по скорости.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Silence_longer_than_the_gap_ends_the_ride_and_releases_the_button()
+    {
+        using var temp = new TempDatabase();
+        var options = new StorageOptions
+        {
+            CommitInterval = TimeSpan.Zero,
+            AbandonedRideGap = TimeSpan.FromHours(3),
+        };
+
+        await using var store = temp.Store(temp.Open(), options);
+
+        int released = 0;
+        store.MarkingBrokenOff += () => released++;
+
+        store.BeginRide();
+        store.Write(Mac, "Veteran", Sample(), Start);
+        store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(30));
+
+        // Четыре часа тишины — и кадр. Кнопку никто не трогал.
+        store.Write(Mac, "Veteran", Sample(), Start.AddHours(4));
+        await store.FlushAsync();
+
+        // Поездка одна, кончилась там, где оборвалась, и чужого кадра не забрала.
+        Assert.Equal(1, temp.Count("ride"));
+        Assert.Equal(Ms(Start.AddSeconds(30)), temp.Scalar("SELECT ended_at FROM ride;"));
+        Assert.Equal(2L, temp.Scalar(
+            "SELECT COUNT(*) FROM telemetry t JOIN ride r ON r.id = 1"
+            + " WHERE t.wheel_id = r.wheel_id AND t.at BETWEEN r.started_at AND r.ended_at;"));
+
+        // Итоги посчитаны сразу: считать их потом будет не из чего, кадры уйдут по сроку хранения.
+        Assert.NotNull(temp.Scalar("SELECT duration_s FROM ride;"));
+
+        // Кнопка отжата, и сама по себе поездка не заводится: кадр после разрыва лёг в поток и
+        // только в него.
+        Assert.Equal(1, released);
+        Assert.Equal(3, temp.Count("telemetry"));
+
+        // А новое нажатие — хоть человеком, хоть автозаписью — открывает следующую как обычно.
+        store.BeginRide();
+        store.Write(Mac, "Veteran", Sample(), Start.AddHours(4).AddSeconds(1));
+        await store.FlushAsync();
+
+        Assert.Equal(2, temp.Count("ride"));
+        Assert.Equal(Ms(Start.AddHours(4).AddSeconds(1)), temp.Scalar(
+            "SELECT started_at FROM ride ORDER BY id DESC LIMIT 1;"));
+    }
+
+    /// <summary>
+    /// Тот же разрыв, но кнопка не нажата вовсе: поток пишется сам по себе, поездок нет, и
+    /// закрывать нечего. Правило молчит — новых строк в <c>ride</c> не появляется.
+    /// </summary>
+    [Fact]
+    public async Task Silence_with_no_ride_marked_starts_nothing()
+    {
+        using var temp = new TempDatabase();
+        await using var store = temp.Store(temp.Open());
+
+        store.Write(Mac, "Veteran", Sample(), Start);
+        store.Write(Mac, "Veteran", Sample(), Start.AddHours(4));
+        await store.FlushAsync();
+
+        Assert.Equal(0, temp.Count("ride"));
+        Assert.Equal(2, temp.Count("telemetry"));
+    }
+
+    /// <summary>
     /// A file written by a newer build may have columns this one has never heard of. Refusing to
     /// write is the only honest answer; the alternative is a ride recorded into half a schema.
     /// </summary>

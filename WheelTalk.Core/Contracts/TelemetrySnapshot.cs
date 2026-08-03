@@ -76,6 +76,13 @@ public sealed record TelemetrySnapshot
     /// <summary>Latest decoded alert/news line (Gotway/Begode frame 0x04) — mirrors WheelData.getAlert().</summary>
     public string Alert { get; init; } = "";
 
+    /// <summary>
+    /// <see cref="Alert"/> with status-noise words (speed limiting, transport mode) stripped for the
+    /// on-screen alert strip — see <see cref="Decoding.WheelAlertWords"/> for the split. State and
+    /// the ride log read <see cref="Alert"/> directly and never see this filtering.
+    /// </summary>
+    public string AlertForDisplay => Decoding.WheelAlertWords.FilterForDisplay(Alert);
+
     /// <summary>Firmware version string, e.g. "006.0.00".</summary>
     public string Version { get; init; } = "";
 

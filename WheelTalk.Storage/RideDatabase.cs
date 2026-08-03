@@ -142,23 +142,15 @@ public sealed partial class RideDatabase
     /// открытой и продолжается той же: убило посреди покатушки, перезапустил через пять минут,
     /// кадры лягут в неё же (<c>RideStore.AdoptOpenRide</c>).
     /// </para>
+    /// <para>
+    /// Запуск — не единственный момент, когда правило применяется: то же самое делает приход кадра
+    /// после разрыва (<c>RideStore</c>). Само правило одно на оба входа —
+    /// <see cref="RideClosing.CloseAbandoned"/>.
+    /// </para>
     /// </summary>
     private void CloseAbandonedRides(SqliteConnection connection, long staleBefore)
     {
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            $"""
-            UPDATE ride AS r
-               SET ended_at = COALESCE(
-                       (SELECT MAX(t.at) FROM telemetry t WHERE {RideWindow.CorrelatedFilter}),
-                       r.started_at)
-             WHERE r.ended_at IS NULL
-               AND COALESCE(
-                       (SELECT MAX(t.at) FROM telemetry t WHERE {RideWindow.CorrelatedFilter}),
-                       r.started_at) < $stale;
-            """;
-        command.Parameters.AddWithValue("$stale", staleBefore);
-        int closed = command.ExecuteNonQuery();
+        int closed = RideClosing.CloseAbandoned(connection, tx: null, staleBefore).Count;
         if (closed > 0) LogAbandonedClosed(_logger, closed);
     }
 

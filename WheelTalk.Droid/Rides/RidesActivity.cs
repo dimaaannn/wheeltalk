@@ -91,9 +91,14 @@ public sealed class RidesActivity : Activity
 
     private RideRow Describe(RideSummary ride, DateTimeOffset now)
     {
+        // Три подписи, а не две: пустые итоги значат разное у открытой поездки и у закрытой
+        // (план 23 §5.5, RideSummary.Totals). Идёт запись — говорит ended_at IS NULL, и только он;
+        // у закрытой пустые итоги значат «подробностей больше нет», кадры унёс срок хранения.
         string details = ride.Totals is { } totals
             ? RideFormat.Summary(totals)
-            : string.Format(CultureInfo.CurrentCulture, AppStrings.RidesRecording, ride.Rows);
+            : ride.IsOpen
+                ? string.Format(CultureInfo.CurrentCulture, AppStrings.RidesRecording, ride.Rows)
+                : AppStrings.RidesNoDetails;
 
         // Начало и конец, а не одно начало: по списку выбирают поездку, а «та, что после обеда до
         // пяти» — это два времени. Дистанция стоит первой в строке итогов под ними.

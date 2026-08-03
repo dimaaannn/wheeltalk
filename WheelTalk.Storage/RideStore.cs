@@ -46,6 +46,13 @@ public sealed partial class RideStore : IAsyncDisposable
     /// <summary>«Размечаем» — кнопка нажата. Строка поездки заводится первым же отсчётом после этого.</summary>
     private bool _marking;
 
+    /// <summary>
+    /// Время предыдущего кадра этого колеса — по нему виден разрыв, не спрашивая базу на каждом
+    /// отсчёте. <c>default</c> значит «первый кадр в этой сессии»: что было до запуска, знает
+    /// только файл.
+    /// </summary>
+    private DateTimeOffset _lastFrameAt;
+
     private string _model = "";
     private string _version = "";
     private string _lastAlert = "";
@@ -96,6 +103,18 @@ public sealed partial class RideStore : IAsyncDisposable
 
         _queue.Writer.TryWrite(new MarkRide());
     }
+
+    /// <summary>
+    /// Разметку сняла не кнопка, а разрыв: поездка закрыта последним кадром, и продолжать её нечем
+    /// (решение владельца 04.08.2026, план 23 §5.4). Явное нажатие — намерение разовое, и обрыв его
+    /// исчерпывает; постоянное намерение выражается автозаписью, которая нажмёт кнопку сама, когда
+    /// колесо снова поедет. Наружу это уходит событием, потому что кнопка обязана показывать правду:
+    /// не пишем — не нажата.
+    /// <para>
+    /// Зовётся на потоке записи, не на UI: слушателю за собой следить самому.
+    /// </para>
+    /// </summary>
+    public event Action? MarkingBrokenOff;
 
     /// <summary>Finishes the ride and waits until it is on disk, so a caller can report it as saved.</summary>
     public Task CloseRideAsync()
@@ -254,6 +273,7 @@ public sealed partial class RideStore : IAsyncDisposable
     private void ApplyRow(Row row, SqliteTransaction tx)
     {
         if (row.Mac != _mac) SwitchWheel(row, tx);
+        CloseRidesBrokenOffBefore(row, tx);
         if (_marking && _rideId == 0) StartRide(row, tx);
 
         // Model and firmware arrive with the first decoded frame, which is not always the first
@@ -277,11 +297,62 @@ public sealed partial class RideStore : IAsyncDisposable
 
         _mac = row.Mac;
         _wheelId = EnsureWheel(row.Mac, row.Protocol, tx);
+        _lastFrameAt = default;
         _lastAlert = "";
         _lastWheelState = null;
         _lastWheelStateAt = default;
         Array.Clear(_lastPacks);
         Array.Clear(_lastPackAt);
+    }
+
+    /// <summary>
+    /// Правило конца по разрыву — то же, что применяет открытие базы, и здесь оно применяется на
+    /// приходе кадра (план 23 §5.4). Без этого поездка, оставшаяся открытой, тянется «до сейчас» и
+    /// забирает себе кадры, пришедшие через часы после того, как она кончилась: порог срабатывал бы
+    /// только при следующем запуске приложения.
+    /// <para>
+    /// Вместе с поездкой снимается и разметка (<see cref="MarkingBrokenOff"/>, решение владельца
+    /// 04.08.2026): нажатие кнопки — намерение разовое, и обрыв его исчерпывает. Сама запись после
+    /// этого не возобновляется — её поднимает либо новое нажатие, либо автозапись по скорости,
+    /// которая и есть постоянное намерение.
+    /// </para>
+    /// <para>
+    /// В базу ходим не на каждом кадре, а когда память говорит, что стоит: свой разрыв она видит
+    /// сама, а спросить нужно только про первый кадр колеса в этой сессии — про то, что было до
+    /// запуска, память не знает ничего.
+    /// </para>
+    /// </summary>
+    private void CloseRidesBrokenOffBefore(Row row, SqliteTransaction tx)
+    {
+        bool firstFrame = _lastFrameAt == default;
+        bool brokeOff = !firstFrame && row.At - _lastFrameAt > _options.AbandonedRideGap;
+        _lastFrameAt = row.At;
+
+        if (!firstFrame && !brokeOff) return;
+
+        long staleBefore = row.At.ToUnixTimeMilliseconds() - (long)_options.AbandonedRideGap.TotalMilliseconds;
+        var connection = Connection();
+        bool droppedMarked = false;
+        foreach (long id in RideClosing.CloseAbandoned(connection, tx, staleBefore, _wheelId))
+        {
+            // Итоги — сразу же, тем же приёмом, что и у кнопки: считать их потом будет не из чего,
+            // когда кадры уйдут по сроку хранения (план 23 §5.5).
+            if (RideTotalsWriter.Compute(connection, tx, id) is { } totals)
+            {
+                RideTotalsWriter.Store(connection, tx, id, totals);
+            }
+
+            LogRideBrokenOff(id);
+            if (id != Interlocked.Read(ref _rideId)) continue;
+
+            // Оборвалась именно размечаемая. Разметка снимается — сама она не возобновляется, это
+            // дело автозаписи или нового нажатия.
+            Interlocked.Exchange(ref _rideId, 0);
+            droppedMarked = _marking;
+            _marking = false;
+        }
+
+        if (droppedMarked) MarkingBrokenOff?.Invoke();
     }
 
     private void StartRide(Row row, SqliteTransaction tx)
@@ -316,6 +387,10 @@ public sealed partial class RideStore : IAsyncDisposable
     /// Подхватывает незакрытую поездку этого колеса, если она есть. Заводить вторую поверх неё
     /// нельзя: две поездки на одном колесе не могут пересекаться (решение владельца 03.08.2026) —
     /// иначе строка потока принадлежит двум поездкам сразу, и обе считают её своей.
+    /// <para>
+    /// Подхватывается только живая: брошенную закрыл разрыв, и закрыл раньше — на этом же кадре
+    /// (<see cref="CloseRidesBrokenOffBefore"/>).
+    /// </para>
     /// </summary>
     private bool AdoptOpenRide(SqliteTransaction tx)
     {
@@ -369,25 +444,13 @@ public sealed partial class RideStore : IAsyncDisposable
         if (_rideId == 0) return;
 
         // Последним кадром этого колеса, а не «сейчас»: покатушка кончилась там, где колесо
-        // замолчало, и лишние минуты между тем и нажатием кнопки — не езда.
-        using (var command = Command(
-            """
-            UPDATE ride
-               SET ended_at = COALESCE(
-                       (SELECT MAX(at) FROM telemetry
-                         WHERE wheel_id = $wheel AND at >= ride.started_at),
-                       started_at)
-             WHERE id = $id;
-            """, tx))
-        {
-            command.Parameters.AddWithValue("$id", _rideId);
-            command.Parameters.AddWithValue("$wheel", _wheelId);
-            command.ExecuteNonQuery();
-        }
+        // замолчало, и лишние минуты между тем и нажатием кнопки — не езда. Правило общее с
+        // открытием базы и с разрывом — RideClosing.
+        var connection = Connection();
+        RideClosing.Close(connection, tx, _rideId);
 
         // The totals, once, while the ride is fresh and this thread already owns the file. Doing it
         // here is the whole reason the list screen can be a query — see Schema v3.
-        var connection = Connection();
         if (RideTotalsWriter.Compute(connection, tx, _rideId) is { } totals)
         {
             RideTotalsWriter.Store(connection, tx, _rideId, totals);
@@ -624,6 +687,10 @@ public sealed partial class RideStore : IAsyncDisposable
     [LoggerMessage(EventId = 1611, EventName = "Ride.DbFinished", Level = LogLevel.Information,
         Message = "Ride.DbFinished #{RideId} {Rows} rows")]
     private partial void LogRideFinished(long rideId, int rows);
+
+    [LoggerMessage(EventId = 1617, EventName = "Ride.DbBrokenOff", Level = LogLevel.Warning,
+        Message = "Ride.DbBrokenOff #{RideId} — silence longer than the gap, closed at its last frame")]
+    private partial void LogRideBrokenOff(long rideId);
 
     [LoggerMessage(EventId = 1614, EventName = "Ride.DbDeleted", Level = LogLevel.Information,
         Message = "Ride.DbDeleted #{RideId}")]

@@ -699,10 +699,11 @@ public sealed class MainActivity : Activity
     {
         if (_session.CurrentState != ConnectionState.Connected) return;
 
-        bool alarming = snapshot.WheelAlarm || snapshot.Alert.Length > 0;
+        string alertText = snapshot.AlertForDisplay;
+        bool alarming = snapshot.WheelAlarm || alertText.Length > 0;
         if (alarming)
         {
-            _alertStrip.Show(snapshot.Alert.Length > 0 ? snapshot.Alert : AppStrings.StripWheelAlarm, AlertStrip.Danger);
+            _alertStrip.Show(alertText.Length > 0 ? alertText : AppStrings.StripWheelAlarm, AlertStrip.Danger);
         }
         else
         {

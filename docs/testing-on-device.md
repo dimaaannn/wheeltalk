@@ -98,6 +98,20 @@ dotnet build WheelTalk.Droid/WheelTalk.Droid.csproj -t:Run -p:AdbTarget="-s emul
 adb -s emulator-5554 push replay/mten3-calm-ride.csv /sdcard/Android/data/com.wheeltalk.droid/files/ride.csv
 ```
 
+**На эмуляторе этого мало.** Его `adbd` работает от root, и пушнутый файл ложится во внешний
+каталог владельцем `root:root` — приложение читать его не может вовсе (`UnauthorizedAccessException:
+Access to the path … is denied`), а `chmod` по FUSE-разделу ничего не меняет. Дамп там льётся во
+внутренний каталог через `run-as`, и `DumpFile` называется полным путём (проверено 03.08.2026):
+
+```
+adb push replay/mten3-calm-ride.csv /sdcard/ride.csv
+adb shell "cat /sdcard/ride.csv | run-as com.wheeltalk.droid sh -c 'cat > files/ride.csv'"
+# {"Replay":{"DumpFile":"/data/data/com.wheeltalk.droid/files/ride.csv","Speed":1.0}}
+```
+
+Тем же приёмом кладётся и `usersettings.json`: `run-as` не читает `/sdcard`, поэтому копирует не он,
+а `cat` до трубы — он работает от shell и права на обе стороны имеет.
+
 Настройки — по-прежнему `usersettings.json` во внутреннем каталоге, его без `run-as` не положить,
 зато в `DumpFile` теперь достаточно голого имени файла и, если нужно, скорости:
 `{"Replay":{"DumpFile":"ride.csv","Speed":0.25}}`.
