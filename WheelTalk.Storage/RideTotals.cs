@@ -20,9 +20,6 @@ public sealed record RideTotals(
     double MaxCurrentA,
     double ConsumptionWh)
 {
-    public static readonly RideTotals Empty =
-        new(0, TimeSpan.Zero, TimeSpan.Zero, 0, 0, 0, 0, 0, 0);
-
     public double DistanceKm => DistanceMetres / 1000.0;
 
     /// <summary>Null rather than zero when there is no distance to divide by: nothing per no kilometres.</summary>
@@ -60,16 +57,30 @@ internal static class RideTotalsWriter
     /// <summary>The last few rows the odometer's end is taken from — the original looks at ten.</summary>
     private const int TailRows = 10;
 
-    public static RideTotals Compute(SqliteConnection connection, SqliteTransaction? tx, long rideId)
+    /// <summary>
+    /// Итоги поездки, или <c>null</c>, если считать не из чего — ни одной строки в её окне.
+    /// <para>
+    /// Различие несущее (план 23 §5.5). До плана <c>NULL</c> в колонках итогов значил «ещё не
+    /// посчитано, досчитаем позже»; теперь он мог бы значить и «кадров уже нет, восстановить
+    /// нечем» — два смысла у одного признака. Разведено тем, что первый смысл перестал
+    /// существовать: досчёт идёт при каждом открытии базы и раньше всякого чтения, поэтому
+    /// «посчитаем позже» не доживает до экрана. После досчёта пустые итоги при закрытой поездке
+    /// значат ровно одно — подробностей больше нет, остались только эти девять чисел, и тех нет.
+    /// Ноли писать нельзя: поездка на ноль метров и поездка, чьи кадры вычистили, — разные вещи.
+    /// </para>
+    /// </summary>
+    public static RideTotals? Compute(SqliteConnection connection, SqliteTransaction? tx, long rideId)
     {
+        if (RideWindow.Read(connection, tx, rideId) is not { } window) return null;
+
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT at, speed, power, current, pwm, totaldistance
-              FROM telemetry WHERE ride_id = $ride ORDER BY rowid;
+              FROM telemetry WHERE {RideWindow.Filter} ORDER BY at, rowid;
             """;
         command.Transaction = tx;
-        command.Parameters.AddWithValue("$ride", rideId);
+        window.Bind(command);
 
         DateTimeOffset first = default, last = default, previousAt = default;
         double previousSpeed = 0, previousPower = 0;
@@ -82,7 +93,7 @@ internal static class RideTotalsWriter
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            var at = Hundredths.ParseStamp(reader.GetString(0));
+            var at = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(0));
             double speed = reader.GetInt64(1) / 100.0;
             double power = reader.GetInt64(2) / 100.0;
             long odometer = reader.GetInt64(5);
@@ -119,7 +130,7 @@ internal static class RideTotalsWriter
             rows++;
         }
 
-        if (rows == 0) return RideTotals.Empty;
+        if (rows == 0) return null;
 
         // The end of the odometer off the last few rows rather than the very last one: a single
         // garbled frame at the end would otherwise be the whole ride's distance. Also the original's.
@@ -172,9 +183,14 @@ internal static class RideTotalsWriter
     /// existed, and the ones the crash recovery just closed. An empty <c>duration_s</c> is the only
     /// signal needed — it is also how a changed formula is rolled out, by clearing the column.
     /// <para>
-    /// Runs at open, with nobody else on the file. It costs one pass per unfinished ride, once ever;
-    /// leaving it to the list screen instead would mean paying it there, on a page the rider opened
-    /// to look at something.
+    /// Runs at open, with nobody else on the file, <b>and before the purge</b>: телеметрию чистит
+    /// срок хранения, и поездка, до которой досчёт не дошёл вовремя, останется без чисел навсегда
+    /// (план 23 §5.5). Порядок держит <see cref="RideDatabase"/>.
+    /// </para>
+    /// <para>
+    /// Поездка, чьи кадры уже вычищены, считается пройденной: считать нечего, и колонки остаются
+    /// пустыми — это и есть её ответ. Проверяется она каждый раз заново, но это поиск по индексу,
+    /// не находящий ничего.
     /// </para>
     /// </summary>
     public static int Backfill(SqliteConnection connection)
@@ -187,11 +203,15 @@ internal static class RideTotalsWriter
             while (reader.Read()) pending.Add(reader.GetInt64(0));
         }
 
+        int filled = 0;
         foreach (long id in pending)
         {
-            Store(connection, null, id, Compute(connection, null, id));
+            if (Compute(connection, null, id) is not { } totals) continue;
+
+            Store(connection, null, id, totals);
+            filled++;
         }
 
-        return pending.Count;
+        return filled;
     }
 }

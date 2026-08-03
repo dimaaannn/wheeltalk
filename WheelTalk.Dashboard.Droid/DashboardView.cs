@@ -1,6 +1,7 @@
 using Android.Content;
 using Android.Graphics;
 using Android.Views;
+using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Dashboard.Droid.Widgets;
 
 namespace WheelTalk.Dashboard.Droid;
@@ -20,11 +21,22 @@ namespace WheelTalk.Dashboard.Droid;
 /// <para>
 /// Кадры гонит <c>PostInvalidateOnAnimation</c> в конце <see cref="OnDraw"/>: отрисовка привязана к
 /// вертикальному синхроимпульсу сама по себе, отдельного таймера кадров не нужно.
-/// <see cref="Show"/> лишь обновляет данные для следующего кадра.
+/// <see cref="Show(DashboardReading)"/> лишь обновляет данные для следующего кадра.
+/// </para>
+/// <para>
+/// Панель — основной экран приложения (<see cref="IMainScreen"/>): принимает посчитанное состояние
+/// кадра и сообщает намерения, а откуда взялись показания и что делать с тапом по плашке связи, не
+/// знает вовсе.
 /// </para>
 /// </summary>
-public abstract class DashboardView : View
+public abstract class DashboardView : View, IMainScreen
 {
+    /// <summary>Порог смены наклона — меньше не стоит перерисовывать ради шума с плавающей точкой.</summary>
+    private const float TiltEpsilon = 0.01f;
+
+    /// <summary>Буфер под <c>GetLocationInWindow</c>: тапы редки, но выделять массив на каждый незачем.</summary>
+    private readonly int[] _windowLocation = new int[2];
+
     /// <summary>
     /// Вуаль устаревших данных — косые серые полосы (dashboard-feedback.md, прогон 4 §5). Здесь
     /// было сплошное затемнение в 55 %, и оно читалось как приглушённая яркость экрана, а не как
@@ -153,16 +165,16 @@ public abstract class DashboardView : View
     public bool ShowSheetHint { get; set; }
 
     /// <summary>
-    /// Попало ли касание в точку записи. Панель её рисует, панель про неё и отвечает: экран знает
-    /// только «нажали на метку» и решает, что с этим делать.
+    /// Попало ли касание в точку записи. Панель её рисует, панель про неё и отвечает — наружу
+    /// уходит намерение, а не координаты (<see cref="Tap"/>).
     /// </summary>
-    public bool HitsRecordDot(float x, float y) => _chrome.HitsRecordDot(ChromeArea, Density, x, y);
+    private bool HitsRecordDot(float x, float y) => _chrome.HitsRecordDot(ChromeArea, Density, x, y);
 
     /// <summary>
     /// Попало ли касание в плашку связи. Область та же, в которую плашка рисуется
     /// (<see cref="OnDraw"/>), и берётся она отсюда, а не считается заново.
     /// </summary>
-    public bool HitsLinkBadge(float x, float y) => _link.Hits(LinkArea, Density, x, y);
+    private bool HitsLinkBadge(float x, float y) => _link.Hits(LinkArea, Density, x, y);
 
     /// <summary>Область плашки связи: вся ширина, от нижней кромки статус-бара и ниже.</summary>
     private RectF LinkArea => new(0, TopInset, Width, Height);
@@ -182,13 +194,81 @@ public abstract class DashboardView : View
 
     /// <summary>
     /// Вызывается на каждый новый кадр телеметрии. Сама отрисовка идёт по vsync, не по этому
-    /// вызову — <see cref="Show"/> только кладёт данные, которые подхватит очередной
-    /// <see cref="OnDraw"/>.
+    /// вызову — <see cref="Show(DashboardReading)"/> только кладёт данные, которые подхватит
+    /// очередной <see cref="OnDraw"/>.
     /// </summary>
     public void Show(DashboardReading reading)
     {
         Reading = reading;
         Invalidate();
+    }
+
+    View IMainScreen.View => this;
+
+    /// <summary>Куда уходят намерения — тап по плашке связи и по точке записи. Ставит хозяин экрана.</summary>
+    public Action<MainScreenIntent>? OnIntent { get; set; }
+
+    /// <summary>
+    /// Очередной кадр основного экрана: приборы, хром и то, что панель считает про себя сама —
+    /// наклон и светлая фаза моргания. Раньше это раскладывал по полям водитель кадра; поля
+    /// панельные, и решать за них ему было нечего.
+    /// </summary>
+    public void Show(MainScreenFrame frame)
+    {
+        float tilt = (float)Options.Tilt;
+        if (Math.Abs(Rotation - tilt) > TiltEpsilon)
+        {
+            Rotation = tilt;
+        }
+
+        if (frame.Reading is { } reading)
+        {
+            Show(reading);
+        }
+
+        LinkPhase = frame.LinkPhase;
+        LinkText = frame.LinkText;
+        LinkSeconds = frame.LinkSeconds;
+        WheelName = frame.WheelName;
+        Recording = frame.Recording;
+        ShowRecordDot = frame.ShowRecordDot;
+        ShowSheetHint = frame.ShowSheetHint;
+        IsStale = frame.IsStale;
+        TopInset = frame.TopInset;
+        SpeedExceeded = frame.SpeedExceeded;
+
+        // Часы, а не переключение раз в кадр: при плавающей частоте экрана «раз в кадр» плавало бы
+        // вместе с ней вместо фиксированных BlinkHz. От момента запуска намеренно не считаем — это и
+        // была разошедшаяся стендовая копия (план 19, «Карта проблем» п. 3).
+        double period = Options.BlinkHz > 0 ? 1000 / Options.BlinkHz : 0;
+        AlertLit = period <= 0 || System.Environment.TickCount64 % period < period / 2;
+    }
+
+    /// <summary>
+    /// Касание по панели: попало ли оно в плашку связи или в точку записи, знает только панель —
+    /// она их рисует. Наружу уходит намерение, а что с ним делать, решает хозяин экрана.
+    /// <para>
+    /// Координаты приходят оконные — жест ловит хозяин, у которого уже есть
+    /// <c>DispatchTouchEvent</c>, — и переводятся в свои здесь: где панель стоит внутри разметки,
+    /// хозяину знать незачем.
+    /// </para>
+    /// </summary>
+    public void Tap(float windowX, float windowY)
+    {
+        GetLocationInWindow(_windowLocation);
+        float x = windowX - _windowLocation[0];
+        float y = windowY - _windowLocation[1];
+
+        if (HitsLinkBadge(x, y))
+        {
+            OnIntent?.Invoke(MainScreenIntent.ShowConnection);
+            return;
+        }
+
+        if (HitsRecordDot(x, y))
+        {
+            OnIntent?.Invoke(MainScreenIntent.ShowRecording);
+        }
     }
 
     /// <summary>

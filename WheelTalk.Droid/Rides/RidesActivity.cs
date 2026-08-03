@@ -159,13 +159,15 @@ public sealed class RidesActivity : Activity
 
     private async Task ConfirmAndDelete(RideSummary ride)
     {
+        // Про строки здесь больше не говорим: удаление поездки уносит её саму и её итоги, а поток
+        // остаётся и уходит своим сроком (план 23 §5.1 п. 5). Число строк в вопросе обещало бы, что
+        // с поездкой пропадут и данные, — а это ровно то, от чего ушли.
         bool confirmed = await ConfirmAsync(
             AppStrings.RidesDelete,
             string.Format(
                 CultureInfo.CurrentCulture,
                 AppStrings.RidesDeleteConfirm,
-                RideFormat.Interval(ride.StartedAt, ride.EndedAt, _timeProvider.GetLocalNow()),
-                ride.Rows),
+                RideFormat.Interval(ride.StartedAt, ride.EndedAt, _timeProvider.GetLocalNow())),
             AppStrings.RidesDelete,
             AppStrings.Cancel);
 

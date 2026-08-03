@@ -35,10 +35,10 @@ namespace WheelTalk.Lab.Droid;
 /// поверх неё — в приложении они уже внутри панели, и стенд обязан показывать то же самое.</item>
 /// </list>
 /// <para>
-/// Кадр панели ведёт общий с приложением <see cref="PanelDriver"/> (план 19 Б2): активность отвечает
-/// на его вопрос через <see cref="IPanelSource"/> (ручки стенда + <see cref="LinkCycle"/>), а
-/// продвижение позиции записи, обновление ползунка/подписи и счётчика кадров — стендовые дела, они
-/// живут в <see cref="BeforeFrame"/>, хуке водителя. Стенд пересоздаёт панель при смене варианта или
+/// Кадр панели ведёт общий с приложением <see cref="MainScreenDriver"/> (план 19 Б2): состояние
+/// кадра считает <see cref="BuildFrame"/> (ручки стенда + <see cref="LinkCycle"/>), а продвижение
+/// позиции записи, обновление ползунка/подписи и счётчика кадров — стендовые дела, они живут в
+/// <see cref="BeforeFrame"/>, хуке водителя. Стенд пересоздаёт панель при смене варианта или
 /// экрана (<see cref="ShowVariant"/>/<see cref="ShowScreen"/>) — там же водитель переставляется на
 /// новую панель методом <c>Attach</c>, без остановки цикла.
 /// </para>
@@ -46,7 +46,7 @@ namespace WheelTalk.Lab.Droid;
 [Activity(Label = "WheelTalk Lab", MainLauncher = true, LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode
         | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
-public sealed class LabActivity : Activity, IPanelSource
+public sealed class LabActivity : Activity
 {
     private static readonly double[] Rates = [0.25, 0.5, 1, 2];
 
@@ -69,6 +69,12 @@ public sealed class LabActivity : Activity, IPanelSource
     private GestureDetector? _sheetGesture;
     private bool _lightOn;
 
+    /// <summary>
+    /// Стендовая заглушка выбора экрана (план 23 §2.2, шаг 2): настоящих экранов ещё нет, поле
+    /// только держит, какой корешок подсвечен в полосе шторки — переключение никуда не ведёт.
+    /// </summary>
+    private int _screenTab;
+
     private TimeSpan _position;
     private double _rate = 1;
     private long _lastTick;
@@ -76,7 +82,7 @@ public sealed class LabActivity : Activity, IPanelSource
     private bool _seeking;
     private string _positionText = "";
 
-    private PanelDriver _driver = null!;
+    private MainScreenDriver _driver = null!;
     private readonly LinkCycle _linkCycle = new();
     private readonly ShotWalk _walk = new();
 
@@ -124,7 +130,7 @@ public sealed class LabActivity : Activity, IPanelSource
         _scenarioPicker.SetSelection(0);
 
         _lastTick = System.Environment.TickCount64;
-        _driver = new PanelDriver(_settings.Options, BeforeFrame);
+        _driver = new MainScreenDriver(BeforeFrame);
 
         // Стенд открывается «экраном целиком»: править собираются главный экран, значит его и
         // показываем первым. Отдельные варианты панели — следующие пункты того же пикера.
@@ -176,7 +182,7 @@ public sealed class LabActivity : Activity, IPanelSource
     }
 
     /// <summary>
-    /// Хук <see cref="PanelDriver"/>: что живёт на кадре стенда, но не про панель. Продвижение
+    /// Хук <see cref="MainScreenDriver"/>: что живёт на кадре стенда, но не про панель. Продвижение
     /// позиции записи по прошедшему времени, полоса тревоги колеса (часть экрана, не панели),
     /// счётчик кадров и синхронизация ползунка/подписи с текущей позицией — стендовые дела, водителю
     /// они не принадлежат.
@@ -196,8 +202,8 @@ public sealed class LabActivity : Activity, IPanelSource
 
         if (_source is not { } current || _dashboard is null) return;
 
-        // Полоса тревоги колеса — часть экрана, а не панели: есть только в режиме «экран целиком».
-        // Инсет ей — тем же путём и под тем же тумблером, что панели (см. IPanelSource.Chrome):
+        // Полоса тревоги колеса — часть рамки экрана, а не панели: есть только в режиме «экран
+        // целиком». Инсет ей — тем же путём и под тем же тумблером, что панели (см. BuildFrame):
         // «Панель под системной строкой» решает, стоит ли экран стенда под реальным баром прямо
         // сейчас (план 22 §1).
         if (_screen is { } screen)
@@ -224,37 +230,33 @@ public sealed class LabActivity : Activity, IPanelSource
         }
     }
 
-    /// <summary>Данные для панели — снимок сценария в текущей позиции; вопрос <see cref="IPanelSource"/>.</summary>
-    DashboardReading? IPanelSource.Reading => _source?.At(_position);
-
     /// <summary>
-    /// Хром панели — то же самое, что показывает приложение: плашка связи, имя колеса, точка записи
-    /// и подсказка про шторку. Связи у стенда нет и быть не может — состояние крутит
-    /// <see cref="_linkCycle"/> кнопкой «⇄», проверяя ровно то же, что рисует библиотека приложению.
+    /// Состояние кадра — то же самое, что считает приложение: показания (снимок сценария в текущей
+    /// позиции), плашка связи, имя колеса, точка записи и подсказка про шторку. Связи у стенда нет и
+    /// быть не может — состояние крутит <see cref="_linkCycle"/> кнопкой «⇄», проверяя ровно то же,
+    /// что рисует библиотека приложению.
     /// </summary>
-    PanelChrome IPanelSource.Chrome
+    private MainScreenFrame BuildFrame()
     {
-        get
+        var link = _linkCycle.Current;
+        return new MainScreenFrame
         {
-            var link = _linkCycle.Current;
-            return new PanelChrome
-            {
-                LinkPhase = link.Phase,
-                LinkText = link.Text,
-                LinkSeconds = link.Phase == LinkPhase.Connecting
-                    ? _linkCycle.SecondsSince(System.Environment.TickCount64)
-                    : 0,
-                WheelName = _settings.WheelName,
-                Recording = _settings.Recording,
-                ShowRecordDot = true,
-                ShowSheetHint = _settings.ShowSheetHint && !(_screen?.Sheet.IsOpen ?? false),
-                IsStale = _settings.Stale,
-                // То же, что MainActivity: панель рисует под системной строкой и знает её высоту.
-                // Без этого стенд молча не показывал тень под значками и затухание разметки лент —
-                // они считаются от инсета, а у стенда он был нулевым (найдено сверкой 01.08.2026).
-                TopInset = _settings.UnderSystemBar ? _barInset : 0,
-            };
-        }
+            Reading = _source?.At(_position),
+            LinkPhase = link.Phase,
+            LinkText = link.Text,
+            LinkSeconds = link.Phase == LinkPhase.Connecting
+                ? _linkCycle.SecondsSince(System.Environment.TickCount64)
+                : 0,
+            WheelName = _settings.WheelName,
+            Recording = _settings.Recording,
+            ShowRecordDot = true,
+            ShowSheetHint = _settings.ShowSheetHint && !(_screen?.Sheet.IsOpen ?? false),
+            IsStale = _settings.Stale,
+            // То же, что MainActivity: панель рисует под системной строкой и знает её высоту.
+            // Без этого стенд молча не показывал тень под значками и затухание разметки лент —
+            // они считаются от инсета, а у стенда он был нулевым (найдено сверкой 01.08.2026).
+            TopInset = _settings.UnderSystemBar ? _barInset : 0,
+        };
     }
 
     private async Task LoadScenario()
@@ -311,7 +313,7 @@ public sealed class LabActivity : Activity, IPanelSource
         int index = DashboardCatalog.All.ToList().IndexOf(variant) + 1;
         if (_variantPicker.SelectedItemPosition != index) _variantPicker.SetSelection(index);
 
-        _driver.Attach(_dashboard!, this);
+        _driver.Attach(_dashboard!, BuildFrame);
         _driver.Refresh();
     }
 
@@ -324,16 +326,21 @@ public sealed class LabActivity : Activity, IPanelSource
     {
         RemoveShown();
         _screen = new MainScreenView(this, _settings.Options);
-        _dashboard = _screen.Dashboard;
+
+        // Стенд знает, что в рамке сейчас панель, и это его право: он мерит её кадр (LastDrawMs) —
+        // половина того, ради чего варианты вообще сравнивают на устройстве. Приложению такое
+        // знание не нужно и не выдано: у него в руках только контракт IMainScreen.
+        _dashboard = _screen.Current as DashboardView;
         _screen.Sheet.PinLabel = () => "Закрепить";
         _screen.Sheet.SetCommands(BuildFakeCommands());
+        _screen.Sheet.SetScreens(BuildFakeScreens());
         _host.AddView(_screen, 0, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
-        _dashboard.Rotation = (float)_settings.Options.Tilt;
+        _dashboard!.Rotation = (float)_settings.Options.Tilt;
 
         if (_variantPicker.SelectedItemPosition != 0) _variantPicker.SetSelection(0);
 
-        _driver.Attach(_dashboard!, this);
+        _driver.Attach(_screen.Current, BuildFrame);
         _driver.Refresh();
     }
 
@@ -351,6 +358,30 @@ public sealed class LabActivity : Activity, IPanelSource
 
         _dashboard = null;
     }
+
+    /// <summary>
+    /// Полоса переключения экранов (план 23 §2.2, шаг 2) — два корешка-заглушки, чтобы вид был
+    /// виден на стенде. Настоящих экранов ещё нет: выбор меняет только <see cref="_screenTab"/> и
+    /// подсветку, содержимое шторки и панели не трогает — механика проверяется отдельно от того,
+    /// что на неё позже сядет.
+    /// </summary>
+    private IReadOnlyList<QuickSheetScreen> BuildFakeScreens() =>
+    [
+        new()
+        {
+            Icon = "📊",
+            Label = "Панель",
+            IsSelected = () => _screenTab == 0,
+            Select = () => _screenTab = 0,
+        },
+        new()
+        {
+            Icon = "📈",
+            Label = "Телеметрия",
+            IsSelected = () => _screenTab == 1,
+            Select = () => _screenTab = 1,
+        },
+    ];
 
     /// <summary>
     /// Меню шторки — состав и подписи боевого (quick-commands-design.md §3), действия стендовые.

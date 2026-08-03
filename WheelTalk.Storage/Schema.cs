@@ -14,7 +14,7 @@ namespace WheelTalk.Storage;
 internal static class Schema
 {
     /// <summary>What this build understands. A file claiming more than this is not written to.</summary>
-    public const int Version = 5;
+    public const int Version = 6;
 
     public static readonly string[] Migrations =
     [
@@ -144,6 +144,120 @@ internal static class Schema
         // с настройкой при первом же переименовании.
         """
         ALTER TABLE wheel DROP COLUMN name;
+        """,
+
+        // v6 — поток телеметрии отделяется от поездки (план 23 §5, решения владельца 03.08.2026).
+        //
+        // Поток принадлежит колесу, а не поездке: `ride_id` из него уходит совсем, и строки поездки
+        // находятся диапазоном `wheel_id = ? AND at BETWEEN началом и концом`. Хранимая копия связи
+        // разошлась бы с границами при первой же их правке, а главное — без поездки потока раньше
+        // не существовало вовсе, и графику было не из чего строиться, пока человек не нажал кнопку.
+        //
+        // Медленные таблицы уходят от поездки по той же причине, но с собственной: план 9 §3 просит
+        // режим, в котором при подключённом колесе пишется `wheel_state` раз в минуту БЕЗ поездки —
+        // кривая «напряжение покоя ↔ заряд» строится именно на стоянке. С `ride_id NOT NULL` такой
+        // строки не написать.
+        //
+        // Время — везде unix ms. Текст сравнивать с числом нельзя, а связь поездки с потоком — это
+        // именно сравнение; заодно уходят двадцать пять байт на строку при пяти строках в секунду.
+        // `utc_offset_minutes` остаётся при поездке и служит только показу.
+        //
+        // Старые строки потока не переносятся — решение владельца: телеметрия живёт сутки, и всё,
+        // что лежало в файле, старше этого срока по определению. Поездки и их итоги остаются: они
+        // единственная вечная память, и после чистки от покатушки только они и остаются.
+        //
+        // Одиннадцать величин, которых база не видела (§1). Сотые, как и всё вокруг, кроме тех,
+        // что колесо и так сообщает целыми (`cpu_temp`, `imu_temp`, `cpu_load`, `fan_status`) и
+        // `hw_pwm` — он приходит уже умноженным на сто. NULL в любой величине значит «колесо
+        // молчит», и это несущий смысл, а не пропуск: ноль на графике читается как показание.
+        """
+        DROP TABLE telemetry;
+        DROP TABLE wheel_state;
+        DROP TABLE pack_state;
+
+        CREATE TABLE ride_v6 (
+            id                 INTEGER PRIMARY KEY,
+            wheel_id           INTEGER NOT NULL REFERENCES wheel(id),
+            started_at         INTEGER NOT NULL,
+            ended_at           INTEGER,
+            utc_offset_minutes INTEGER NOT NULL,
+            model              TEXT,
+            version            TEXT,
+            distance_m         INTEGER,
+            duration_s         INTEGER,
+            moving_s           INTEGER,
+            avg_speed          INTEGER,
+            max_speed          INTEGER,
+            max_pwm            INTEGER,
+            max_power          INTEGER,
+            max_current        INTEGER,
+            consumption_wh     INTEGER
+        );
+
+        INSERT INTO ride_v6
+        SELECT id, wheel_id,
+               CAST(strftime('%s', started_at) AS INTEGER) * 1000
+                   + CAST(substr(started_at, 21, 3) AS INTEGER),
+               CAST(strftime('%s', ended_at) AS INTEGER) * 1000
+                   + CAST(substr(ended_at, 21, 3) AS INTEGER),
+               utc_offset_minutes, model, version,
+               distance_m, duration_s, moving_s, avg_speed,
+               max_speed, max_pwm, max_power, max_current, consumption_wh
+          FROM ride;
+
+        DROP TABLE ride;
+        ALTER TABLE ride_v6 RENAME TO ride;
+
+        CREATE TABLE telemetry (
+            wheel_id        INTEGER NOT NULL REFERENCES wheel(id),
+            at              INTEGER NOT NULL,
+
+            speed           INTEGER,
+            voltage         INTEGER,
+            phase_current   INTEGER,
+            current         INTEGER,
+            power           INTEGER,
+            pwm             INTEGER,
+            battery_level   INTEGER,
+            distance        INTEGER,
+            totaldistance   INTEGER,
+            system_temp     INTEGER,
+            temp2           INTEGER,
+            tilt            INTEGER,
+            alert           TEXT,
+
+            torque          INTEGER,
+            motor_power     INTEGER,
+            cpu_temp        INTEGER,
+            current_limit   INTEGER,
+            roll            INTEGER,
+            imu_temp        INTEGER,
+            cpu_load        INTEGER,
+            speed_limit     INTEGER,
+            mode            TEXT,
+            fan_status      INTEGER,
+            hw_pwm          INTEGER
+        );
+
+        CREATE TABLE wheel_state (
+            wheel_id        INTEGER NOT NULL REFERENCES wheel(id),
+            at              INTEGER NOT NULL,
+            charging_status INTEGER NOT NULL,
+            wheel_alarm     INTEGER NOT NULL
+        );
+
+        CREATE TABLE pack_state (
+            wheel_id  INTEGER NOT NULL REFERENCES wheel(id),
+            at        INTEGER NOT NULL,
+            pack_no   INTEGER NOT NULL,
+            cell_min  INTEGER, cell_max INTEGER, cell_avg INTEGER,
+            temp_min  INTEGER, temp_max INTEGER, temp_avg INTEGER,
+            health    INTEGER, current  INTEGER
+        );
+
+        CREATE INDEX telemetry_by_wheel   ON telemetry(wheel_id, at);
+        CREATE INDEX wheel_state_by_wheel ON wheel_state(wheel_id, at);
+        CREATE INDEX pack_state_by_wheel  ON pack_state(wheel_id, at);
         """,
     ];
 }

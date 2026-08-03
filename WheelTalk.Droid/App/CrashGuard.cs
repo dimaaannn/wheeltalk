@@ -142,6 +142,9 @@ public static class CrashGuard
         // Start() идемпотентен, поэтому фильтровать «уже пишем» не нужно: как только порог взят
         // однажды, каждый следующий отсчёт просто попадает в ту же запись. Стоянки и зарядка
         // внутри поездки пишутся — на них стоит кривая покоя для прогнозов (план 9 §3).
+        //
+        // После плана 23 §5.8 порог означает не «отсюда пишем», а «отсюда покатушка»: поток идёт
+        // сам по себе и этой подписки не касается — Start() только размечает его.
         _autoRecordSubscription = logging.AutoStartAboveKmh <= 0
             ? session.State.Where(state => state == ConnectionState.Connected).Subscribe(_ => recorder.Start())
             : session.Telemetry.Where(s => s.SpeedKmh > logging.AutoStartAboveKmh).Subscribe(_ => recorder.Start());

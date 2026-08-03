@@ -13,6 +13,7 @@ using WheelTalk.Droid.Logging;
 using WheelTalk.Droid.Resources.Strings;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Droid.Ui;
+using WheelTalk.Storage;
 
 using WheelTalk.Droid.App;
 using WheelTalk.Droid.Rides;
@@ -37,11 +38,18 @@ public sealed class RecordingActivity : Activity
     private RideRecorder _recorder = null!;
     private RawFrameRecorder _rawFrames = null!;
     private LoggingOptions _options = null!;
+    private StorageOptions _storage = null!;
     private UserSettingsStore _settings = null!;
 
     private TextView _rideStateLabel = null!;
     private TextView _rideFileLabel = null!;
     private Button _recordButton = null!;
+    private RadioGroup _telemetryGroup = null!;
+    private RadioButton _telemetryAlways = null!;
+    private RadioButton _telemetryRideOnly = null!;
+    private RadioButton _telemetryNever = null!;
+    private TextView _telemetryHint = null!;
+    private TextView _telemetryRetentionLabel = null!;
     private Switch _autoStartSwitch = null!;
     private Switch _waitForMovingSwitch = null!;
     private TextView _autoStartHint = null!;
@@ -67,6 +75,10 @@ public sealed class RecordingActivity : Activity
         _recorder = MainApplication.Services.GetRequiredService<RideRecorder>();
         _rawFrames = MainApplication.Services.GetRequiredService<RawFrameRecorder>();
         _options = MainApplication.Services.GetRequiredService<IOptions<LoggingOptions>>().Value;
+        // Срок хранения — дело WheelTalk.Storage, а не логирования: читается отдельным объектом
+        // настроек, не переносится в LoggingOptions. Сведены только на экране (план 23 §5.7:
+        // «человек видит одно: сколько и когда пишется»), не в коде.
+        _storage = MainApplication.Services.GetRequiredService<IOptions<StorageOptions>>().Value;
         _settings = MainApplication.Services.GetRequiredService<UserSettingsStore>();
 
         var root = BuildLayout();
@@ -81,6 +93,7 @@ public sealed class RecordingActivity : Activity
         _autoStartSwitch.Checked = _options.AutoStartRide;
         _rawDumpSwitch.Checked = _options.RawDump;
         if (_options.AutoStartAboveKmh > 0) _lastAboveKmh = _options.AutoStartAboveKmh;
+        ShowTelemetryRecording();
         ShowAutoStart();
         _folderLabel.SetText(RideFiles.Root);
 
@@ -106,9 +119,13 @@ public sealed class RecordingActivity : Activity
         _handler.PostDelayed(_tick, TickIntervalMs);
     }
 
+    /// <summary>«Никогда» не пишет ничего вообще — раздетый общей записи нечего ни начинать вручную, ни автоматически (план 23 §5.7).</summary>
+    private bool CanRecordTelemetry => _options.TelemetryRecording != TelemetryRecording.Never;
+
     private void Show()
     {
         _recordButton.SetText(_recorder.IsRecording ? AppStrings.RecordingStop : AppStrings.RecordingStart);
+        _recordButton.Enabled = CanRecordTelemetry;
         ShowRawDump();
 
         if (!_recorder.IsRecording)
@@ -176,7 +193,46 @@ public sealed class RecordingActivity : Activity
             : AppStrings.RecordingAutoStartHint;
 
         if (_waitForMovingSwitch.Checked != waits) _waitForMovingSwitch.Checked = waits;
-        _waitForMovingSwitch.Enabled = _options.AutoStartRide;
+        _autoStartSwitch.Enabled = CanRecordTelemetry;
+        _waitForMovingSwitch.Enabled = CanRecordTelemetry && _options.AutoStartRide;
+    }
+
+    /// <summary>
+    /// Отражает выбранное положение переключателя (радиокнопка) и подпись под ним — то же деление
+    /// «состояние → подпись», что у <see cref="ShowAutoStart"/>. Радиокнопки читаются событием
+    /// самой <see cref="RadioGroup"/>, а не отдельных <see cref="RadioButton"/>: группа сама
+    /// подписывается на каждую кнопку, и второй слушатель на кнопке эту подписку перебивает.
+    /// </summary>
+    private void ShowTelemetryRecording()
+    {
+        var current = _options.TelemetryRecording switch
+        {
+            TelemetryRecording.Always => _telemetryAlways,
+            TelemetryRecording.Never => _telemetryNever,
+            _ => _telemetryRideOnly,
+        };
+        if (!current.Checked) current.Checked = true;
+
+        _telemetryHint.Text = _options.TelemetryRecording switch
+        {
+            TelemetryRecording.Always => AppStrings.RecordingTelemetryAlwaysHint,
+            TelemetryRecording.Never => AppStrings.RecordingTelemetryNeverHint,
+            _ => AppStrings.RecordingTelemetryRideOnlyHint,
+        };
+
+        _telemetryRetentionLabel.Text = string.Format(CultureInfo.CurrentCulture,
+            AppStrings.RecordingTelemetryRetention, (int)Math.Round(_storage.TelemetryRetention.TotalHours));
+    }
+
+    private void OnTelemetryRecordingChanged(TelemetryRecording value)
+    {
+        if (value == _options.TelemetryRecording) return;
+
+        _options.TelemetryRecording = value;
+        _settings.SaveLogging(_options);
+        ShowTelemetryRecording();
+        ShowAutoStart();
+        Show();
     }
 
     private void OnRawDumpToggled(bool value)
@@ -203,6 +259,7 @@ public sealed class RecordingActivity : Activity
         root.AddView(RideSection());
         root.AddView(Spaced(RecordButtonView()));
         root.AddView(Spaced(RidesButtonView()));
+        root.AddView(Spaced(TelemetryRecordingSection()));
         root.AddView(Spaced(AutoStartRow()));
         root.AddView(Spaced(WaitForMovingRow()));
         root.AddView(Spaced(UiKit.Divider(this)));
@@ -256,6 +313,64 @@ public sealed class RecordingActivity : Activity
     {
         var button = UiKit.CreateButton(this, AppStrings.RidesTitle);
         button.Click += (_, _) => OnRidesClicked();
+        return button;
+    }
+
+    /// <summary>
+    /// Три положения записи потока (план 23 §5.7): подпись под группой объясняет выбранное —
+    /// названия кнопок сами по себе этого не несут (особенно у «Всегда», где важен срок хранения).
+    /// </summary>
+    private View TelemetryRecordingSection()
+    {
+        var section = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
+
+        var title = new TextView(this) { Text = AppStrings.RecordingTelemetryTitle };
+        title.SetTextSize(ComplexUnitType.Sp, 15);
+        title.SetTextColor(UiKit.PlainText(this));
+        section.AddView(title);
+
+        _telemetryAlways = TelemetryOption(AppStrings.RecordingTelemetryAlways);
+        _telemetryRideOnly = TelemetryOption(AppStrings.RecordingTelemetryRideOnly);
+        _telemetryNever = TelemetryOption(AppStrings.RecordingTelemetryNever);
+
+        _telemetryGroup = new RadioGroup(this) { Orientation = Android.Widget.Orientation.Vertical };
+        _telemetryGroup.AddView(_telemetryAlways);
+        _telemetryGroup.AddView(_telemetryRideOnly);
+        _telemetryGroup.AddView(_telemetryNever);
+        _telemetryGroup.CheckedChange += (_, e) => OnTelemetryRecordingChanged(
+            e.CheckedId == _telemetryAlways.Id ? TelemetryRecording.Always
+            : e.CheckedId == _telemetryNever.Id ? TelemetryRecording.Never
+            : TelemetryRecording.RideOnly);
+        section.AddView(_telemetryGroup, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent) { TopMargin = this.Dp(4) });
+
+        _telemetryHint = new TextView(this);
+        _telemetryHint.SetTextSize(ComplexUnitType.Sp, 12);
+        _telemetryHint.Alpha = 0.7f;
+        section.AddView(_telemetryHint, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent) { TopMargin = this.Dp(4) });
+
+        // Срок хранения — не про выбранное положение, а про весь поток вообще (§5.1 п. 6: чистка
+        // не смотрит на разметку), поэтому строка одна и висит под группой всегда, а не только у
+        // «Всегда» — единственного места, которое раньше вообще называло срок.
+        _telemetryRetentionLabel = new TextView(this);
+        _telemetryRetentionLabel.SetTextSize(ComplexUnitType.Sp, 12);
+        _telemetryRetentionLabel.Alpha = 0.7f;
+        section.AddView(_telemetryRetentionLabel, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent) { TopMargin = this.Dp(2) });
+
+        return section;
+    }
+
+    /// <summary>
+    /// A bare id, not the default (unset) one <see cref="RadioGroup.CheckedChange"/> would otherwise
+    /// report as -1 for every button — <see cref="View.GenerateViewId"/> gives each option something
+    /// the group's event can tell apart.
+    /// </summary>
+    private RadioButton TelemetryOption(string text)
+    {
+        var button = new RadioButton(this) { Id = View.GenerateViewId(), Text = text };
+        button.SetTextColor(UiKit.PlainText(this));
         return button;
     }
 

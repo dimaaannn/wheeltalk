@@ -52,10 +52,18 @@ public sealed class QuickSheet : FrameLayout
 
     private LinearLayout _row = null!;
 
+    /// <summary>
+    /// Полоса-переключатель экранов — корешки над рядом команд (план 23 §2.2). Отдельная строка,
+    /// не команда: своя разметка, свой перенос, если он вообще понадобится — подсчёт ширины
+    /// <see cref="Place"/> её не касается и не должен.
+    /// </summary>
+    private readonly LinearLayout _screenRow;
+
     /// <summary>Минимальная сторона кнопки — она же цель касания (quick-commands-design.md §3).</summary>
     private const int ButtonWidthDp = 56;
 
     private IReadOnlyList<QuickSheetCommand> _commands = [];
+    private IReadOnlyList<QuickSheetScreen> _screens = [];
     private bool _pinned;
     private bool _visible;
 
@@ -72,12 +80,24 @@ public sealed class QuickSheet : FrameLayout
         _rows = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
         _rows.SetPadding(context.Dp(8), 0, context.Dp(8), context.Dp(12));
 
+        _screenRow = new LinearLayout(context)
+        {
+            Orientation = Android.Widget.Orientation.Horizontal,
+            Visibility = ViewStates.Gone,
+        };
+        _screenRow.SetGravity(GravityFlags.CenterHorizontal);
+
         _content = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical, Clickable = true };
         _content.SetBackgroundColor(context.PageBackground());
         _content.AddView(BuildGrabber(context), new LinearLayout.LayoutParams(context.Dp(32), context.Dp(4))
         {
             Gravity = GravityFlags.CenterHorizontal,
             TopMargin = context.Dp(8),
+            BottomMargin = context.Dp(8),
+        });
+        _content.AddView(_screenRow, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
             BottomMargin = context.Dp(8),
         });
         _content.AddView(_rows, new LinearLayout.LayoutParams(
@@ -103,10 +123,21 @@ public sealed class QuickSheet : FrameLayout
         RebuildRow();
     }
 
+    /// <summary>
+    /// The screen strip's composition — корешки экранов, план 23 §2.2. Empty by default, which
+    /// hides the strip: a host with one screen shows none, exactly as before this strip existed.
+    /// </summary>
+    public void SetScreens(IReadOnlyList<QuickSheetScreen> screens)
+    {
+        _screens = screens;
+        RebuildScreens();
+    }
+
     public void Show()
     {
         if (_visible) return;
         _visible = true;
+        RebuildScreens();
         RebuildRow();
         Visibility = ViewStates.Visible;
         AnimateIn();
@@ -154,6 +185,67 @@ public sealed class QuickSheet : FrameLayout
         return grabber;
     }
 
+    /// <summary>
+    /// Rebuilds the screen strip from scratch on every call — cheap enough at a handful of tabs, and
+    /// it keeps the highlight honest: a tap reads <see cref="QuickSheetScreen.IsSelected"/> fresh
+    /// right after invoking <see cref="QuickSheetScreen.Select"/>, so the sheet never decides on its
+    /// own which screen is current, it only reflects what the caller just set.
+    /// </summary>
+    private void RebuildScreens()
+    {
+        _screenRow.RemoveAllViews();
+        _screenRow.Visibility = _screens.Count == 0 ? ViewStates.Gone : ViewStates.Visible;
+
+        foreach (var screen in _screens)
+        {
+            var tab = BuildScreenTab(screen);
+            tab.Click += (_, _) =>
+            {
+                screen.Select();
+                RebuildScreens();
+            };
+
+            var p = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent);
+            if (_screenRow.ChildCount > 0) p.LeftMargin = Context!.Dp(8);
+            _screenRow.AddView(tab, p);
+        }
+    }
+
+    private View BuildScreenTab(QuickSheetScreen screen)
+    {
+        var context = Context!;
+        bool selected = screen.IsSelected();
+        var accent = NormalColor(context);
+
+        var tab = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
+        tab.SetGravity(GravityFlags.Center);
+        int padH = context.Dp(12);
+        int padV = context.Dp(6);
+        tab.SetPadding(padH, padV, padH, padV);
+
+        var background = new GradientDrawable();
+        background.SetShape(ShapeType.Rectangle);
+        background.SetCornerRadius(context.Dp(16));
+        background.SetColor(selected ? accent : Color.Transparent);
+        tab.Background = background;
+
+        var textColor = selected ? Color.White : accent;
+
+        var icon = new TextView(context) { Text = screen.Icon, Gravity = GravityFlags.Center };
+        icon.SetTextSize(ComplexUnitType.Sp, 16);
+        icon.SetTextColor(textColor);
+        tab.AddView(icon);
+
+        var label = new TextView(context) { Text = screen.Label, Gravity = GravityFlags.Center };
+        label.SetTextSize(ComplexUnitType.Sp, 12);
+        label.SetTextColor(textColor);
+        label.SetPadding(context.Dp(4), 0, 0, 0);
+        tab.AddView(label);
+
+        return tab;
+    }
+
     private void RebuildRow()
     {
         _rows.RemoveAllViews();
@@ -169,7 +261,19 @@ public sealed class QuickSheet : FrameLayout
             var button = BuildButton(command);
             if (command.IsEnabled?.Invoke() ?? true)
             {
-                button.Click += (_, _) => OnCommandTapped(index, command);
+                button.Click += (_, _) => OnCommandTapped(index, command.Action);
+
+                // Consumed long click swallows the click that would otherwise follow it on the same
+                // ACTION_UP (platform behaviour, no gesture bookkeeping needed here) — a long press
+                // fires only LongPress, never Action too.
+                if (command.LongPress is { } longPress)
+                {
+                    button.LongClick += (_, e) =>
+                    {
+                        OnCommandTapped(index, longPress);
+                        e.Handled = true;
+                    };
+                }
             }
 
             Place(button, available, ref used);
@@ -300,19 +404,21 @@ public sealed class QuickSheet : FrameLayout
     }
 
     /// <summary>
-    /// Runs the command, then holds its fate on screen before deciding what happens next — the
-    /// honesty window design doc §5 asks for: the button that just fired is the one that gets
-    /// highlighted, so it is rebuilt into the row before the highlight (not after — a highlight
-    /// applied to a view about to be replaced would never be seen) and looked up by its stable index.
+    /// Runs a fired delegate — <see cref="QuickSheetCommand.Action"/> for a tap,
+    /// <see cref="QuickSheetCommand.LongPress"/> for a long press — then holds its fate on screen
+    /// before deciding what happens next: the honesty window design doc §5 asks for. The button
+    /// that just fired is the one that gets highlighted, so it is rebuilt into the row before the
+    /// highlight (not after — a highlight applied to a view about to be replaced would never be
+    /// seen) and looked up by its stable index.
     /// </summary>
-    private async void OnCommandTapped(int index, QuickSheetCommand command)
+    private async void OnCommandTapped(int index, Func<Task> fired)
     {
         _handler.RemoveCallbacks(_hideNow);
 
         bool success;
         try
         {
-            await command.Action();
+            await fired();
             success = true;
         }
         catch

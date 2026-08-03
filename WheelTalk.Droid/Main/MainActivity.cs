@@ -18,7 +18,6 @@ using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
 using WheelTalk.Dashboard.Droid;
-using WheelTalk.Dashboard.Droid.Layouts;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Droid.Ble;
@@ -37,20 +36,20 @@ using WheelTalk.Droid.Ui;
 namespace WheelTalk.Droid.Main;
 
 /// <summary>
-/// Главный экран: полоса состояния, полоса тревоги, панель <see cref="TwinTapesDashboard"/> (ленты +
-/// центр скорости + полосы тревог по ШИМ/скорости — все три уже рисуются одним <c>OnDraw</c>
-/// библиотеки) и ряд кнопок. Портировано по <c>docs/native-rewrite-inventory.md</c> §3 с эталона
+/// Хозяин главного экрана. Сам он не рисует (план 17 §2, план 23 §2.1): показом занят
+/// <see cref="IMainScreen"/> в рамке <see cref="MainScreenView"/>, а здесь — жизненный цикл,
+/// подключение и погоня, сервис, разрешения, замок и яркость, шторка, полоса тревоги, инсеты и
+/// кадровый цикл. Портировано по <c>docs/native-rewrite-inventory.md</c> §3 с эталона
 /// <c>WheelTalk.App/Pages/MainPage.xaml(.cs)</c> — компоновка и поведение те же, разметка собирается
 /// кодом (без AXML/XAML), как и весь остальной каркас.
 /// <para>
-/// Кадр панели и полос тревоги ведёт общий с остальными экранами <see cref="PanelDriver"/> (план 19
-/// Б2): он сам ставит себя в очередь <c>View.PostOnAnimation</c> — ту же очередь Choreographer'а
-/// (ANIMATION), в которую панель сама кладёт свой <c>PostInvalidateOnAnimation</c> в конце
-/// <c>OnDraw</c>, — значит его тик и перерисовка панели идут от одного и того же вертикального
-/// синхроимпульса, а не от параллельного таймера со своей частотой (риск биения — опись §7). Активность
-/// реализует <see cref="IPanelSource"/> — отвечает на вопрос «что показать» данными сессии/следа/
-/// рекордера, — а решение о наклоне, моргании и раскладке <see cref="PanelChrome"/> по полям панели
-/// принимает водитель. То, что «на кадре, но не про панель» (флаги окна), — в
+/// Кадр ведёт общий со стендом <see cref="MainScreenDriver"/> (план 19 Б2): он сам ставит себя в
+/// очередь <c>View.PostOnAnimation</c> — ту же очередь Choreographer'а (ANIMATION), в которую панель
+/// сама кладёт свой <c>PostInvalidateOnAnimation</c> в конце <c>OnDraw</c>, — значит его тик и
+/// перерисовка панели идут от одного и того же вертикального синхроимпульса, а не от параллельного
+/// таймера со своей частотой (риск биения — опись §7). Здесь остаётся ответ на вопрос «что
+/// показать» — <see cref="BuildFrame"/> поверх сессии, следа и рекордера, — и исполнение намерений
+/// экрана (<see cref="OnScreenIntent"/>). То, что «на кадре, но не про экран» (флаги окна), — в
 /// <see cref="BeforeFrame"/>, хуке водителя.
 /// </para>
 /// </summary>
@@ -65,7 +64,7 @@ namespace WheelTalk.Droid.Main;
 [Activity(Name = "com.wheeltalk.droid.MainActivity",
     Label = "@string/app_name", MainLauncher = true, LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
-public sealed class MainActivity : Activity, IPanelSource
+public sealed class MainActivity : Activity
 {
     private static readonly TimeSpan DoubleBackWindow = TimeSpan.FromSeconds(2);
 
@@ -84,8 +83,7 @@ public sealed class MainActivity : Activity, IPanelSource
     private DashboardOptions _dashboardOptions = null!;
     private RideTrace _trace = null!;
     private MainScreenView _screen = null!;
-    private TwinTapesDashboard _dashboard = null!;
-    private PanelDriver _driver = null!;
+    private MainScreenDriver _driver = null!;
 
     private IDisposable? _telemetry;
     private IDisposable? _alertSubscription;
@@ -166,8 +164,8 @@ public sealed class MainActivity : Activity, IPanelSource
         var root = BuildLayout();
         SetContentView(root);
 
-        _driver = new PanelDriver(_dashboardOptions, BeforeFrame);
-        _driver.Attach(_dashboard, this);
+        _driver = new MainScreenDriver(BeforeFrame);
+        _driver.Attach(_screen.Current, BuildFrame);
 
         // Верхний инсет забирает панель, а не паддинг корня: фон уходит под статус-бар, приборы и
         // плашка связи начинаются ниже него. Прочие экраны применяют инсеты как раньше.
@@ -363,29 +361,27 @@ public sealed class MainActivity : Activity, IPanelSource
     }
 
     /// <summary>
-    /// Тап по метке записи открывает экран записи. Метка нарисована на канве панели, поэтому
-    /// попадание проверяет сама панель — экрану остаётся решение, а не координаты.
+    /// Жест ловит хозяин — <c>DispatchTouchEvent</c> у него, — а во что касание попало, решает сам
+    /// экран: метки нарисованы на его канве, и координаты хозяину знать нечего.
+    /// </summary>
+    private void OnTapped(float x, float y) => _screen.Current.Tap(x, y);
+
+    /// <summary>
+    /// Исполнение намерений экрана — то, чего экран не делает сам никогда: переходы и связь.
     /// <para>
-    /// Единственным входом к поездкам метка быть перестала — в шторке есть «Поездки», ведущие прямо
-    /// в список (и через него к плееру). За меткой осталось своё: она про запись, и ведёт туда, где
-    /// видно, что пишется прямо сейчас, и где включается сырой дамп перед выездом. Здесь стояло
-    /// обратное, пока входа в шторке не было.
+    /// «Показать запись» — тап по метке записи. Единственным входом к поездкам метка быть перестала
+    /// — в шторке есть «Поездки», ведущие прямо в список (и через него к плееру). За меткой осталось
+    /// своё: она про запись, и ведёт туда, где видно, что пишется прямо сейчас, и где включается
+    /// сырой дамп перед выездом. Здесь стояло обратное, пока входа в шторке не было.
     /// </para>
     /// </summary>
-    private void OnTapped(float x, float y)
+    private void OnScreenIntent(MainScreenIntent intent)
     {
-        float panelX = x - _dashboard.Left;
-        float panelY = y - _dashboard.Top;
-
-        if (_dashboard.HitsLinkBadge(panelX, panelY))
+        switch (intent)
         {
-            OnLinkBadgeTapped();
-            return;
+            case MainScreenIntent.ShowConnection: OnLinkBadgeTapped(); break;
+            case MainScreenIntent.ShowRecording: OpenScreen(typeof(RecordingActivity)); break;
         }
-
-        if (!_dashboard.HitsRecordDot(panelX, panelY)) return;
-
-        OpenScreen(typeof(RecordingActivity));
     }
 
     /// <summary>
@@ -422,15 +418,33 @@ public sealed class MainActivity : Activity, IPanelSource
     {
         if (_timeProvider.GetElapsedTime(_lastBackPressAt) < DoubleBackWindow)
         {
-            // Сервис остановит подписка CrashGuard по Disconnected — как и при любом другом
-            // отключении.
-            _ = _session.DisconnectAsync();
-            FinishAffinity();
+            _ = ExitAsync();
             return;
         }
 
         _lastBackPressAt = _timeProvider.GetTimestamp();
         _alertStrip.Show(AppStrings.StripBackAgainToExit, AlertStrip.Notice);
+    }
+
+    /// <summary>
+    /// Уход из приложения — такой же конец поездки, как кнопка «стоп» (план 23 §5.4): незакрытых
+    /// поездок не бывает, а <c>ended_at IS NULL</c> значит ровно «идёт прямо сейчас». Не закрыть её
+    /// здесь — значит сделать штатный выход неотличимым от смерти телефона.
+    /// <para>
+    /// Порядок такой, а не «дождались и ушли»: разметка снимается сразу, синхронно, а запись конца
+    /// идёт своим чередом — она копится до полутора секунд, и держать на них погашенный экран
+    /// незачем. Процесс после <c>FinishAffinity</c> живёт, и запись успевает лечь.
+    /// </para>
+    /// </summary>
+    private async Task ExitAsync()
+    {
+        var closed = _recorder.StopAsync();
+        FinishAffinity();
+
+        await closed;
+
+        // Сервис остановит подписка CrashGuard по Disconnected — как и при любом другом отключении.
+        await _session.DisconnectAsync();
     }
 
     /// <summary>Единственный мост между системным диалогом разрешений и BleReadiness — оно само Activity не видит.</summary>
@@ -467,9 +481,9 @@ public sealed class MainActivity : Activity, IPanelSource
     }
 
     /// <summary>
-    /// Хук <see cref="PanelDriver"/> — что живёт на каждом кадре, но не про панель. Наклон, моргание
-    /// и раскладка <see cref="PanelChrome"/> по полям панели — дело водителя; здесь остаётся то, о
-    /// чём водитель не обязан знать: оконные флаги. Зеркалирование сглаживания в след поездки ушло
+    /// Хук <see cref="MainScreenDriver"/> — что живёт на каждом кадре, но не про экран. Показ — дело
+    /// экрана, ему уходит <see cref="MainScreenFrame"/>; здесь остаётся то, о чём ни экран, ни
+    /// водитель знать не обязаны: оконные флаги. Зеркалирование сглаживания в след поездки ушло
     /// вместе с этим методом (план 19 Б5) — <see cref="RideTrace.SmoothingSecondsSource"/>, заведённый
     /// в <see cref="OnCreate"/>, читает его сам.
     /// </summary>
@@ -479,44 +493,46 @@ public sealed class MainActivity : Activity, IPanelSource
         ApplyShowOverLock();
     }
 
-    /// <summary>Данные для панели — вопрос <see cref="IPanelSource"/>, на который отвечает сессия и след поездки.</summary>
-    DashboardReading? IPanelSource.Reading =>
-        _session.LastSnapshot is { } snapshot && _trace.HasData
-            ? DashboardFrame.From(snapshot, _trace, _alert.PwmIntensity)
-            : null;
-
     /// <summary>
-    /// Состояние связи так, как его показывает панель (прогон 5). Пять фаз, и каждая отвечает на
+    /// Состояние кадра для экрана — всё, что он показывает, посчитанное здесь, у сессии, следа
+    /// поездки и рекордера. Спрашивается на каждом кадре водителем.
+    /// <para>
+    /// Показаний может не быть вовсе (<c>null</c>): пока след пуст — сразу после подключения, до
+    /// первого отсчёта — показывать нечего, и экран остаётся с прежними цифрами, а не обнуляется.
+    /// </para>
+    /// <para>
+    /// Состояние связи — так, как его показывает панель (прогон 5). Пять фаз, и каждая отвечает на
     /// свой вопрос: «всё хорошо» — плашки нет; «идёт попытка» — жёлтая со счётчиком; «отключено
     /// хозяином» — серая; «подключиться нечем» — красная; «только что подключились» — зелёная,
     /// которая уходит сама.
+    /// </para>
     /// <para>
     /// Связь и свежесть данных — разные вещи: линк может держаться, пока колесо молчит (заснуло,
     /// ушло в защиту, потерялось за телом на повороте). Поэтому подключённое, но замолчавшее колесо
     /// показывается той же жёлтой, что и переподключение: данных нет в обоих случаях.
     /// </para>
     /// </summary>
-    PanelChrome IPanelSource.Chrome
+    private MainScreenFrame BuildFrame()
     {
-        get
+        var (phase, text) = LinkState();
+        return new MainScreenFrame
         {
-            var (phase, text) = LinkState();
-            return new PanelChrome
-            {
-                LinkPhase = phase,
-                LinkText = text,
-                LinkSeconds = phase == LinkPhase.Connecting ? (int)StaleFor : 0,
-                WheelName = WheelName(),
-                Recording = _recorder.IsRecording,
-                ShowRecordDot = true,
-                ShowSheetHint = !_sheet.IsOpen,
-                // Вуаль устаревших данных: замершие цифры на ходу читаются как живые. Плашка связи её
-                // не заменяет — она говорит «связи нет», а вуаль метит сами цифры (прогон 5).
-                IsStale = LinkStatus.IsStale(StaleFor),
-                TopInset = _topInsetPx,
-                SpeedExceeded = _alert.SpeedExceeded,
-            };
-        }
+            Reading = _session.LastSnapshot is { } snapshot && _trace.HasData
+                ? DashboardFrame.From(snapshot, _trace, _alert.PwmIntensity)
+                : null,
+            LinkPhase = phase,
+            LinkText = text,
+            LinkSeconds = phase == LinkPhase.Connecting ? (int)StaleFor : 0,
+            WheelName = WheelName(),
+            Recording = _recorder.IsRecording,
+            ShowRecordDot = true,
+            ShowSheetHint = !_sheet.IsOpen,
+            // Вуаль устаревших данных: замершие цифры на ходу читаются как живые. Плашка связи её
+            // не заменяет — она говорит «связи нет», а вуаль метит сами цифры (прогон 5).
+            IsStale = LinkStatus.IsStale(StaleFor),
+            TopInset = _topInsetPx,
+            SpeedExceeded = _alert.SpeedExceeded,
+        };
     }
 
     /// <summary>
@@ -669,9 +685,9 @@ public sealed class MainActivity : Activity, IPanelSource
     }
 
     /// <summary>
-    /// Приход очередного отсчёта. Панель здесь не трогается вовсе: она живёт на своём кадровом
-    /// цикле (<see cref="PanelDriver"/>) и берёт то, что накопилось. Здесь только копится — и
-    /// обновляется хром, который на приход отсчёта как раз и должен реагировать.
+    /// Приход очередного отсчёта. Экран здесь не трогается вовсе: он живёт на своём кадровом
+    /// цикле (<see cref="MainScreenDriver"/>) и берёт то, что накопилось. Здесь только копится — и
+    /// поднимается полоса тревоги, которая на приход отсчёта как раз и должна реагировать.
     /// </summary>
     private void Render(TelemetrySnapshot snapshot)
     {
@@ -729,11 +745,15 @@ public sealed class MainActivity : Activity, IPanelSource
     /// <summary>
     /// Возвращает экран к тому, что он показывает до первого отсчёта. Вместе с показаниями уходит
     /// и след поездки.
+    /// <para>
+    /// Пустые показания приходится сказать явно: кадром без данных (<c>Reading = null</c>) экран
+    /// оставляет прежние цифры — это его правило для мига между подключением и первым отсчётом.
+    /// </para>
     /// </summary>
     private void ClearReadings()
     {
         _trace.Reset();
-        _dashboard.Show(DashboardReading.Idle);
+        _screen.Current.Show(BuildFrame() with { Reading = DashboardReading.Idle });
     }
 
     /// <summary>
@@ -804,6 +824,14 @@ public sealed class MainActivity : Activity, IPanelSource
                 Label = () => _recorder.IsRecording ? AppStrings.ButtonStopRecording : AppStrings.ButtonRecord,
                 IsOn = () => _recorder.IsRecording,
                 Action = RecordToggleAsync,
+                // Второй вход на экран записи (план 23 §5.8): точка записи на панели мала и есть не
+                // всегда, а команда и так про запись — держать её долгий тап нашли там же, куда ведёт
+                // сама точка (OnScreenIntent). Короткий тап продолжает пускать/останавливать запись.
+                LongPress = () =>
+                {
+                    OnScreenIntent(MainScreenIntent.ShowRecording);
+                    return Task.CompletedTask;
+                },
             },
             new()
             {
@@ -1007,15 +1035,15 @@ public sealed class MainActivity : Activity, IPanelSource
     // ---- Разметка (см. class doc и docs/native-rewrite-inventory.md §3.1) --------------------
 
     /// <summary>
-    /// Вся визуальная композиция — полоса тревоги, панель, шторка, потолок ширины — живёт в
-    /// библиотеке (<see cref="MainScreenView"/>), чтобы стенд показывал ровно этот экран тем же
-    /// классом. Здесь остаётся проводка: команды шторки, шрифт из ресурсов приложения и инсеты
-    /// (edge-to-edge применяет OnCreate — верхний инсет забирает панель, а не паддинг корня).
+    /// Вся визуальная композиция — полоса тревоги, экран, шторка, потолок ширины — живёт в
+    /// библиотеке (<see cref="MainScreenView"/>), чтобы стенд показывал ровно это тем же классом.
+    /// Здесь остаётся проводка: команды шторки, шрифт из ресурсов приложения, приём намерений экрана
+    /// и инсеты (edge-to-edge применяет OnCreate — верхний инсет забирает панель, а не паддинг корня).
     /// </summary>
     private View BuildLayout()
     {
         _screen = new MainScreenView(this, _dashboardOptions);
-        _dashboard = _screen.Dashboard;
+        _screen.Current.OnIntent = OnScreenIntent;
 
         _alertStrip = _screen.Alert;
         _alertStrip.SetTypeface(_bold, TypefaceStyle.Bold);

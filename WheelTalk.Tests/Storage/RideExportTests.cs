@@ -47,6 +47,7 @@ public class RideExportTests
         var database = temp.Open();
         await using (var store = temp.Store(database))
         {
+            store.BeginRide();
             for (int i = 0; i < snapshots.Count; i++)
             {
                 store.Write(Mac, nameof(WheelProtocol.Veteran), snapshots[i], At(i));
@@ -80,6 +81,7 @@ public class RideExportTests
         var database = temp.Open();
         await using (var store = temp.Store(database))
         {
+            store.BeginRide();
             for (int i = 0; i < snapshots.Count; i++)
             {
                 store.Write(Mac, nameof(WheelProtocol.Veteran), snapshots[i], At(i));

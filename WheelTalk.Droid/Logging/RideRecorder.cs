@@ -1,18 +1,27 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Services;
+using WheelTalk.Droid.Configuration;
 using WheelTalk.Storage;
 
 namespace WheelTalk.Droid.Logging;
 
 /// <summary>
-/// The ride history, started and stopped by the rider. It lives next to the session rather than on
-/// a page: recording has to keep going with the screen off, which is exactly when no page is alive.
+/// Кто и когда пишет поток телеметрии, и где в нём начинается покатушка. Живёт рядом с сессией, а
+/// не на странице: запись обязана продолжаться с погашенным экраном, а это ровно тот случай, когда
+/// ни одной страницы нет в живых.
 /// <para>
-/// Everything about how a ride is stored now belongs to <see cref="RideStore"/> — this class only
-/// decides when to subscribe and hands snapshots over. Which is most of what it ever did: the file
-/// it used to open, the alert it used to drain and the wheel change it used to watch for are all
-/// things the store has to know about anyway, and having them in two places is how they drift.
+/// Everything about how a ride is stored belongs to <see cref="RideStore"/> — this class only
+/// decides what to hand over. Which is most of what it ever did: the file it used to open, the
+/// alert it used to drain and the wheel change it used to watch for are all things the store has to
+/// know about anyway, and having them in two places is how they drift.
+/// </para>
+/// <para>
+/// <b>Поток и разметка разошлись</b> (план 23 §5.7). Подписка на телеметрию живёт всегда — писать
+/// ли из неё, решает <see cref="LoggingOptions.TelemetryRecording"/> на каждом отсчёте, а не
+/// подписка с отписками: настройка живая, и переключённая посреди поездки она обязана подействовать
+/// сразу. Проверка стоит пять сравнений в секунду — дешевле, чем вторая правда о том, пишем ли мы.
 /// </para>
 /// <para>
 /// A dropped link does not end the recording — the session reconnects and rows resume in the same
@@ -23,20 +32,38 @@ public sealed partial class RideRecorder : IDisposable
 {
     private readonly WheelSession _session;
     private readonly RideStore _store;
+    private readonly LoggingOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<RideRecorder> _logger;
 
-    private IDisposable? _subscription;
+    private readonly IDisposable _subscription;
 
-    public RideRecorder(WheelSession session, RideStore store, TimeProvider timeProvider, ILogger<RideRecorder> logger)
+    /// <summary>Идёт ли разметка — то, что человек видит кнопкой «Запись».</summary>
+    private bool _marking;
+
+    public RideRecorder(
+        WheelSession session,
+        RideStore store,
+        IOptions<LoggingOptions> options,
+        TimeProvider timeProvider,
+        ILogger<RideRecorder> logger)
     {
         _session = session;
         _store = store;
+        _options = options.Value;
         _timeProvider = timeProvider;
         _logger = logger;
+        _subscription = _session.Telemetry.Subscribe(Write);
     }
 
-    public bool IsRecording => _subscription is not null;
+    /// <summary>
+    /// Размечается ли поездка прямо сейчас. Смысл кнопки от настройки зависит, а этого признака —
+    /// нет: «Всегда» пишет поток и без неё, и кнопка там означает «отсюда покатушка».
+    /// </summary>
+    public bool IsRecording => _marking;
+
+    /// <summary>Можно ли вообще размечать: при «Никогда» размечать нечего — потока нет.</summary>
+    private bool CanRecord => _options.TelemetryRecording != TelemetryRecording.Never;
 
     /// <summary>The ride being written, or 0 until the first snapshot has opened one.</summary>
     public long RideId => _store.CurrentRideId;
@@ -55,31 +82,51 @@ public sealed partial class RideRecorder : IDisposable
 
     public void Start()
     {
-        if (IsRecording) return;
+        if (_marking || !CanRecord) return;
 
-        _subscription = _session.Telemetry.Subscribe(Write);
+        _marking = true;
+        _store.BeginRide();
         LogStarted();
         Changed?.Invoke();
     }
 
-    public void Stop()
+    /// <summary>
+    /// Closing is a write like any other and happens on the store's own thread; the button that
+    /// calls this is on the UI thread and has nothing to wait for.
+    /// </summary>
+    public void Stop() => _ = StopAsync();
+
+    /// <summary>
+    /// То же, но с ожиданием «легло на диск». Нужно ровно одному месту — выходу из приложения:
+    /// поездка заканчивается явно, кнопкой либо выходом (план 23 §5.4), и уйти раньше, чем конец
+    /// записан, значит оставить покатушку выглядеть так же, как смерть телефона.
+    /// </summary>
+    public async Task StopAsync()
     {
-        _subscription?.Dispose();
-        _subscription = null;
+        if (!_marking) return;
 
-        // Closing is a write like any other and happens on the store's own thread; the button that
-        // called this is on the UI thread and has nothing to wait for.
-        _ = _store.CloseRideAsync().ContinueWith(
-            _ => Changed?.Invoke(), TaskScheduler.Default);
-
+        _marking = false;
         LogStopped();
+        Changed?.Invoke();
+
+        await _store.CloseRideAsync();
         Changed?.Invoke();
     }
 
-    public void Dispose() => Stop();
+    /// <summary>
+    /// Подписка снимается совсем: приложение уходит. Поездку закрывает сам
+    /// <see cref="RideStore"/> при остановке — иначе штатный выход выглядел бы как смерть телефона.
+    /// </summary>
+    public void Dispose()
+    {
+        _marking = false;
+        _subscription.Dispose();
+    }
 
     private void Write(TelemetrySnapshot snapshot)
     {
+        if (!ShouldWrite()) return;
+
         string mac = _session.Address ?? "";
         if (mac.Length == 0) return;
 
@@ -89,6 +136,14 @@ public sealed partial class RideRecorder : IDisposable
         // чем он и опознаётся. Пустая строка осталась бы только у записи без единого кадра.
         _store.Write(mac, _session.Protocol?.ToString() ?? "", snapshot, _timeProvider.GetLocalNow());
     }
+
+    /// <summary>Три положения переключателя, план 23 §5.7. Спрашивается на каждом отсчёте: настройка живая.</summary>
+    private bool ShouldWrite() => _options.TelemetryRecording switch
+    {
+        TelemetryRecording.Always => true,
+        TelemetryRecording.RideOnly => _marking,
+        _ => false,
+    };
 
     [LoggerMessage(EventId = 1500, EventName = "Ride.RecordingStarted", Level = LogLevel.Information,
         Message = "Ride.RecordingStarted")]

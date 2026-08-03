@@ -46,6 +46,14 @@
   <data name="WheelRefusedTitle" xml:space="preserve"><value>Колесо не подошло</value></data>
   <data name="RecordingTitle" xml:space="preserve"><value>Запись</value></data>
   <data name="RecordingRideSection" xml:space="preserve"><value>История поездки</value></data>
+  <data name="RecordingTelemetryTitle" xml:space="preserve"><value>Что писать в поток</value></data>
+  <data name="RecordingTelemetryAlways" xml:space="preserve"><value>Всегда</value></data>
+  <data name="RecordingTelemetryRideOnly" xml:space="preserve"><value>Только в поездке</value></data>
+  <data name="RecordingTelemetryNever" xml:space="preserve"><value>Никогда</value></data>
+  <data name="RecordingTelemetryAlwaysHint" xml:space="preserve"><value>Пишется постоянно, поездка лишь размечает его; данные удаляются через сутки</value></data>
+  <data name="RecordingTelemetryRideOnlyHint" xml:space="preserve"><value>Пишется только во время поездки — как было раньше</value></data>
+  <data name="RecordingTelemetryNeverHint" xml:space="preserve"><value>Не пишется вовсе — разметка поездок недоступна</value></data>
+  <data name="RecordingTelemetryRetention" xml:space="preserve"><value>Хранится {0} ч., дальше чистится само</value></data>
   <data name="RecordingStart" xml:space="preserve"><value>Начать запись</value></data>
   <data name="RecordingStop" xml:space="preserve"><value>Остановить запись</value></data>
   <data name="RecordingAutoStart" xml:space="preserve"><value>Включать запись автоматически</value></data>
@@ -205,7 +213,7 @@
   <data name="RidesExport" xml:space="preserve"><value>Выгрузить в CSV</value></data>
   <data name="RidesExporting" xml:space="preserve"><value>Выгружаем…</value></data>
   <data name="RidesDelete" xml:space="preserve"><value>Удалить</value></data>
-  <data name="RidesDeleteConfirm" xml:space="preserve"><value>Удалить поездку {0} — {1} строк? Восстановить будет неоткуда.</value></data>
+  <data name="RidesDeleteConfirm" xml:space="preserve"><value>Удалить поездку {0}? Её итоги пропадут — восстановить будет неоткуда.</value></data>
   <data name="RideTitle" xml:space="preserve"><value>Поездка</value></data>
   <data name="RideExportHint" xml:space="preserve"><value>Файл ляжет в папку колеса, в формате WheelLog.</value></data>
   <data name="RidePlay" xml:space="preserve"><value>Воспроизвести</value></data>

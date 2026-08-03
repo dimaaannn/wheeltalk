@@ -7,9 +7,10 @@ namespace WheelTalk.Storage;
 /// <param name="StartedAt">In the zone it was ridden in — that is what the export prints and what a list should show.</param>
 /// <param name="EndedAt">Null only for the ride being written right now.</param>
 /// <param name="Totals">
-/// Null while the ride is still being recorded — there is nothing to total until it ends. A finished
-/// ride always has them: they are written when it closes and filled in at the next open for the ones
-/// that predate the columns (<see cref="RideTotalsWriter.Backfill"/>).
+/// Null while the ride is still being recorded — there is nothing to total until it ends. У закрытой
+/// поездки пустые итоги значат другое и ровно одно: подробностей больше нет, кадры вычистил срок
+/// хранения (план 23 §5.5). Смысл «ещё не посчитано» до экрана не доживает — досчёт идёт при
+/// открытии базы и раньше всякого чтения (<see cref="RideTotalsWriter.Backfill"/>).
 /// </param>
 public sealed record RideSummary(
     long Id,

@@ -6,14 +6,20 @@ using WheelTalk.Core.Contracts;
 namespace WheelTalk.Storage;
 
 /// <summary>
-/// Writes rides into the database. The whole point of this class is the thread it does not run on:
-/// telemetry arrives on the GATT callback, the one feeding the decoder twenty-odd frames a second,
-/// and a WAL commit with three index updates has no business being there. So <see cref="Write"/>
-/// only queues, and one background loop owns the connection and does every write.
+/// Writes the telemetry stream into the database. The whole point of this class is the thread it
+/// does not run on: telemetry arrives on the GATT callback, the one feeding the decoder twenty-odd
+/// frames a second, and a WAL commit with three index updates has no business being there. So
+/// <see cref="Write"/> only queues, and one background loop owns the connection and does every write.
 /// <para>
 /// Rows pile up for <see cref="StorageOptions.CommitInterval"/> and go in as one transaction. That
 /// window is also what is lost if the process dies mid-ride — the rows before it are on disk, and
 /// the ride left open gets closed at the next start (<see cref="RideDatabase"/>).
+/// </para>
+/// <para>
+/// <b>Поток и поездка — разные вещи</b> (план 23 §5, решения владельца 03.08.2026). Строка
+/// телеметрии принадлежит колесу и пишется сама по себе; поездка её лишь размечает —
+/// <see cref="BeginRide"/> открывает окно, <see cref="CloseRideAsync"/> закрывает. Кто и когда
+/// зовёт <see cref="Write"/>, решает переключатель записи снаружи: здесь про то не знают.
 /// </para>
 /// </summary>
 public sealed partial class RideStore : IAsyncDisposable
@@ -36,6 +42,10 @@ public sealed partial class RideStore : IAsyncDisposable
     private SqliteCommand? _insertTelemetry;
     private string _mac = "";
     private long _wheelId;
+
+    /// <summary>«Размечаем» — кнопка нажата. Строка поездки заводится первым же отсчётом после этого.</summary>
+    private bool _marking;
+
     private string _model = "";
     private string _version = "";
     private string _lastAlert = "";
@@ -65,14 +75,26 @@ public sealed partial class RideStore : IAsyncDisposable
 
     /// <summary>
     /// Queues one snapshot. Returns immediately and never touches the database — see the class
-    /// remarks for why that matters. A snapshot for a different wheel ends the current ride and
-    /// starts another: a ride belongs to one wheel by definition.
+    /// remarks for why that matters. A snapshot for a different wheel ends the current ride: a ride
+    /// belongs to one wheel by definition, but the stream carries on either way.
     /// </summary>
     public void Write(string mac, string protocol, TelemetrySnapshot snapshot, DateTimeOffset at)
     {
         if (!_database.IsWritable || mac.Length == 0) return;
 
         _queue.Writer.TryWrite(new Row(mac, protocol, at, snapshot));
+    }
+
+    /// <summary>
+    /// «Отсюда покатушка». Сама строка поездки заводится первым отсчётом после этого — до него
+    /// неизвестно ни колесо, ни время, а поездка без единого кадра вышла бы строкой с двумя датами
+    /// и пустыми итогами.
+    /// </summary>
+    public void BeginRide()
+    {
+        if (!_database.IsWritable) return;
+
+        _queue.Writer.TryWrite(new MarkRide());
     }
 
     /// <summary>Finishes the ride and waits until it is on disk, so a caller can report it as saved.</summary>
@@ -85,10 +107,16 @@ public sealed partial class RideStore : IAsyncDisposable
     }
 
     /// <summary>
-    /// Removes a ride and every row written under it. Goes through the same queue as everything
-    /// else and for the same reason: SQLite takes one writer, and a delete from the list screen
-    /// arriving on its own connection while the writer holds the file is a busy error, not a
-    /// delete. The ride being recorded right now is refused — it is not finished being written.
+    /// Removes a ride — the row and its totals, and nothing else. Строки потока остаются: очистки
+    /// раздельны и друг о друге не знают (план 23 §5.1 п. 5), а телеметрию удаляет срок хранения.
+    /// Раньше удаление поездки уносило с собой и данные, и это было ровно то, от чего ушли: их
+    /// нельзя было чистить, не трогая поездок.
+    /// <para>
+    /// Goes through the same queue as everything else and for the same reason: SQLite takes one
+    /// writer, and a delete from the list screen arriving on its own connection while the writer
+    /// holds the file is a busy error, not a delete. The ride being recorded right now is refused —
+    /// it is not finished being written.
+    /// </para>
     /// </summary>
     public Task DeleteRideAsync(long rideId)
     {
@@ -193,7 +221,13 @@ public sealed partial class RideStore : IAsyncDisposable
             case Row row:
                 ApplyRow(row, tx);
                 break;
+            case MarkRide:
+                _marking = true;
+                break;
             case CloseRide:
+                // Разметка снимается только здесь. Смена колеса поездку тоже заканчивает, но
+                // кнопку никто не отпускал — на новом колесе разметка продолжится своей поездкой.
+                _marking = false;
                 FinishRide(tx);
                 break;
             case DeleteRide delete:
@@ -212,15 +246,6 @@ public sealed partial class RideStore : IAsyncDisposable
             return;
         }
 
-        // Children first: foreign keys are on and nothing cascades, deliberately — a delete that
-        // reaches further than the caller meant is the one mistake this data cannot survive.
-        foreach (string table in (string[])["telemetry", "wheel_state", "pack_state"])
-        {
-            using var child = Command($"DELETE FROM {table} WHERE ride_id = $id;", tx);
-            child.Parameters.AddWithValue("$id", rideId);
-            child.ExecuteNonQuery();
-        }
-
         using var command = Command("DELETE FROM ride WHERE id = $id;", tx);
         command.Parameters.AddWithValue("$id", rideId);
         if (command.ExecuteNonQuery() > 0) LogRideDeleted(rideId);
@@ -228,29 +253,46 @@ public sealed partial class RideStore : IAsyncDisposable
 
     private void ApplyRow(Row row, SqliteTransaction tx)
     {
-        if (_rideId != 0 && row.Mac != _mac) FinishRide(tx);
-        if (_rideId == 0) StartRide(row, tx);
+        if (row.Mac != _mac) SwitchWheel(row, tx);
+        if (_marking && _rideId == 0) StartRide(row, tx);
 
         // Model and firmware arrive with the first decoded frame, which is not always the first
         // snapshot — the ride is opened before they are known and filled in when they turn up.
-        if (_model.Length == 0 && row.Snapshot.Model.Length > 0) NameRide(row.Snapshot, tx);
+        if (_rideId != 0 && _model.Length == 0 && row.Snapshot.Model.Length > 0) NameRide(row.Snapshot, tx);
 
         InsertTelemetry(row, tx);
         WriteSlowTables(row, tx);
         Interlocked.Increment(ref _rowsWritten);
     }
 
-    private void StartRide(Row row, SqliteTransaction tx)
+    /// <summary>
+    /// Другое колесо. Поездка принадлежит одному колесу по определению, поэтому она здесь и
+    /// кончается; поток же продолжается — просто под другим <c>wheel_id</c>. Всё, что копилось про
+    /// прежнее колесо (последняя тревога, состояния, пакеты), сбрасывается: оно про тот поток, а не
+    /// про этот.
+    /// </summary>
+    private void SwitchWheel(Row row, SqliteTransaction tx)
     {
+        if (_rideId != 0) FinishRide(tx);
+
         _mac = row.Mac;
         _wheelId = EnsureWheel(row.Mac, row.Protocol, tx);
-        _model = "";
-        _version = "";
         _lastAlert = "";
         _lastWheelState = null;
         _lastWheelStateAt = default;
         Array.Clear(_lastPacks);
         Array.Clear(_lastPackAt);
+    }
+
+    private void StartRide(Row row, SqliteTransaction tx)
+    {
+        _model = "";
+        _version = "";
+
+        // Открытая поездка этого колеса — не помеха, а она же и есть: приложение убили посреди
+        // покатушки, и RideDatabase оставил её открытой, потому что с последнего кадра прошло
+        // немного (план 23 §5.4). Кадры лягут в неё же, а не в новую поверх старой.
+        if (AdoptOpenRide(tx)) return;
 
         using var command = Command(
             """
@@ -259,7 +301,7 @@ public sealed partial class RideStore : IAsyncDisposable
             SELECT last_insert_rowid();
             """, tx);
         command.Parameters.AddWithValue("$wheel", _wheelId);
-        command.Parameters.AddWithValue("$started", Hundredths.Stamp(row.At));
+        command.Parameters.AddWithValue("$started", row.At.ToUnixTimeMilliseconds());
         // The zone the ride happened in. The export prints local time, as the original does, and
         // without this there is no way back to it from a UTC stamp.
         command.Parameters.AddWithValue("$offset", (int)row.At.Offset.TotalMinutes);
@@ -268,6 +310,33 @@ public sealed partial class RideStore : IAsyncDisposable
         Interlocked.Exchange(ref _rideId, id);
         Volatile.Write(ref _rowsWritten, 0);
         LogRideStarted(id, row.Mac);
+    }
+
+    /// <summary>
+    /// Подхватывает незакрытую поездку этого колеса, если она есть. Заводить вторую поверх неё
+    /// нельзя: две поездки на одном колесе не могут пересекаться (решение владельца 03.08.2026) —
+    /// иначе строка потока принадлежит двум поездкам сразу, и обе считают её своей.
+    /// </summary>
+    private bool AdoptOpenRide(SqliteTransaction tx)
+    {
+        using var command = Command(
+            """
+            SELECT id, COALESCE(model, ''), COALESCE(version, '')
+              FROM ride WHERE wheel_id = $wheel AND ended_at IS NULL
+             ORDER BY started_at DESC LIMIT 1;
+            """, tx);
+        command.Parameters.AddWithValue("$wheel", _wheelId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return false;
+
+        long id = reader.GetInt64(0);
+        _model = reader.GetString(1);
+        _version = reader.GetString(2);
+        Interlocked.Exchange(ref _rideId, id);
+        Volatile.Write(ref _rowsWritten, 0);
+        LogRideResumed(id, _mac);
+        return true;
     }
 
     private long EnsureWheel(string mac, string protocol, SqliteTransaction tx)
@@ -299,25 +368,33 @@ public sealed partial class RideStore : IAsyncDisposable
     {
         if (_rideId == 0) return;
 
+        // Последним кадром этого колеса, а не «сейчас»: покатушка кончилась там, где колесо
+        // замолчало, и лишние минуты между тем и нажатием кнопки — не езда.
         using (var command = Command(
             """
             UPDATE ride
-               SET ended_at = COALESCE((SELECT MAX(at) FROM telemetry WHERE ride_id = $id), started_at)
+               SET ended_at = COALESCE(
+                       (SELECT MAX(at) FROM telemetry
+                         WHERE wheel_id = $wheel AND at >= ride.started_at),
+                       started_at)
              WHERE id = $id;
             """, tx))
         {
             command.Parameters.AddWithValue("$id", _rideId);
+            command.Parameters.AddWithValue("$wheel", _wheelId);
             command.ExecuteNonQuery();
         }
 
         // The totals, once, while the ride is fresh and this thread already owns the file. Doing it
         // here is the whole reason the list screen can be a query — see Schema v3.
         var connection = Connection();
-        RideTotalsWriter.Store(connection, tx, _rideId, RideTotalsWriter.Compute(connection, tx, _rideId));
+        if (RideTotalsWriter.Compute(connection, tx, _rideId) is { } totals)
+        {
+            RideTotalsWriter.Store(connection, tx, _rideId, totals);
+        }
 
         LogRideFinished(_rideId, RowsWritten);
         Interlocked.Exchange(ref _rideId, 0);
-        _mac = "";
     }
 
     private void InsertTelemetry(Row row, SqliteTransaction tx)
@@ -326,9 +403,8 @@ public sealed partial class RideStore : IAsyncDisposable
         var command = _insertTelemetry ??= PrepareTelemetryInsert();
         command.Transaction = tx;
 
-        command.Parameters["$ride"].Value = _rideId;
         command.Parameters["$wheel"].Value = _wheelId;
-        command.Parameters["$at"].Value = Hundredths.Stamp(row.At);
+        command.Parameters["$at"].Value = row.At.ToUnixTimeMilliseconds();
         command.Parameters["$speed"].Value = s.SpeedRaw;
         command.Parameters["$voltage"].Value = s.VoltageRaw;
         command.Parameters["$phase"].Value = s.PhaseCurrentRaw;
@@ -355,6 +431,27 @@ public sealed partial class RideStore : IAsyncDisposable
         _lastAlert = s.Alert;
         command.Parameters["$alert"].Value = alert.Length == 0 ? DBNull.Value : alert;
 
+        // Одиннадцать величин, которых база не видела до плана 23. Каждая сообщается ровно одним
+        // семейством протоколов, и у остальных её нет — не «ноль», а нет вовсе. NULL по типу
+        // колеса, а не по значению: ровный ноль момента у InMotion — такое же показание, как и
+        // любое другое, и отличить его от молчания Veteran'а можно только здесь.
+        bool inMotion = s.WheelType is WheelType.Inmotion or WheelType.InmotionV2;
+        bool inMotionV2 = s.WheelType == WheelType.InmotionV2;
+        bool kingSong = s.WheelType == WheelType.KingSong;
+
+        command.Parameters["$torque"].Value = inMotionV2 ? Hundredths.Of(s.Torque) : DBNull.Value;
+        command.Parameters["$motorPower"].Value = inMotionV2 ? Hundredths.Of(s.MotorPower) : DBNull.Value;
+        command.Parameters["$cpuTemp"].Value = inMotionV2 ? s.CpuTemp : DBNull.Value;
+        command.Parameters["$currentLimit"].Value = inMotionV2 ? Hundredths.Of(s.CurrentLimit) : DBNull.Value;
+        command.Parameters["$roll"].Value = inMotion ? Hundredths.Of(s.Roll) : DBNull.Value;
+        command.Parameters["$imuTemp"].Value = inMotion ? s.ImuTemp : DBNull.Value;
+        command.Parameters["$cpuLoad"].Value = kingSong ? s.CpuLoad : DBNull.Value;
+        command.Parameters["$speedLimit"].Value = kingSong ? Hundredths.Of(s.SpeedLimit) : DBNull.Value;
+        command.Parameters["$fanStatus"].Value = kingSong ? s.FanStatus : DBNull.Value;
+        command.Parameters["$hwPwm"].Value = kingSong ? s.OutputRaw : DBNull.Value;
+        // Режим — свободная строка, и пустая у нас значит «колесо не назвалось», а не «режим пуст».
+        command.Parameters["$mode"].Value = s.ModeStr.Length == 0 ? DBNull.Value : s.ModeStr;
+
         command.ExecuteNonQuery();
     }
 
@@ -364,11 +461,15 @@ public sealed partial class RideStore : IAsyncDisposable
         command.CommandText =
             """
             INSERT INTO telemetry (
-                ride_id, wheel_id, at, speed, voltage, phase_current, current, power, pwm,
-                battery_level, distance, totaldistance, system_temp, temp2, tilt, alert)
+                wheel_id, at, speed, voltage, phase_current, current, power, pwm,
+                battery_level, distance, totaldistance, system_temp, temp2, tilt, alert,
+                torque, motor_power, cpu_temp, current_limit, roll, imu_temp,
+                cpu_load, speed_limit, mode, fan_status, hw_pwm)
             VALUES (
-                $ride, $wheel, $at, $speed, $voltage, $phase, $current, $power, $pwm,
-                $battery, $distance, $total, $temp, $temp2, $tilt, $alert);
+                $wheel, $at, $speed, $voltage, $phase, $current, $power, $pwm,
+                $battery, $distance, $total, $temp, $temp2, $tilt, $alert,
+                $torque, $motorPower, $cpuTemp, $currentLimit, $roll, $imuTemp,
+                $cpuLoad, $speedLimit, $mode, $fanStatus, $hwPwm);
             """;
         // Added valueless: two of these carry text and the rest integers, and a type pinned here
         // would be a conversion waiting to happen.
@@ -378,8 +479,10 @@ public sealed partial class RideStore : IAsyncDisposable
 
     private static readonly string[] TelemetryParameters =
     [
-        "$ride", "$wheel", "$at", "$speed", "$voltage", "$phase", "$current", "$power", "$pwm",
+        "$wheel", "$at", "$speed", "$voltage", "$phase", "$current", "$power", "$pwm",
         "$battery", "$distance", "$total", "$temp", "$temp2", "$tilt", "$alert",
+        "$torque", "$motorPower", "$cpuTemp", "$currentLimit", "$roll", "$imuTemp",
+        "$cpuLoad", "$speedLimit", "$mode", "$fanStatus", "$hwPwm",
     ];
 
     /// <summary>
@@ -400,9 +503,9 @@ public sealed partial class RideStore : IAsyncDisposable
         if (_lastWheelState != state || row.At - _lastWheelStateAt >= _options.StateInterval)
         {
             using var command = Command(
-                "INSERT INTO wheel_state (ride_id, at, charging_status, wheel_alarm) VALUES ($ride, $at, $c, $a);", tx);
-            command.Parameters.AddWithValue("$ride", _rideId);
-            command.Parameters.AddWithValue("$at", Hundredths.Stamp(row.At));
+                "INSERT INTO wheel_state (wheel_id, at, charging_status, wheel_alarm) VALUES ($wheel, $at, $c, $a);", tx);
+            command.Parameters.AddWithValue("$wheel", _wheelId);
+            command.Parameters.AddWithValue("$at", row.At.ToUnixTimeMilliseconds());
             command.Parameters.AddWithValue("$c", state.ChargingStatus);
             command.Parameters.AddWithValue("$a", state.WheelAlarm ? 1 : 0);
             command.ExecuteNonQuery();
@@ -433,12 +536,12 @@ public sealed partial class RideStore : IAsyncDisposable
 
         using var command = Command(
             """
-            INSERT INTO pack_state (ride_id, at, pack_no, cell_min, cell_max, cell_avg,
+            INSERT INTO pack_state (wheel_id, at, pack_no, cell_min, cell_max, cell_avg,
                                     temp_min, temp_max, temp_avg, health, current)
-            VALUES ($ride, $at, $no, $cmin, $cmax, $cavg, $tmin, $tmax, $tavg, $health, $current);
+            VALUES ($wheel, $at, $no, $cmin, $cmax, $cavg, $tmin, $tmax, $tavg, $health, $current);
             """, tx);
-        command.Parameters.AddWithValue("$ride", _rideId);
-        command.Parameters.AddWithValue("$at", Hundredths.Stamp(row.At));
+        command.Parameters.AddWithValue("$wheel", _wheelId);
+        command.Parameters.AddWithValue("$at", row.At.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$no", packNo);
         command.Parameters.AddWithValue("$cmin", sample.CellMin);
         command.Parameters.AddWithValue("$cmax", sample.CellMax);
@@ -472,6 +575,7 @@ public sealed partial class RideStore : IAsyncDisposable
     }
 
     private sealed record Row(string Mac, string Protocol, DateTimeOffset At, TelemetrySnapshot Snapshot) : Work;
+    private sealed record MarkRide : Work;
     private sealed record CloseRide : Work;
     private sealed record DeleteRide(long RideId) : Work;
     private sealed record Barrier : Work;
@@ -512,6 +616,10 @@ public sealed partial class RideStore : IAsyncDisposable
     [LoggerMessage(EventId = 1610, EventName = "Ride.DbStarted", Level = LogLevel.Information,
         Message = "Ride.DbStarted #{RideId} {Mac}")]
     private partial void LogRideStarted(long rideId, string mac);
+
+    [LoggerMessage(EventId = 1616, EventName = "Ride.DbResumed", Level = LogLevel.Information,
+        Message = "Ride.DbResumed #{RideId} {Mac} — the ride the app did not survive carries on")]
+    private partial void LogRideResumed(long rideId, string mac);
 
     [LoggerMessage(EventId = 1611, EventName = "Ride.DbFinished", Level = LogLevel.Information,
         Message = "Ride.DbFinished #{RideId} {Rows} rows")]

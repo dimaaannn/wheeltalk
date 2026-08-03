@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace WheelTalk.Storage;
 
 /// <summary>
@@ -18,12 +16,4 @@ internal static class Hundredths
 
     /// <summary>Thousandths — cell voltages only, where the difference being watched is 4.167 against 4.190.</summary>
     public static long Thousandths(double value) => (long)Math.Round(value * 1000.0, MidpointRounding.AwayFromZero);
-
-    /// <summary>UTC, ISO-8601 with a Z. The one format that sorts as text, which is what the index needs.</summary>
-    public static string Stamp(DateTimeOffset at) =>
-        at.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
-
-    public static DateTimeOffset ParseStamp(string text) =>
-        DateTimeOffset.ParseExact(text, "yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
 }

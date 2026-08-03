@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Time.Testing;
 using WheelTalk.Core.Contracts;
+using WheelTalk.Storage;
 using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Storage;
@@ -7,6 +9,12 @@ namespace WheelTalk.Tests.Storage;
 /// What the database has to get right that a file never had to: a ride is a thing with a start and
 /// an end, the slow tables keep their own pace, and a recording the phone did not survive is still
 /// a recording when the app comes back.
+/// <para>
+/// После плана 23 сюда добавилось главное: <b>поток существует сам по себе</b>, а поездка — окно во
+/// времени поверх него. Отсюда и проверки: строка пишется без всякой поездки, поездка находит свои
+/// строки диапазоном, удаление поездки поток не трогает, а чистка по сроку не смеет опередить
+/// закрытие поездок.
+/// </para>
 /// </summary>
 public class RideStoreTests
 {
@@ -15,6 +23,8 @@ public class RideStoreTests
     private static readonly DateTimeOffset Start =
         new(2026, 7, 28, 20, 5, 0, TimeSpan.FromHours(3));
 
+    private static long Ms(DateTimeOffset at) => at.ToUnixTimeMilliseconds();
+
     [Fact]
     public async Task A_ride_gets_its_rows_and_a_closing_stamp()
     {
@@ -22,6 +32,7 @@ public class RideStoreTests
         var database = temp.Open();
         await using (var store = temp.Store(database))
         {
+            store.BeginRide();
             for (int i = 0; i < 5; i++)
             {
                 store.Write(Mac, "Veteran", Sample(speed: 1000 + i), Start.AddSeconds(i));
@@ -34,10 +45,61 @@ public class RideStoreTests
             Assert.Equal(5, store.RowsWritten);
         }
 
-        // Local time went in, UTC came out — the zone it was ridden in lives on the ride.
-        Assert.Equal("2026-07-28T17:05:00.000Z", temp.Scalar("SELECT started_at FROM ride;"));
-        Assert.Equal("2026-07-28T17:05:04.000Z", temp.Scalar("SELECT ended_at FROM ride;"));
+        // Unix ms пошли в базу, местное время — на экран: зона живёт при поездке и служит показу.
+        Assert.Equal(Ms(Start), temp.Scalar("SELECT started_at FROM ride;"));
+        Assert.Equal(Ms(Start.AddSeconds(4)), temp.Scalar("SELECT ended_at FROM ride;"));
         Assert.Equal(180L, temp.Scalar("SELECT utc_offset_minutes FROM ride;"));
+    }
+
+    /// <summary>
+    /// Главное, ради чего затевался план 23 §5: истории больше не нужно разрешения. Строка потока
+    /// пишется сама по себе, а поездок при этом нет вовсе — раньше без нажатой кнопки не было ни
+    /// одной строки, и графику было не из чего строиться.
+    /// </summary>
+    [Fact]
+    public async Task The_stream_is_written_with_no_ride_marked_at_all()
+    {
+        using var temp = new TempDatabase();
+        await using var store = temp.Store(temp.Open());
+
+        for (int i = 0; i < 5; i++) store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(i));
+        await store.FlushAsync();
+
+        Assert.Equal(5, temp.Count("telemetry"));
+        Assert.Equal(1, temp.Count("wheel"));
+        Assert.Equal(0, temp.Count("ride"));
+        // Медленные таблицы тоже: план 9 просит `wheel_state` раз в минуту при подключённом колесе
+        // и без поездки — на стоянке строится кривая «напряжение покоя ↔ заряд».
+        Assert.Equal(1, temp.Count("wheel_state"));
+    }
+
+    /// <summary>
+    /// Разметка — это окно во времени, и своими считаются строки внутри него. Кадры до нажатия
+    /// кнопки и после «стоп» остаются в потоке, но поездке не принадлежат.
+    /// </summary>
+    [Fact]
+    public async Task A_ride_owns_the_rows_inside_its_window_and_no_others()
+    {
+        using var temp = new TempDatabase();
+        var database = temp.Open();
+        await using (var store = temp.Store(database))
+        {
+            for (int i = 0; i < 3; i++) store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(i));
+
+            store.BeginRide();
+            for (int i = 3; i < 8; i++) store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(i));
+            await store.CloseRideAsync();
+
+            for (int i = 8; i < 12; i++) store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(i));
+            await store.FlushAsync();
+        }
+
+        Assert.Equal(12, temp.Count("telemetry"));
+
+        var ride = Assert.Single(new RideExporter(database).Rides());
+        Assert.Equal(5, ride.Rows);
+        Assert.Equal(Start.AddSeconds(3), ride.StartedAt);
+        Assert.Equal(Start.AddSeconds(7), ride.EndedAt);
     }
 
     /// <summary>
@@ -52,6 +114,7 @@ public class RideStoreTests
         var database = temp.Open();
         await using var store = temp.Store(database);
 
+        store.BeginRide();
         store.Write(Mac, "Veteran", Sample(), Start);
         await store.FlushAsync();
         Assert.Null(temp.Scalar("SELECT model FROM ride;"));
@@ -66,6 +129,7 @@ public class RideStoreTests
     /// <summary>
     /// A ride belongs to one wheel. The recorder already closed its file when the MAC changed; the
     /// database has to do the same, or two wheels end up in one ride and every summary over it lies.
+    /// Кнопку при этом никто не отпускал — разметка продолжается на новом колесе своей поездкой.
     /// </summary>
     [Fact]
     public async Task Another_wheel_ends_the_ride_and_starts_the_next()
@@ -74,6 +138,7 @@ public class RideStoreTests
         var database = temp.Open();
         await using var store = temp.Store(database);
 
+        store.BeginRide();
         store.Write(Mac, "Veteran", Sample(), Start);
         store.Write("88:25:83:F2:1A:98", "Gotway", Sample(), Start.AddSeconds(1));
         await store.CloseRideAsync();
@@ -104,6 +169,38 @@ public class RideStoreTests
 
         Assert.Equal(1, temp.Count("telemetry", "alert IS NOT NULL"));
         Assert.Equal("Speed2", temp.Scalar("SELECT alert FROM telemetry WHERE alert IS NOT NULL;"));
+    }
+
+    /// <summary>
+    /// Одиннадцать величин, которых база не видела до плана 23. Каждая сообщается ровно одним
+    /// семейством протоколов, и у остальных её нет — не ноль, а нет: NULL значит «колесо молчит»,
+    /// и это несущий смысл. Ровная линия по нулю на графике выглядит как показание.
+    /// </summary>
+    [Fact]
+    public async Task What_only_one_protocol_reports_is_null_for_the_others()
+    {
+        using var temp = new TempDatabase();
+        await using var store = temp.Store(temp.Open());
+
+        store.Write("88:25:83:F2:1A:11", "KingSong", Sample() with
+        {
+            WheelType = WheelType.KingSong,
+            CpuLoad = 42,
+            SpeedLimit = 31.5,
+            FanStatus = 1,
+            OutputRaw = 8125,
+            ModeStr = "3",
+        }, Start);
+        store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(1));
+        await store.FlushAsync();
+
+        Assert.Equal(42L, temp.Scalar("SELECT cpu_load FROM telemetry WHERE cpu_load IS NOT NULL;"));
+        Assert.Equal(3150L, temp.Scalar("SELECT speed_limit FROM telemetry WHERE speed_limit IS NOT NULL;"));
+        Assert.Equal(8125L, temp.Scalar("SELECT hw_pwm FROM telemetry WHERE hw_pwm IS NOT NULL;"));
+        Assert.Equal("3", temp.Scalar("SELECT mode FROM telemetry WHERE mode IS NOT NULL;"));
+
+        // У Veteran ничего этого нет — ни своего, ни чужого.
+        Assert.Equal(1, temp.Count("telemetry", "cpu_load IS NULL AND torque IS NULL AND roll IS NULL"));
     }
 
     /// <summary>
@@ -208,8 +305,8 @@ public class RideStoreTests
 
     /// <summary>
     /// The phone died mid-ride. Every row is on disk and only the closing stamp is missing, so the
-    /// next start closes the ride where its last row is — and does not confuse it with the ride
-    /// about to begin.
+    /// next start closes the ride where its last row is — и делает это, потому что с последнего
+    /// кадра прошло больше трёх часов: столько молчания означает, что прошлая сессия точно не та.
     /// </summary>
     [Fact]
     public async Task A_ride_the_app_never_finished_is_closed_at_the_next_start()
@@ -218,16 +315,51 @@ public class RideStoreTests
         var database = temp.Open();
         await using var store = temp.Store(database);
 
+        store.BeginRide();
         store.Write(Mac, "Veteran", Sample(), Start);
         store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(30));
         await store.FlushAsync();
         Assert.Equal(1, temp.Count("ride", "ended_at IS NULL"));
 
         // Nothing else stands in for a process that was killed: the store is simply never told.
-        temp.Open();
+        temp.Open(now: At(Start.AddHours(4)));
 
         Assert.Equal(0, temp.Count("ride", "ended_at IS NULL"));
-        Assert.Equal("2026-07-28T17:05:30.000Z", temp.Scalar("SELECT ended_at FROM ride;"));
+        Assert.Equal(Ms(Start.AddSeconds(30)), temp.Scalar("SELECT ended_at FROM ride;"));
+    }
+
+    /// <summary>
+    /// Убило посреди покатушки, перезапустил через пять минут — поездка та же, и кадры лягут в неё
+    /// же (план 23 §5.4). Три часа здесь не «когда кончилась поездка», а «прошлая сессия уже точно
+    /// не та»; пять минут — та самая.
+    /// </summary>
+    [Fact]
+    public async Task A_ride_left_open_minutes_ago_carries_on_instead_of_starting_a_second_one()
+    {
+        using var temp = new TempDatabase();
+        await using (var store = temp.Store(temp.Open()))
+        {
+            store.BeginRide();
+            store.Write(Mac, "Veteran", Sample(), Start);
+            await store.FlushAsync();
+        }
+
+        // Приложение убито: `CloseRideAsync` никто не звал, и строка осталась без `ended_at`.
+        temp.Execute("UPDATE ride SET ended_at = NULL;");
+
+        var database = temp.Open(now: At(Start.AddMinutes(5)));
+        Assert.Equal(1, temp.Count("ride", "ended_at IS NULL"));
+
+        await using (var store = temp.Store(database))
+        {
+            store.BeginRide();
+            store.Write(Mac, "Veteran", Sample(), Start.AddMinutes(6));
+            await store.CloseRideAsync();
+        }
+
+        Assert.Equal(1, temp.Count("ride"));
+        Assert.Equal(Ms(Start), temp.Scalar("SELECT started_at FROM ride;"));
+        Assert.Equal(Ms(Start.AddMinutes(6)), temp.Scalar("SELECT ended_at FROM ride;"));
     }
 
     /// <summary>
@@ -239,36 +371,36 @@ public class RideStoreTests
     {
         using var temp = new TempDatabase();
         temp.Open();
-        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={temp.Path_}"))
-        {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA user_version = 999;";
-            command.ExecuteNonQuery();
-        }
+        temp.Execute("PRAGMA user_version = 999;");
 
         var database = temp.Open();
         Assert.False(database.IsWritable);
 
         await using var store = temp.Store(database);
+        store.BeginRide();
         store.Write(Mac, "Veteran", Sample(), Start);
         await store.FlushAsync();
 
         Assert.Equal(0, temp.Count("ride"));
+        Assert.Equal(0, temp.Count("telemetry"));
     }
 
     /// <summary>
-    /// Deleting a ride takes its rows with it. Nothing cascades in the schema on purpose, so this
-    /// is the test that says the four tables are actually all named.
+    /// Удаление поездки уносит саму поездку и ничего больше. Раньше оно забирало и данные — это и
+    /// было то, от чего ушли: их нельзя было чистить, не трогая поездок (план 23 §1, §5.1 п. 5).
+    /// Поток переживает удаление и уходит своим сроком.
     /// </summary>
     [Fact]
-    public async Task Deleting_a_ride_takes_every_row_written_under_it()
+    public async Task Deleting_a_ride_leaves_the_stream_where_it_was()
     {
         using var temp = new TempDatabase();
         await using var store = temp.Store(temp.Open());
 
+        store.BeginRide();
         for (int i = 0; i < 5; i++) store.Write(Mac, "Veteran", Sample(), Start.AddSeconds(i));
         await store.CloseRideAsync();
+
+        store.BeginRide();
         for (int i = 0; i < 5; i++) store.Write(Mac, "Veteran", Sample(), Start.AddMinutes(10).AddSeconds(i));
         await store.CloseRideAsync();
 
@@ -276,9 +408,7 @@ public class RideStoreTests
         await store.DeleteRideAsync(doomed);
 
         Assert.Equal(1, temp.Count("ride"));
-        Assert.Equal(0, temp.Count("telemetry", $"ride_id = {doomed}"));
-        Assert.Equal(0, temp.Count("wheel_state", $"ride_id = {doomed}"));
-        Assert.Equal(5, temp.Count("telemetry"));
+        Assert.Equal(10, temp.Count("telemetry"));
     }
 
     /// <summary>
@@ -292,6 +422,7 @@ public class RideStoreTests
         using var temp = new TempDatabase();
         await using var store = temp.Store(temp.Open());
 
+        store.BeginRide();
         store.Write(Mac, "Veteran", Sample(), Start);
         await store.FlushAsync();
 
@@ -321,8 +452,10 @@ public class RideStoreTests
         await store.FlushAsync();
 
         Assert.Equal(-1250L, temp.Scalar("SELECT current FROM pack_state WHERE pack_no = 1;"));
-        Assert.Null(temp.Scalar("SELECT current FROM pack_state WHERE pack_no = 2;"));
+        Assert.Equal(0, temp.Count("pack_state", "pack_no = 2"));
     }
+
+    private static FakeTimeProvider At(DateTimeOffset now) => new(now);
 
     private static TelemetrySnapshot Sample(int speed = 1000) => new()
     {

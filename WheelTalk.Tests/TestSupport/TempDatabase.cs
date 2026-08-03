@@ -22,7 +22,19 @@ public sealed class TempDatabase : IDisposable
 
     public string Path_ { get; }
 
-    public RideDatabase Open() => RideDatabase.Open(Path_, TimeProvider.System, NullLogger<RideDatabase>.Instance);
+    /// <summary>
+    /// Открывает базу так же, как это делает приложение при запуске: миграции, закрытие брошенных
+    /// поездок, досчёт итогов и чистка потока по сроку — в этом порядке. Часы отдельные, потому что
+    /// и закрытие, и чистка меряют от «сейчас», а поездка в тесте случилась в прошлом.
+    /// </summary>
+    public RideDatabase Open(StorageOptions? options = null, TimeProvider? now = null) =>
+        RideDatabase.Open(
+            Path_,
+            now ?? TimeProvider.System,
+            NullLogger<RideDatabase>.Instance,
+            // По умолчанию не чистить: срок хранения проверяется своим тестом, а всем остальным он
+            // мешал бы — отсчёты в них лежат в прошлом, и суточный срок снёс бы их до проверки.
+            options ?? new StorageOptions { TelemetryRetention = TimeSpan.Zero });
 
     public RideStore Store(RideDatabase database, StorageOptions? options = null) =>
         new(database,

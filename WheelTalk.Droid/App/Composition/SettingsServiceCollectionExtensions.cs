@@ -66,7 +66,10 @@ public static class SettingsServiceCollectionExtensions
         services.AddSingleton(sp => RideDatabase.Open(
             Path.Combine(RideFiles.Root, "rides.db"),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<ILogger<RideDatabase>>()));
+            sp.GetRequiredService<ILogger<RideDatabase>>(),
+            // Открытие базы — это и закрытие брошенных поездок, и досчёт итогов, и чистка потока по
+            // сроку. Сроки живут тут же, рядом с интервалом записи (план 23 §5.1, §5.4).
+            sp.GetRequiredService<IOptions<StorageOptions>>().Value));
         services.AddSingleton(sp => new RideStore(
             sp.GetRequiredService<RideDatabase>(),
             sp.GetRequiredService<TimeProvider>(),

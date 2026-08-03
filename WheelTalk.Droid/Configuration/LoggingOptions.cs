@@ -12,6 +12,13 @@ public sealed class LoggingOptions
     public bool RawDump { get; set; }
 
     /// <summary>
+    /// Когда писать поток телеметрии — см. <see cref="Configuration.TelemetryRecording"/>. Кнопка
+    /// «Запись» от этого меняет смысл: в <see cref="TelemetryRecording.Always"/> она только
+    /// размечает поток («отсюда покатушка»), в остальных остаётся тем, чем была.
+    /// </summary>
+    public TelemetryRecording TelemetryRecording { get; set; } = TelemetryRecording.RideOnly;
+
+    /// <summary>
     /// Начинать запись поездки самой, как только колесо на связи. **Включено** по умолчанию, в
     /// отличие от оригинала: там журнал — дело добровольное, а у нас на записанных поездках
     /// держится всё остальное, и забытая кнопка стоит целого выхода. Именно так и вышло 28.07.

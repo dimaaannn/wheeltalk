@@ -32,4 +32,12 @@ public sealed class QuickSheetCommand
     /// actions (record, reset peaks) are synchronous and always "succeed".
     /// </summary>
     public required Func<Task> Action { get; init; }
+
+    /// <summary>
+    /// A second, optional behaviour for the same button — plan 23 §5.8's "second way in" for the
+    /// record command: a long press opens the recording screen while a short tap keeps doing what it
+    /// always did. Null means the button has none; runs through the same highlight/autohide path as
+    /// <see cref="Action"/>, it is only the gesture that differs.
+    /// </summary>
+    public Func<Task>? LongPress { get; init; }
 }

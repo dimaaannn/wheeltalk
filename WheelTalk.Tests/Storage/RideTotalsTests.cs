@@ -133,6 +133,8 @@ public class RideTotalsTests
         using var temp = new TempDatabase();
         await using (var store = temp.Store(temp.Open()))
         {
+            store.BeginRide();
+
             // Десять секунд под нагрузкой в киловатт: девять интервалов по 1000 Вт·с.
             for (int i = 0; i < 10; i++)
             {
@@ -179,6 +181,7 @@ public class RideTotalsTests
         using var temp = new TempDatabase();
         await using (var store = temp.Store(temp.Open()))
         {
+            store.BeginRide();
             for (int i = 0; i < 5; i++)
             {
                 store.Write(Mac, "Veteran", Sample(Riding, 12_000 + i * 10), Start.AddSeconds(i));
@@ -216,6 +219,7 @@ public class RideTotalsTests
         using var temp = new TempDatabase();
         await using (var store = temp.Store(temp.Open()))
         {
+            store.BeginRide();
             for (int i = 0; i < samples.Length; i++)
             {
                 var snapshot = Sample(

@@ -56,13 +56,17 @@ public sealed class UserSettingsStore(
         root[LoggingOptions.SectionName] = new JsonObject
         {
             [nameof(LoggingOptions.RawDump)] = logging.RawDump,
+            // Строкой, не числом перечисления: конфигурация читает её тем же биндером, что и
+            // appsettings.json ("RideOnly" и т. п.), а не порядковым номером, который сдвинется
+            // от любой правки enum-а.
+            [nameof(LoggingOptions.TelemetryRecording)] = logging.TelemetryRecording.ToString(),
             [nameof(LoggingOptions.AutoStartRide)] = logging.AutoStartRide,
             [nameof(LoggingOptions.AutoStartAboveKmh)] = logging.AutoStartAboveKmh,
         };
 
         File.WriteAllText(AppConfiguration.UserSettingsPath, root.ToJsonString(Formatting));
-        logger.LogInformation("Settings.LoggingSaved {RawDump} {AutoStartRide} {AutoStartAboveKmh}",
-            logging.RawDump, logging.AutoStartRide, logging.AutoStartAboveKmh);
+        logger.LogInformation("Settings.LoggingSaved {RawDump} {TelemetryRecording} {AutoStartRide} {AutoStartAboveKmh}",
+            logging.RawDump, logging.TelemetryRecording, logging.AutoStartRide, logging.AutoStartAboveKmh);
     }
 
     private JsonObject Read()

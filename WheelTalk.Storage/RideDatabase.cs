@@ -46,11 +46,13 @@ public sealed partial class RideDatabase
     /// ride currently being recorded because the previous one left a bad file would be the worse
     /// failure of the two.
     /// </summary>
-    public static RideDatabase Open(string path, TimeProvider timeProvider, ILogger<RideDatabase> logger)
+    public static RideDatabase Open(
+        string path, TimeProvider timeProvider, ILogger<RideDatabase> logger, StorageOptions? options = null)
     {
+        options ??= new StorageOptions();
         try
         {
-            return OpenCore(path, logger);
+            return OpenCore(path, timeProvider, options, logger);
         }
         catch (SqliteException ex)
         {
@@ -58,7 +60,7 @@ public sealed partial class RideDatabase
             // can still be looked at, and start over.
             string moved = $"{path}.broken-{timeProvider.GetUtcNow():yyyyMMdd_HHmmss}";
             MoveAside(path, moved, logger, ex);
-            return OpenCore(path, logger);
+            return OpenCore(path, timeProvider, options, logger);
         }
     }
 
@@ -71,7 +73,8 @@ public sealed partial class RideDatabase
         return connection;
     }
 
-    private static RideDatabase OpenCore(string path, ILogger<RideDatabase> logger)
+    private static RideDatabase OpenCore(
+        string path, TimeProvider timeProvider, StorageOptions options, ILogger<RideDatabase> logger)
     {
         string? folder = System.IO.Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
@@ -105,12 +108,24 @@ public sealed partial class RideDatabase
         }
 
         var database = new RideDatabase(path, writable: true, logger);
-        database.CloseAbandonedRides(connection);
+
+        // ПОРЯДОК ЗДЕСЬ НЕСУЩИЙ, А НЕ КОСМЕТИЧЕСКИЙ (план 23 §5.4). Поездка закрывается последним
+        // кадром телеметрии, итоги считаются по кадрам — а чистка кадры удаляет. Опередит она эти
+        // два шага, и закрывать поездку станет нечем, а считать итоги — не из чего.
+        //
+        // Держится это на том, что телеметрию удаляет приложение при запуске, а не время само по
+        // себе: не запускали двое суток — не было и чистки, кадры целы все. Конструкция сломается
+        // в тот день, когда чистку вынесут в фоновую задачу по расписанию. Чистка не выполняется
+        // нигде, кроме как здесь, после закрытия поездок.
+        long now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        database.CloseAbandonedRides(connection, now - (long)options.AbandonedRideGap.TotalMilliseconds);
 
         // After closing them, not before: a ride still open has no end to measure to. Rides from
         // before the totals existed are caught by the same pass.
         int filled = RideTotalsWriter.Backfill(connection);
         if (filled > 0) LogTotalsFilled(logger, filled);
+
+        database.PurgeOldTelemetry(connection, now, options.TelemetryRetention);
 
         return database;
     }
@@ -120,20 +135,57 @@ public sealed partial class RideDatabase
     /// system killed it. The rows are all there; only the closing stamp is missing, and the last
     /// row is exactly where the ride stopped. Rides that never got a row are closed where they
     /// started, so nothing is left open to be confused with the ride about to begin.
+    /// <para>
+    /// Закрывается не всякая открытая, а только та, с последнего кадра которой прошло больше
+    /// <see cref="StorageOptions.AbandonedRideGap"/> (решение владельца 03.08.2026, план 23 §5.4).
+    /// Столько молчания означает «прошлая сессия уже точно не та». Меньше — поездка остаётся
+    /// открытой и продолжается той же: убило посреди покатушки, перезапустил через пять минут,
+    /// кадры лягут в неё же (<c>RideStore.AdoptOpenRide</c>).
+    /// </para>
     /// </summary>
-    private void CloseAbandonedRides(SqliteConnection connection)
+    private void CloseAbandonedRides(SqliteConnection connection, long staleBefore)
     {
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
-            UPDATE ride
+            $"""
+            UPDATE ride AS r
                SET ended_at = COALESCE(
-                       (SELECT MAX(at) FROM telemetry WHERE telemetry.ride_id = ride.id),
-                       started_at)
-             WHERE ended_at IS NULL;
+                       (SELECT MAX(t.at) FROM telemetry t WHERE {RideWindow.CorrelatedFilter}),
+                       r.started_at)
+             WHERE r.ended_at IS NULL
+               AND COALESCE(
+                       (SELECT MAX(t.at) FROM telemetry t WHERE {RideWindow.CorrelatedFilter}),
+                       r.started_at) < $stale;
             """;
+        command.Parameters.AddWithValue("$stale", staleBefore);
         int closed = command.ExecuteNonQuery();
         if (closed > 0) LogAbandonedClosed(_logger, closed);
+    }
+
+    /// <summary>
+    /// Сносит поток старше срока хранения — всё, без исключений для размеченного поездками:
+    /// очистки раздельны и друг о друге не знают (план 23 §5.1 п. 5). Итоги покатушки к этому
+    /// моменту уже посчитаны и лежат при ней, и после чистки от неё остаются именно они.
+    /// <para>
+    /// Медленные таблицы уходят вместе с телеметрией: они тот же поток, только реже. Два разных
+    /// срока в одном хранилище — это два ответа на вопрос «что у меня есть за прошлую неделю».
+    /// </para>
+    /// </summary>
+    private void PurgeOldTelemetry(SqliteConnection connection, long now, TimeSpan retention)
+    {
+        if (retention <= TimeSpan.Zero) return;
+
+        long cutoff = now - (long)retention.TotalMilliseconds;
+        int removed = 0;
+        foreach (string table in (string[])["telemetry", "wheel_state", "pack_state"])
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"DELETE FROM {table} WHERE at < $cutoff;";
+            command.Parameters.AddWithValue("$cutoff", cutoff);
+            removed += command.ExecuteNonQuery();
+        }
+
+        if (removed > 0) LogTelemetryPurged(_logger, removed, retention);
     }
 
     private static void MoveAside(string path, string moved, ILogger logger, Exception cause)
@@ -195,4 +247,8 @@ public sealed partial class RideDatabase
     [LoggerMessage(EventId = 1605, EventName = "Db.TotalsFilled", Level = LogLevel.Information,
         Message = "Db.TotalsFilled {Count} rides")]
     private static partial void LogTotalsFilled(ILogger logger, int count);
+
+    [LoggerMessage(EventId = 1606, EventName = "Db.TelemetryPurged", Level = LogLevel.Information,
+        Message = "Db.TelemetryPurged {Count} rows older than {Retention}")]
+    private static partial void LogTelemetryPurged(ILogger logger, int count, TimeSpan retention);
 }

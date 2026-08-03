@@ -26,11 +26,14 @@ public sealed class RideExporter(RideDatabase database)
         // Newest first, and out of the table rather than off the file system. The original walks its
         // log folder for this, which is why its list carries whatever else was ever put there and
         // why the order is up to the file system on older Android.
+        // Строки поездки — диапазоном по времени, а не по колонке: связь выводима, хранимая копия
+        // разошлась бы с границами при первой их правке (план 23 §5.1). Подзапрос идёт по тому же
+        // индексу (wheel_id, at), что и всё остальное.
         command.CommandText =
-            """
+            $"""
             SELECT r.id, w.mac, w.protocol, r.started_at, r.ended_at, r.utc_offset_minutes,
                    COALESCE(r.model, ''), COALESCE(r.version, ''),
-                   (SELECT COUNT(*) FROM telemetry t WHERE t.ride_id = r.id),
+                   (SELECT COUNT(*) FROM telemetry t WHERE {RideWindow.CorrelatedFilter}),
                    r.distance_m, r.duration_s, r.moving_s, r.avg_speed,
                    r.max_speed, r.max_pwm, r.max_power, r.max_current, r.consumption_wh
               FROM ride r JOIN wheel w ON w.id = r.wheel_id
@@ -46,8 +49,8 @@ public sealed class RideExporter(RideDatabase database)
                 reader.GetInt64(0),
                 reader.GetString(1),
                 reader.GetString(2),
-                Hundredths.ParseStamp(reader.GetString(3)).ToOffset(offset),
-                reader.IsDBNull(4) ? null : Hundredths.ParseStamp(reader.GetString(4)).ToOffset(offset),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)).ToOffset(offset),
+                reader.IsDBNull(4) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)).ToOffset(offset),
                 reader.GetString(6),
                 reader.GetString(7),
                 reader.GetInt32(8),
@@ -124,23 +127,30 @@ public sealed class RideExporter(RideDatabase database)
     {
         using var connection = database.Connect();
 
+        var window = RideWindow.Read(connection, null, rideId)
+            ?? throw new ArgumentException($"There is no ride {rideId} in {connection.DataSource}.", nameof(rideId));
         var offset = TimeSpan.FromMinutes(RideOffsetMinutes(connection, rideId));
 
         using var command = connection.CreateCommand();
+        // По времени, а не по rowid: строки поездки теперь находятся окном, и порядок внутри него
+        // задаёт `at`. Ничья в миллисекунде разрешается rowid — порядок строк несёт смысл, на нём
+        // держится тревога, которую нельзя восстановить из снимка задним числом.
         command.CommandText =
-            """
+            $"""
             SELECT at, speed, voltage, phase_current, current, power, pwm, battery_level,
-                   distance, totaldistance, system_temp, temp2, tilt, alert
-              FROM telemetry WHERE ride_id = $ride ORDER BY rowid;
+                   distance, totaldistance, system_temp, temp2, tilt, alert,
+                   torque, motor_power, cpu_temp, current_limit, roll, imu_temp,
+                   cpu_load, speed_limit, mode, fan_status, hw_pwm
+              FROM telemetry WHERE {RideWindow.Filter} ORDER BY at, rowid;
             """;
-        command.Parameters.AddWithValue("$ride", rideId);
+        window.Bind(command);
 
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
             // Local time, as the original writes it: the ride is read back in the zone it happened
             // in, which is the one thing a UTC stamp cannot tell you on its own.
-            var at = Hundredths.ParseStamp(reader.GetString(0)).ToOffset(offset);
+            var at = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(0)).ToOffset(offset);
 
             // A NULL here is "the protocol never said", and the live snapshot had a zero in that
             // field — so a zero is what the export prints, exactly as it printed then. The column
@@ -160,11 +170,32 @@ public sealed class RideExporter(RideDatabase database)
                 Temperature2Raw = reader.IsDBNull(11) ? 0 : reader.GetInt32(11),
                 Angle = reader.IsDBNull(12) ? 0.0 : reader.GetInt64(12) / 100.0,
                 Alert = reader.IsDBNull(13) ? "" : reader.GetString(13),
+
+                // Одиннадцать величин плана 23 §1. Формата CSV они не касаются — там `torque`,
+                // `roll` и `mode` печатаются константами оригинала, — но плеер и графики читают
+                // отсюда, и без них запись была бы богаче чтения.
+                Torque = Hundredths(reader, 14),
+                MotorPower = Hundredths(reader, 15),
+                CpuTemp = Whole(reader, 16),
+                CurrentLimit = Hundredths(reader, 17),
+                Roll = Hundredths(reader, 18),
+                ImuTemp = Whole(reader, 19),
+                CpuLoad = Whole(reader, 20),
+                SpeedLimit = Hundredths(reader, 21),
+                ModeStr = reader.IsDBNull(22) ? "" : reader.GetString(22),
+                FanStatus = Whole(reader, 23),
+                OutputRaw = Whole(reader, 24),
             };
 
             yield return (at, snapshot);
         }
     }
+
+    private static double Hundredths(SqliteDataReader reader, int column) =>
+        reader.IsDBNull(column) ? 0.0 : reader.GetInt64(column) / 100.0;
+
+    private static int Whole(SqliteDataReader reader, int column) =>
+        reader.IsDBNull(column) ? 0 : reader.GetInt32(column);
 
     private static int RideOffsetMinutes(SqliteConnection connection, long rideId)
     {

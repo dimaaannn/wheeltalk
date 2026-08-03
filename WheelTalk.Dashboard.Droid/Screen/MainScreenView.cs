@@ -6,11 +6,16 @@ using WheelTalk.Dashboard.Droid.Layouts;
 namespace WheelTalk.Dashboard.Droid.Screen;
 
 /// <summary>
-/// Визуальная композиция главного экрана целиком: полоса тревоги колеса, панель
-/// <see cref="TwinTapesDashboard"/> и шторка быстрых команд поверх. Живёт в библиотеке, а не в
-/// приложении, чтобы стенд показывал ровно тот экран, который видит райдер, — тем же классом, а не
-/// похожей копией (тот же ход, которым плашка связи и точка записи раньше переехали внутрь панели).
-/// Приложению остаётся проводка: данные, команды шторки, инсеты и жесты.
+/// Рамка хозяина главного экрана: полоса тревоги колеса сверху, сам экран (<see cref="Current"/>,
+/// пока он один — панель <see cref="TwinTapesDashboard"/>) и шторка быстрых команд поверх. Живёт в
+/// библиотеке, а не в приложении, чтобы стенд показывал ровно то, что видит райдер, — тем же
+/// классом, а не похожей копией (тот же ход, которым плашка связи и точка записи раньше переехали
+/// внутрь панели). Приложению остаётся проводка: данные, команды шторки, инсеты и жесты.
+/// <para>
+/// Полоса тревоги и шторка — общие для всех экранов и принадлежат рамке, а не экрану
+/// (план 17 §5: «свою шторку у варианта» заводить запрещено; полоса тревоги показывает и тревогу
+/// колеса, и служебное «ещё раз — выход», которое не про показ данных вовсе).
+/// </para>
 /// <para>
 /// Потолок ширины 480 dp (adaptive-layout.md §2) стоит здесь, на корне, а не в
 /// <c>TwinTapesDashboard.onMeasure</c>: полоса тревоги и шторка — не канва, им тоже нельзя
@@ -24,7 +29,7 @@ public sealed class MainScreenView : FrameLayout
 
     public MainScreenView(Context context, DashboardOptions options) : base(context)
     {
-        Dashboard = new TwinTapesDashboard(context, options);
+        Current = new TwinTapesDashboard(context, options);
         Alert = new AlertStrip(context);
         Sheet = new QuickSheet(context);
 
@@ -32,7 +37,7 @@ public sealed class MainScreenView : FrameLayout
         content.SetBackgroundColor(options.Palette.Background);
         content.AddView(Alert, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
-        content.AddView(Dashboard, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
+        content.AddView(Current.View, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
 
         SetBackgroundColor(options.Palette.Background);
         _content = content;
@@ -45,7 +50,11 @@ public sealed class MainScreenView : FrameLayout
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
     }
 
-    public TwinTapesDashboard Dashboard { get; }
+    /// <summary>
+    /// Показанный сейчас экран. Второго пока нет и в этом шаге не появится (план 23 §8, гейт 1):
+    /// смена содержимого — следующий шаг, здесь заводится только сам контракт.
+    /// </summary>
+    public IMainScreen Current { get; }
 
     public AlertStrip Alert { get; }
 
