@@ -100,7 +100,8 @@ internal static class DisplayPage
                 LabelKey = "SettingWarnVolts",
                 HintKey = "SettingWarnVoltsHint",
                 UnitKey = "UnitVolts",
-                Maximum = 160,
+                // 250 — запас над полным зарядом 50S-пака (около 210 В у EX30, V14 и им подобных).
+                Maximum = 250,
                 Step = 0.5,
                 Decimals = 1,
                 Current = () => SettingsCatalogue.Fixed(dashboard.WarnVolts, 1),
@@ -114,7 +115,8 @@ internal static class DisplayPage
                 SectionKey = "SectionVoltageTape",
                 LabelKey = "SettingDangerVolts",
                 UnitKey = "UnitVolts",
-                Maximum = 160,
+                // 250 — тот же запас, что у SettingWarnVolts выше: обе ручки одной шкалы.
+                Maximum = 250,
                 Step = 0.5,
                 Decimals = 1,
                 Current = () => SettingsCatalogue.Fixed(dashboard.DangerVolts, 1),
@@ -132,7 +134,8 @@ internal static class DisplayPage
                 LabelKey = "SettingEmptyVolts",
                 HintKey = "SettingEmptyVoltsHint",
                 UnitKey = "UnitVolts",
-                Maximum = 160,
+                // 250 — тот же запас, что у SettingWarnVolts выше: обе ручки одной шкалы.
+                Maximum = 250,
                 Current = () => SettingsCatalogue.Fixed(dashboard.EmptyVolts, 0),
                 Apply = text => dashboard.EmptyVolts = SettingsCatalogue.ParseNumber(text),
             },
@@ -242,7 +245,9 @@ internal static class DisplayPage
                 HintKey = "SettingHideTenthsHint",
                 UnitKey = "UnitKmh",
                 GlobalOnly = true,
-                Maximum = 80,
+                // 150 — с запасом выше крейсерской скорости самых быстрых колёс 2026 года, чтобы
+                // порог не упирался раньше самой скорости.
+                Maximum = 150,
                 Current = () => SettingsCatalogue.Fixed(dashboard.HideTenthsAbove, 0),
                 Apply = text => dashboard.HideTenthsAbove = SettingsCatalogue.ParseNumber(text),
             },
@@ -256,7 +261,8 @@ internal static class DisplayPage
                 HintKey = "SettingHideExtrasHint",
                 UnitKey = "UnitKmh",
                 GlobalOnly = true,
-                Maximum = 80,
+                // 150 — тот же потолок, что у SettingHideTenths выше.
+                Maximum = 150,
                 Current = () => SettingsCatalogue.Fixed(dashboard.HideExtrasAbove, 0),
                 Apply = text => dashboard.HideExtrasAbove = SettingsCatalogue.ParseNumber(text),
             },

@@ -257,9 +257,11 @@ internal static class WheelPage
                 HintKey = "SettingRotationVoltageHint",
                 IsVisible = () => !wheel.HwPwm,
                 Minimum = 20,
-                // 168 В (40S) — самый большой пак в списке напряжений выше; 250 из оригинала
-                // недостижимы ни для одного колеса, которое мы умеем читать.
-                Maximum = 180,
+                // Поле не Gotway-only: InMotion тоже считает ШИМ программно (CalculatePwm,
+                // HwPwm там никогда не взводится) и держит его паки до 50S — под 174 В у EX30 и
+                // выше. 250 — запас над полным зарядом такого пака, а не над списком GotwayVoltage
+                // выше (тот 40S-предел касается только выбора из Choices, не этой шкалы).
+                Maximum = 250,
                 Step = 0.1,
                 Decimals = 1,
                 Current = () => SettingsCatalogue.Fixed(wheel.RotationVoltage / 10.0, 1),

@@ -73,9 +73,9 @@ public sealed class LabSettingsActivity : Activity
         Note("Лента слева. Пороги абсолютные: зона стоит на шкале неподвижно. Ноль выключает зону.");
         Slider("Видно на ленте, В", 4, 40, options.SagWindowVolts, "F0", v => options.SagWindowVolts = v);
         Toggle("Растягивать под размах поездки", options.SagAutoScale, v => options.SagAutoScale = v);
-        Slider("Жёлтая ниже, В", 0, 160, options.WarnVolts, "F1", v => options.WarnVolts = v);
-        Slider("Красная ниже, В", 0, 160, options.DangerVolts, "F1", v => options.DangerVolts = v);
-        Slider("Пак пуст ниже, В (0 — выкл.)", 0, 160, options.EmptyVolts, "F0", v => options.EmptyVolts = v);
+        Slider("Жёлтая ниже, В", 0, 250, options.WarnVolts, "F1", v => options.WarnVolts = v);
+        Slider("Красная ниже, В", 0, 250, options.DangerVolts, "F1", v => options.DangerVolts = v);
+        Slider("Пак пуст ниже, В (0 — выкл.)", 0, 250, options.EmptyVolts, "F0", v => options.EmptyVolts = v);
 
         Group("Приёмы");
         Note("Что рисуется поверх шкал. Выключается по одному, чтобы было видно, что даёт каждое.");
