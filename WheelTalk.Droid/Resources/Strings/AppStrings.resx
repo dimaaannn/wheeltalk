@@ -184,6 +184,7 @@
   <data name="BleNoBluetoothPermission" xml:space="preserve"><value>Нет разрешения на Bluetooth — выдайте его в настройках приложения.</value></data>
   <data name="BleNoLocationPermission" xml:space="preserve"><value>Нет разрешения на геолокацию — без него Android не отдаёт результаты поиска.</value></data>
   <data name="BleLocationDisabled" xml:space="preserve"><value>Включите геолокацию — без неё поиск Bluetooth ничего не найдёт.</value></data>
+  <data name="BleBluetoothDisabled" xml:space="preserve"><value>Включите Bluetooth — без него колесо не найти.</value></data>
   <data name="ServiceNotification" xml:space="preserve"><value>Соединение с колесом активно</value></data>
   <data name="ServiceNotificationData" xml:space="preserve"><value>{0} · заряд {1} %</value></data>
   <data name="ServiceChannelName" xml:space="preserve"><value>Связь с колесом</value></data>

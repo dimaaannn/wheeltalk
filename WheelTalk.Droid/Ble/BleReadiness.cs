@@ -1,5 +1,6 @@
 using Android;
 using Android.App;
+using Android.Bluetooth;
 using Android.Content;
 using Android.Content.PM;
 using Android.Locations;
@@ -53,9 +54,14 @@ public static class BleReadiness
         {
             var granted = await RequestAsync(activity,
                 Manifest.Permission.BluetoothScan!, Manifest.Permission.BluetoothConnect!);
-            return Array.TrueForAll(granted, p => p == Permission.Granted)
+            if (!Array.TrueForAll(granted, p => p == Permission.Granted))
+            {
+                return (LinkProblem.NoPermissions, AppStrings.BleNoBluetoothPermission);
+            }
+
+            return IsBluetoothOn()
                 ? null
-                : (LinkProblem.NoPermissions, AppStrings.BleNoBluetoothPermission);
+                : (LinkProblem.BluetoothOff, AppStrings.BleBluetoothDisabled);
         }
 
         // Android 11 and older treat a BLE scan as a way to infer location, so both the permission
@@ -65,6 +71,11 @@ public static class BleReadiness
         if (location[0] != Permission.Granted)
         {
             return (LinkProblem.NoPermissions, AppStrings.BleNoLocationPermission);
+        }
+
+        if (!IsBluetoothOn())
+        {
+            return (LinkProblem.BluetoothOff, AppStrings.BleBluetoothDisabled);
         }
 
         return IsLocationEnabled()
@@ -96,5 +107,12 @@ public static class BleReadiness
     {
         var manager = (LocationManager?)Application.Context.GetSystemService(Context.LocationService);
         return manager?.IsLocationEnabled ?? false;
+    }
+
+    /// <summary>The adapter itself, distinct from the location switch that also gates scanning pre-12.</summary>
+    private static bool IsBluetoothOn()
+    {
+        var manager = (BluetoothManager?)Application.Context.GetSystemService(Context.BluetoothService);
+        return manager?.Adapter?.IsEnabled ?? false;
     }
 }
