@@ -85,6 +85,31 @@ public sealed class SequentialWriteQueue
     }
 
     /// <summary>
+    /// Линк исчез — доставлять больше некуда. Всё, что ждёт подтверждения и стоит в очереди,
+    /// проваливается сразу и с понятной причиной.
+    /// <para>
+    /// Нужно потому, что <paramref name="confirmationTimeout"/> — предохранитель, а не способ
+    /// узнать об обрыве: без этого вызова каждая команда в очереди отсиживала полный тайм-аут
+    /// после уже случившегося обрыва и попадала в журнал ошибкой записи.
+    /// </para>
+    /// <para>
+    /// Гонка с насосом безопасна в обе стороны: команду, которую он успел вынуть из очереди до
+    /// этого вызова, завалит сам <c>beginWrite</c> — линка у него уже нет, и по договору из
+    /// <see cref="SequentialWriteQueue(Func{byte[], bool}, TimeProvider, TimeSpan, TimeSpan, TimeSpan)"/>
+    /// он бросает, а не отвечает «занято».
+    /// </para>
+    /// </summary>
+    public void Abandon()
+    {
+        Complete(success: false, new WriteLinkLostException());
+
+        while (_pending.Reader.TryRead(out var pending))
+        {
+            pending.Completion.TrySetException(new WriteLinkLostException());
+        }
+    }
+
+    /// <summary>
     /// The platform learned the outcome of the write it previously accepted — advances the queue
     /// to the next command. A call with nothing in flight (a stray or late callback, e.g. after a
     /// confirmation timeout already gave up on it) is ignored.

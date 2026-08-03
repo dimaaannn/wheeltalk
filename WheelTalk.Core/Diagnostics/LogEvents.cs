@@ -50,6 +50,14 @@ public static class LogEvents
         /// the name without conflict.</summary>
         public const int CmdSentProtocolId = CmdSentId;
         public const string CmdSentProtocolName = "Cmd.SentProtocol";
+
+        /// <summary>Опрос колеса не доехал, потому что связи уже нет
+        /// (<see cref="Ports.WriteLinkLostException"/>). Отдельно от
+        /// <see cref="ProtocolWriteFailedId"/> и уровнем ниже: сам обрыв записан в журнал тем, кто
+        /// его заметил, а декодер опрашивает колесо двадцать раз в секунду — красная строка с
+        /// трассировкой на каждый его такт хоронит настоящую причину под собой.</summary>
+        public const int ProtocolWriteAbandonedId = 1007;
+        public const string ProtocolWriteAbandonedName = "ProtocolWriteAbandoned";
     }
 
     /// <summary>2xxx — frame unpacking (byte-assembly automatons).</summary>

@@ -76,6 +76,14 @@ public sealed partial class WheelService : IDisposable
         {
             await _transport.WriteAsync(bytes);
         }
+        catch (WriteLinkLostException)
+        {
+            // Не поломка, а следствие обрыва — и обрыв уже записан тем, кто его заметил. Без этой
+            // ветки каждый такт опроса ложился в журнал ошибкой с трассировкой: 02.08.2026 такая
+            // строка стояла ровно там, где читающий ищет причину обрыва, и была не причиной.
+            LogProtocolWriteAbandoned(Convert.ToHexString(bytes));
+            return;
+        }
         catch (Exception ex)
         {
             LogProtocolWriteFailed(ex, Convert.ToHexString(bytes));
@@ -143,6 +151,10 @@ public sealed partial class WheelService : IDisposable
     [LoggerMessage(EventId = LogEvents.Service.ProtocolWriteFailedId, EventName = LogEvents.Service.ProtocolWriteFailedName,
         Level = LogLevel.Error, Message = "Protocol-initiated write failed {Hex}")]
     private partial void LogProtocolWriteFailed(Exception ex, string hex);
+
+    [LoggerMessage(EventId = LogEvents.Service.ProtocolWriteAbandonedId, EventName = LogEvents.Service.ProtocolWriteAbandonedName,
+        Level = LogLevel.Debug, Message = "Protocol-initiated write abandoned — link gone {Hex}")]
+    private partial void LogProtocolWriteAbandoned(string hex);
 
     [LoggerMessage(EventId = LogEvents.Service.CmdSkippedId, EventName = LogEvents.Service.CmdSkippedName,
         Level = LogLevel.Warning, Message = "Cmd.Skipped {Command} (no-op for the active protocol)")]

@@ -232,6 +232,11 @@ public sealed class AndroidBleClient : ITransport
         _notifyCharacteristic = null;
         _writeCharacteristic = null;
 
+        // Порядок важен: сначала характеристики обнулены, и только потом очередь узнаёт об обрыве —
+        // тогда команда, которую насос успел вынуть, гарантированно упирается в пустой линк, а не
+        // уходит в радио, которого уже нет.
+        _writeQueue.Abandon();
+
         if (gatt is null) return;
 
         gatt.Disconnect();
@@ -265,7 +270,7 @@ public sealed class AndroidBleClient : ITransport
     {
         if (_gatt is null || _writeCharacteristic is null)
         {
-            throw new InvalidOperationException("Not connected — call ConnectAsync first");
+            throw new WriteLinkLostException();
         }
 
         return _writeQueue.Enqueue(cmd);
@@ -283,7 +288,7 @@ public sealed class AndroidBleClient : ITransport
         if (gatt is null || characteristic is null)
         {
             // Not "busy" — the link is gone, and it staying gone would otherwise retry forever.
-            throw new InvalidOperationException("Link dropped before the queued write reached the radio");
+            throw new WriteLinkLostException();
         }
 
         if (OperatingSystem.IsAndroidVersionAtLeast(33))

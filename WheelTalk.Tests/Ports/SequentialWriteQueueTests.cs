@@ -155,6 +155,45 @@ public class SequentialWriteQueueTests
         await next;
     }
 
+    /// <summary>
+    /// Продолжение <see cref="A_confirmation_that_never_arrives_times_out_and_frees_the_queue_for_the_next_command"/>:
+    /// тайм-аут — предохранитель, а не способ узнать об обрыве. Когда транспорт знает, что линка
+    /// нет, отсиживать его незачем ни первой команде, ни очереди за ней. На InMotion P6 02.08.2026
+    /// это стоило пяти секунд и красной строки с трассировкой ровно там, где читающий журнал ищет
+    /// причину обрыва.
+    /// </summary>
+    [Fact]
+    public async Task A_dropped_link_fails_everything_queued_at_once_instead_of_waiting_out_the_timeout()
+    {
+        var time = new FakeTimeProvider();
+        var started = new List<byte>();
+        bool linkUp = true;
+
+        // Транспорт роняет линк ровно так: сначала характеристики обнулены, и только потом очередь
+        // узнаёт об обрыве (AndroidBleClient.CloseGatt). Порядок здесь тот же — иначе команду,
+        // которую насос успел вынуть, ловил бы не тест, а случай.
+        var queue = new SequentialWriteQueue(payload =>
+        {
+            if (!linkUp) throw new WriteLinkLostException();
+            started.Add(payload[0]);
+            return true;
+        }, time, BusyRetryDelay, BusyDeadline, ConfirmationTimeout);
+
+        var inFlight = queue.Enqueue([1]);
+        var behind = queue.Enqueue([2]);
+
+        await WaitUntil(() => started.Count == 1);
+
+        linkUp = false;
+        queue.Abandon();
+
+        await Assert.ThrowsAsync<WriteLinkLostException>(() => inFlight);
+        await Assert.ThrowsAsync<WriteLinkLostException>(() => behind);
+
+        // Часы не двигались ни на тик: ждать было нечего, и очередь этого не делала.
+        Assert.Single(started);
+    }
+
     [Fact]
     public async Task An_immediate_permanent_failure_faults_that_command_without_retrying_forever()
     {
