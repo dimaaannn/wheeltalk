@@ -22,20 +22,44 @@ namespace WheelTalk.Core.Decoding;
 /// кадр <c>carType</c>, и по нему запоминает модель. Дальше всё зависит от неё:
 ///   - модель из таблицы оригинала (V9/V11/V11y/V12/V12S/V13/V14) — кадр уходит в V2 целиком,
 ///     байт в байт с провода, и разбирается ровно как раньше;
-///   - модель неизвестна — в V2 не уходят только кадры <c>RealTimeInfo</c>. Рукопожатие,
-///     серийник, версии и статистика разбираются как обычно (это настоящие данные, терять их
-///     незачем), а телеметрия не показывается вовсе, пока раскладка модели не известна.
+///   - P6 — в V2 не уходит только <c>RealTimeInfo</c>: его разбирает
+///     <see cref="InMotionP6RealTime"/> по своей раскладке. Всё остальное — рукопожатие, серийник,
+///     версии, статистика (в ней и одометр) — идёт в V2 нетронутым, это общая для всей V2 часть
+///     протокола;
+///   - модель неизвестна вовсе — <c>RealTimeInfo</c> отбрасывается, а телеметрия не показывается,
+///     пока раскладка не известна.
 /// </para>
 /// <para>
-/// Опрос колеса при этом не выключается: таймер V2 продолжает просить <c>RealTimeInfo</c>, и кадры
-/// продолжают приходить — их пишет сырой дамп (он снимает транспорт, до декодера). Именно по этому
-/// дампу раскладка новой модели и восстанавливается.
+/// Опрос колеса при этом не выключается ни в одном из случаев: таймер V2 продолжает просить
+/// <c>RealTimeInfo</c>, и кадры продолжают приходить — их пишет сырой дамп (он снимает транспорт,
+/// до декодера). Именно по такому дампу раскладка новой модели и восстанавливается.
 /// </para>
 /// </summary>
 public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
 {
+    /// <summary>Пара <c>series</c>/<c>type</c> модели P6 — единственное, чем колесо себя называет.</summary>
+    private const int P6Series = 13;
+    private const int P6Type = 1;
+
+    /// <summary>Имя в стиле таблицы оригинала — панель показывает модели одинаково.</summary>
+    private const string P6Name = "Inmotion P6";
+
+    /// <summary>Куда уходит кадр телеметрии. Всё остальное всегда идёт в нетронутый V2.</summary>
+    private enum Layout
+    {
+        /// <summary>Модель из таблицы оригинала — разбирает V2, как и раньше.</summary>
+        Original,
+
+        /// <summary>P6 — разбирает <see cref="InMotionP6RealTime"/>.</summary>
+        P6,
+
+        /// <summary>Модель не опознана — телеметрию не показываем вовсе.</summary>
+        Unknown,
+    }
+
     private readonly InMotionDecoderV2 _v2;
     private readonly InMotionV2Unpacker _unpacker;
+    private readonly WheelState _state;
     private readonly ILogger<InMotionDecoderV2_1> _logger;
 
     /// <summary>Кадр как он пришёл с провода, со всеми экранирующими <c>0xA5</c>: в V2 отдаётся
@@ -44,12 +68,13 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     private byte _previous;
     private bool _collecting;
 
-    private InMotionV2Model _model = InMotionV2Model.Unknown;
+    private Layout _layout = Layout.Unknown;
 
     public event Action<byte[]>? WriteRequested;
 
     public InMotionDecoderV2_1(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILoggerFactory loggerFactory)
     {
+        _state = state;
         _logger = loggerFactory.CreateLogger<InMotionDecoderV2_1>();
         _unpacker = new InMotionV2Unpacker(loggerFactory.CreateLogger<InMotionDecoderV2>());
         _v2 = new InMotionDecoderV2(state, config, timeProvider, loggerFactory.CreateLogger<InMotionDecoderV2>());
@@ -71,7 +96,7 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
             _previous = 0;
             _collecting = false;
 
-            if (PassesToV2(_unpacker.GetBuffer())) newDataFound |= _v2.Decode(frame);
+            newDataFound |= Dispatch(frame, _unpacker.GetBuffer());
         }
 
         return newDataFound;
@@ -100,14 +125,19 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     }
 
     /// <summary>
-    /// Единственное решение этого декодера. Разбирать нечего — нужны только флаги, команда и, у
-    /// кадра <c>carType</c>, пара series/type.
+    /// Единственное решение этого декодера — кому отдать собранный кадр. Разбирать его целиком
+    /// незачем: нужны флаги, команда и, у кадра <c>carType</c>, пара series/type.
+    /// <para>
+    /// <paramref name="wireFrame"/> — байты как с провода, для V2; <paramref name="buffer"/> — тот
+    /// же кадр без экранирующих <c>0xA5</c>, для нас и для <see cref="InMotionP6RealTime"/>.
+    /// </para>
     /// </summary>
-    private bool PassesToV2(byte[] buffer)
+    private bool Dispatch(byte[] wireFrame, byte[] buffer)
     {
         // Битый кадр отдаём как есть: сообщить о несовпадении контрольной суммы — работа V2,
-        // вторая такая же строка в журнале ничего не добавит.
-        if (!ChecksumOk(buffer)) return true;
+        // вторая такая же строка в журнале ничего не добавит. По той же причине заголовок читается
+        // здесь по индексам, а не через InMotionV2Message.Verify — тот пишет ту самую строку.
+        if (!ChecksumOk(buffer)) return _v2.Decode(wireFrame);
 
         int flags = buffer[2];
         int len = buffer[3];
@@ -119,19 +149,40 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
         {
             // Раскладка кадра — та же, что читает InMotionDecoderV2.DecodeMainInfo: данные
             // начинаются с buffer[5], series и type — третий и четвёртый байт данных.
-            int series = buffer[7];
-            int type = buffer[8];
-            _model = InMotionV2Models.FindById(series, type);
+            RememberModel(buffer[7], buffer[8]);
+            bool decoded = _v2.Decode(wireFrame);
 
-            // Пара series/type — единственное, что называет колесо на том конце. Оригинал пишет её
-            // в журнал (`findById`), и без неё неподдержанная модель выглядит как поломка декодера.
-            LogCarType(series, type, _model.DisplayName());
-            if (_model == InMotionV2Model.Unknown) LogModelUnknown(series, type);
-            return true;
+            // Имя ставится после V2 и поверх него: в таблице оригинала P6 нет, и V2 честно
+            // напишет «Inmotion Unknown» — знать модель по имени наша забота, не его.
+            if (_layout == Layout.P6) _state.SetModel(P6Name);
+            return decoded;
         }
 
-        return _model != InMotionV2Model.Unknown
-            || command != (int)InMotionV2Message.Command.RealTimeInfo;
+        if (command != (int)InMotionV2Message.Command.RealTimeInfo) return _v2.Decode(wireFrame);
+
+        return _layout switch
+        {
+            Layout.Original => _v2.Decode(wireFrame),
+
+            // Данные кадра — buffer[5..len+4]: распаковщик добирает ровно len + 5 байт (AA AA,
+            // флаги, длина, len байт тела, контрольная сумма), поэтому срез всегда в границах.
+            Layout.P6 => InMotionP6RealTime.Apply(buffer[5..(len + 4)], _state),
+
+            _ => false,
+        };
+    }
+
+    private void RememberModel(byte series, byte type)
+    {
+        var model = InMotionV2Models.FindById(series, type);
+        _layout = model != InMotionV2Model.Unknown ? Layout.Original
+            : series == P6Series && type == P6Type ? Layout.P6
+            : Layout.Unknown;
+
+        // Пара series/type — единственное, что называет колесо на том конце. Оригинал пишет её в
+        // журнал (`findById`), и без неё неподдержанная модель выглядит как поломка декодера.
+        LogCarType(series, type, _layout == Layout.P6 ? P6Name : model.DisplayName());
+        if (_layout == Layout.Unknown) LogModelUnknown(series, type);
     }
 
     private static bool ChecksumOk(byte[] buffer)

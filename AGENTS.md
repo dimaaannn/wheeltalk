@@ -213,6 +213,8 @@ MAUI-тройка (`WheelTalk.App`, `WheelTalk.Dashboard`, `WheelTalk.Lab`) и �
 
 Какой протокол откуда портирован и чем проверен (фикстуры/живое колесо), грабли портирования и отладка Begode через Windows-консоль — раздел «Пять протоколов» в [docs/architecture.md](docs/architecture.md). Открывать при работе с декодером или добавлении протокола.
 
+Шестой протокол не портирован, а восстановлен по дампу: InMotion P6 (`carType` 131, нет ни у нас, ни в WheelLog). Что в его кадре доказано, что лежит рядом и похоже на правду, и почему ШИМ с тревогами у него пусты — [docs/inmotion-p6-protocol.md](docs/inmotion-p6-protocol.md). Открывать перед правкой `InMotionDecoderV2_1` или разбором нового дампа P6.
+
 ## Как проверять изменения в декодере
 
 Как гонять фикстуры декодера без BLE (hex-кадры оригинала → Decoder.Feed → WheelState.ToSnapshot, где живут тесты) — [docs/decoder-testing.md](docs/decoder-testing.md). Открывать при правке декодера протокола.
