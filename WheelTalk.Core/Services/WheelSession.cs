@@ -47,8 +47,18 @@ public sealed partial class WheelSession : IDisposable
     /// <summary>Пауза между кадрами, о которой стоит написать в журнал.</summary>
     private static readonly TimeSpan NoticeableGap = TimeSpan.FromSeconds(4);
 
-    /// <summary>Когда пришёл последний кадр. Ноль — кадров ещё не было вовсе.</summary>
-    private long _lastFrameAt;
+    /// <summary>
+    /// Когда колесо в последний раз что-то сказало — байты с транспорта, а не разобранный снимок.
+    /// Ноль — не говорило ещё вовсе.
+    /// <para>
+    /// Раньше здесь стояло время снимка, и это была ошибка в самом корне: снимок — вывод декодера,
+    /// а сторож судит о <b>связи</b>. Колесо, которое мы слышим, но не понимаем, снимков не даёт —
+    /// и получало приговор ровно через <see cref="ConnectionOptions.DataTimeout"/>. На InMotion P6
+    /// 02.08.2026 это дало вечный цикл переподключений при исправной связи: кадры шли до последней
+    /// секунды перед «кадров нет 15 с».
+    /// </para>
+    /// </summary>
+    private long _lastDataAt;
 
     private ITimer? _watchdog;
 
@@ -76,6 +86,7 @@ public sealed partial class WheelSession : IDisposable
         _replayProtocolOverride = replayProtocolOverride;
 
         transport.ConnectionLost += OnConnectionLost;
+        transport.DataReceived += OnDataFromWheel;
     }
 
     /// <summary>Telemetry of the current wheel. Survives reconnects — subscribers never resubscribe.</summary>
@@ -169,6 +180,7 @@ public sealed partial class WheelSession : IDisposable
     public void Dispose()
     {
         _transport.ConnectionLost -= OnConnectionLost;
+        _transport.DataReceived -= OnDataFromWheel;
         _keepConnected?.Cancel();
         _keepConnected?.Dispose();
         TearDownService();
@@ -212,7 +224,7 @@ public sealed partial class WheelSession : IDisposable
         var service = BuildService(family);
         _service = service;
         _serviceTelemetry = service.Telemetry.Subscribe(OnSnapshot);
-        _lastFrameAt = _timeProvider.GetTimestamp();
+        Interlocked.Exchange(ref _lastDataAt, _timeProvider.GetTimestamp());
         StartWatchdog();
         _state.OnNext(ConnectionState.Connected);
         LogSessionStarted(Address!);
@@ -294,15 +306,26 @@ public sealed partial class WheelSession : IDisposable
         return auto;
     }
 
-    private void OnSnapshot(TelemetrySnapshot snapshot)
+    /// <summary>
+    /// Кормит сторожа — и только его: разбор байт остаётся делом <see cref="WheelService"/>, у
+    /// которого своя подписка на тот же транспорт. Сессии довольно самого факта «колесо говорит».
+    /// </summary>
+    private void OnDataFromWheel(byte[] bytes)
     {
+        long previous = Interlocked.Exchange(ref _lastDataAt, _timeProvider.GetTimestamp());
+
         // Провал короче сторожевого порога он не поймает, а знать о нём стоит: именно из таких
         // пауз складывается «данные дёргаются», и по журналу это должно быть видно без раскопок в
-        // базе поездок. Два десятка пропущенных пакетов — уже не дрожание.
-        var gap = _timeProvider.GetElapsedTime(_lastFrameAt);
-        if (_lastFrameAt != 0 && gap >= NoticeableGap) LogDataResumed(Address ?? "", (int)gap.TotalSeconds);
+        // базе поездок. Два десятка пропущенных пакетов — уже не дрожание. Молчание во время
+        // погони — не провал, а её нормальное состояние, потому и только на связи.
+        if (previous == 0 || _state.Value != ConnectionState.Connected) return;
 
-        _lastFrameAt = _timeProvider.GetTimestamp();
+        var gap = _timeProvider.GetElapsedTime(previous);
+        if (gap >= NoticeableGap) LogDataResumed(Address ?? "", (int)gap.TotalSeconds);
+    }
+
+    private void OnSnapshot(TelemetrySnapshot snapshot)
+    {
         LastSnapshot = snapshot;
         _telemetry.OnNext(snapshot);
     }
@@ -339,7 +362,7 @@ public sealed partial class WheelSession : IDisposable
     {
         if (_state.Value != ConnectionState.Connected) return;
 
-        var silence = _timeProvider.GetElapsedTime(_lastFrameAt);
+        var silence = _timeProvider.GetElapsedTime(Interlocked.Read(ref _lastDataAt));
         if (silence < _options.DataTimeout) return;
 
         LogDataStalled(Address ?? "", (int)silence.TotalSeconds);

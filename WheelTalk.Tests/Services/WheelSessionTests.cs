@@ -5,7 +5,6 @@ using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
-using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Services;
 
@@ -250,6 +249,31 @@ public class WheelSessionTests
             time.Advance(TimeSpan.FromSeconds(10));
         }
 
+        Assert.Equal(ConnectionState.Connected, session.CurrentState);
+        await session.DisconnectAsync();
+    }
+
+    /// <summary>
+    /// Колесо, которое мы слышим, но не понимаем, — тоже на связи. Сторож кормится байтами с
+    /// транспорта, а не разобранными снимками, потому что снимок это вывод декодера, а сторож судит
+    /// о связи. Пока он кормился снимками, InMotion P6 (модели нет в таблице <c>carType</c>,
+    /// телеметрия не разбирается) получал приговор ровно через <c>DataTimeout</c> и уходил в вечный
+    /// цикл переподключений при исправной связи — журнал 02.08.2026.
+    /// </summary>
+    [Fact]
+    public async Task Frames_nobody_can_decode_still_count_as_a_live_link()
+    {
+        var (session, transport, time) = Build(new ConnectionOptions { DataTimeout = TimeSpan.FromSeconds(15) });
+
+        await session.ConnectAsync(Mac);
+
+        for (int i = 0; i < 10; i++)
+        {
+            transport.Deliver("00112233445566778899aabbccddeeff");
+            time.Advance(TimeSpan.FromSeconds(10));
+        }
+
+        Assert.Null(session.LastSnapshot);
         Assert.Equal(ConnectionState.Connected, session.CurrentState);
         await session.DisconnectAsync();
     }
