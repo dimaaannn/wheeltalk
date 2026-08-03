@@ -13,13 +13,25 @@ namespace WheelTalk.Core.Decoding;
 /// already is one complete frame (no unpacker needed, unlike Gotway/Veteran): the plan's phase 0.3
 /// keeps MTU at 23 bytes precisely because KingSong's base frames fit in one notification.
 /// <para>
-/// Like Gotway/Begode this protocol is active, but the request/response loop that drives it in
-/// the original lives outside the adapter, in <c>BluetoothService.onCharacteristicChanged</c>:
-/// after every decoded notification, if the name is still unknown it asks for it (0x9B); once the
-/// name is known but the serial isn't, it asks for that (0x63). Both requests are folded into
-/// <see cref="Decode"/> here via <see cref="WriteRequested"/> — the same event Gotway's "V"/"N"
+/// Like Gotway/Begode this protocol is active, and the wheel says nothing at all until it is asked:
+/// the request/response loop that drives it lives in two places outside the adapter in the original,
+/// and both are folded in here via <see cref="WriteRequested"/> — the same event Gotway's "V"/"N"
 /// handshake uses — because this port keeps all active-protocol behavior inside the decoder rather
 /// than split across a BLE-service layer that doesn't exist on this side.
+/// <list type="bullet">
+///   <item><c>MainActivity.kt:387</c> — the first word is the app's: on CONNECTED, with the family
+///   already known from the GATT tree, it asks for the name without waiting for a single frame.
+///   Here that is <see cref="BootstrapDelay"/>, a one-shot timer started on construction (the same
+///   seam <c>InMotionDecoder</c>'s keep-alive uses: an event raised in the constructor would fire
+///   before <c>WheelService</c> has subscribed to it).</item>
+///   <item><c>BluetoothService.kt:280-287</c> — after <b>every</b> notification on FFE1: name still
+///   unknown, ask for it (0x9B); name known, serial not, ask for that (0x63). Note where it sits:
+///   <i>outside</i> <c>KingsongAdapter.decode()</c>, so the adapter's own <c>data.length >= 20</c>
+///   and <c>AA 55</c> guards never gate it. <see cref="Decode"/> keeps that: the guards decide the
+///   return value, not whether the wheel gets asked.</item>
+/// </list>
+/// Both halves were needed on a live KS-16S (03.08.2026): it answered a bare subscription with
+/// nine bytes of <c>AT+ULKTE</c> every 2,4 с and nothing else, forever.
 /// </para>
 /// Scope of this port (vertical slice, matches GotwayDecoder's depth):
 ///   - Full live-telemetry path: frame 0xA9 (voltage/speed/distance/current/temperature/mode),
@@ -45,11 +57,19 @@ namespace WheelTalk.Core.Decoding;
 ///     correction only applies when it's <c>false</c>) with no UI knob in this slice, so the port
 ///     always skips it, matching the shipped default.
 /// </summary>
-public sealed partial class KingsongDecoder : IWheelDecoder
+public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
 {
     private const int LightModeOff = 0;
     private const int LightModeOn = 1;
     private const int LightModeStrobe = 2;
+
+    /// <summary>
+    /// Пауза перед первым запросом имени. Нужна не колесу, а порядку сборки: подписчик
+    /// <see cref="WriteRequested"/> появляется уже после конструктора (<c>WheelService</c>), и
+    /// событие, поднятое в нём самом, не услышал бы никто. Значение — то же, что у стартовой
+    /// задержки опроса <c>InMotionDecoder</c>.
+    /// </summary>
+    private static readonly TimeSpan BootstrapDelay = TimeSpan.FromMilliseconds(200);
 
     private static readonly string[] Wheels84V =
         ["KS-18L", "KS-16X", "KS-16XF", "RW", "KS-18LH", "KS-18LY", "KS-S18", "KS-S16", "KS-S16P"];
@@ -57,6 +77,7 @@ public sealed partial class KingsongDecoder : IWheelDecoder
     private readonly WheelState _state;
     private readonly IWheelConfig _config;
     private readonly ILogger<KingsongDecoder> _logger;
+    private readonly ITimer _bootstrapTimer;
 
     private int _lightMode = LightModeOff;
 
@@ -69,13 +90,20 @@ public sealed partial class KingsongDecoder : IWheelDecoder
 
     public event Action<byte[]>? WriteRequested;
 
-    public KingsongDecoder(WheelState state, IWheelConfig config, ILogger<KingsongDecoder> logger)
+    public KingsongDecoder(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<KingsongDecoder> logger)
     {
         _state = state;
         _config = config;
         _logger = logger;
         _state.WheelType = WheelType.KingSong;
+
+        // Port of MainActivity.kt:387 — заговорить первым, не дожидаясь кадра (см. doc класса).
+        // Одноразовый: дальше недостающее спрашивается по уведомлениям, как в оригинале.
+        _bootstrapTimer = timeProvider.CreateTimer(_ => RequestMissingIdentity(), null,
+            BootstrapDelay, Timeout.InfiniteTimeSpan);
     }
+
+    public void Dispose() => _bootstrapTimer.Dispose();
 
     public bool IsReady => _state.Model.Length > 0 && _state.Voltage != 0;
 
@@ -86,29 +114,40 @@ public sealed partial class KingsongDecoder : IWheelDecoder
         LogDecodeInvoked();
         _state.ResetRideTime();
 
-        if (data.Length < 20) return false;
-        if (data[0] != 0xAA || data[1] != 0x55) return false;
+        bool newDataFound = IsWheelFrame(data) && DecodeFrame(data);
 
-        bool newDataFound = data[16] switch
-        {
-            0xA9 => DecodeLiveData(data),
-            0xB9 => DecodeDistanceTimeFan(data),
-            0xBB => DecodeName(data),
-            0xB3 => DecodeSerial(data),
-            0xF5 => DecodeCpuLoad(data),
-            0xF6 => DecodeSpeedLimit(data),
-            0xA4 or 0xB5 => DecodeAlarmAndMaxSpeed(data),
-            // BMS pages (0xF1/0xF2/0xD0/0xE1/0xE2/0xE5/0xE6) and anything else fall through to
-            // false, exactly like the original — it never returns true for these either.
-            _ => false,
-        };
-
-        // BluetoothService.kt's post-decode bootstrap, relocated into the decoder (see class doc):
-        // ask for whichever identity piece is still missing, on every frame until both arrive.
-        if (_state.Name.Length == 0) RequestWrite(0x9B);
-        else if (_state.Serial.Length == 0) RequestWrite(0x63);
+        // BluetoothService.kt:282-286's post-notification bootstrap, relocated into the decoder
+        // (see class doc). Стоит после разбора и вне проверок кадра — ровно как в оригинале, где
+        // оно вне decode(): уведомление, которое не разобрать, всё равно повод спросить. Пока это
+        // стояло за проверкой длины, живой KS-16S не получал ни одного запроса — его девятибайтные
+        // AT+ULKTE до неё не доходили.
+        RequestMissingIdentity();
 
         return newDataFound;
+    }
+
+    private static bool IsWheelFrame(byte[] data) =>
+        data.Length >= 20 && data[0] == 0xAA && data[1] == 0x55;
+
+    private bool DecodeFrame(byte[] data) => data[16] switch
+    {
+        0xA9 => DecodeLiveData(data),
+        0xB9 => DecodeDistanceTimeFan(data),
+        0xBB => DecodeName(data),
+        0xB3 => DecodeSerial(data),
+        0xF5 => DecodeCpuLoad(data),
+        0xF6 => DecodeSpeedLimit(data),
+        0xA4 or 0xB5 => DecodeAlarmAndMaxSpeed(data),
+        // BMS pages (0xF1/0xF2/0xD0/0xE1/0xE2/0xE5/0xE6) and anything else fall through to
+        // false, exactly like the original — it never returns true for these either.
+        _ => false,
+    };
+
+    /// <summary>Спросить то из опознания, чего ещё нет: сначала имя (0x9B), потом серийник (0x63).</summary>
+    private void RequestMissingIdentity()
+    {
+        if (_state.Name.Length == 0) RequestWrite(0x9B);
+        else if (_state.Serial.Length == 0) RequestWrite(0x63);
     }
 
     /// <summary>Frame 0xA9 — live data (KingsongAdapter.java:36-179).</summary>

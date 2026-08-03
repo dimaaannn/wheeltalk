@@ -210,17 +210,58 @@ public class KingsongDecoderTests
             "aa5500cb7f4000000000000000030f04e4a19400");
     }
 
+    /// <summary>
+    /// Port of MainActivity.kt:387 — на CONNECTED оригинал просит имя, не дожидаясь кадра. Колесо
+    /// молчит, пока его не спросят, поэтому первое слово обязано быть нашим.
+    /// </summary>
+    [Fact]
+    public void Asks_for_the_name_before_the_wheel_has_said_anything()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        var asked = new List<byte[]>();
+        harness.Decoder.ProtocolDecoder.WriteRequested += asked.Add;
+
+        harness.Time.Advance(TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal([Empty(0x9B)], asked);
+    }
+
+    /// <summary>
+    /// Port of BluetoothService.kt:282-286 — запрос стоит вне <c>decode()</c>, поэтому проверки
+    /// длины и заголовка внутри адаптера его не гасят. Кадр здесь — живой: KS-16S 03.08.2026 до
+    /// первого запроса отвечал на подписку только этими девятью байтами (<c>AT+ULKTE</c>).
+    /// </summary>
+    [Fact]
+    public void Asks_for_the_name_on_a_notification_that_is_not_a_wheel_frame()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        var asked = new List<byte[]>();
+        harness.Decoder.ProtocolDecoder.WriteRequested += asked.Add;
+
+        Assert.False(harness.Decoder.ProtocolDecoder.Decode(Convert.FromHexString("41542b554c4b544500")));
+
+        Assert.Equal([Empty(0x9B)], asked);
+    }
+
+    /// <summary>Имя известно — спрашивается серийник, и ровно он (BluetoothService.kt:284-285).</summary>
+    [Fact]
+    public void Asks_for_the_serial_once_the_name_is_known()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        harness.Decoder.ProtocolDecoder.Decode(Convert.FromHexString("aa550253757065722d576865656c3132bb100000"));
+
+        var asked = new List<byte[]>();
+        harness.Decoder.ProtocolDecoder.WriteRequested += asked.Add;
+        harness.Decoder.ProtocolDecoder.Decode(Convert.FromHexString("aa5570176f009649d2020b0a39300f0ea9100000"));
+
+        Assert.Equal([Empty(0x63)], asked);
+    }
+
     [Fact]
     public void Command_builders_match_original_bytes()
     {
         var harness = DecoderHarness.ForKingSong();
         var decoder = harness.Decoder.ProtocolDecoder;
-
-        static byte[] Empty(byte type) =>
-        [
-            0xAA, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, type, 0x14, 0x5A, 0x5A,
-        ];
 
         Assert.Equal(Empty(0x88), decoder.BuildWheelBeep());
         Assert.Equal(Empty(0x89), decoder.BuildCalibrate());
@@ -242,4 +283,11 @@ public class KingsongDecoderTests
         lightOff[3] = 0x01;
         Assert.Equal(lightOff, decoder.BuildSetLightState(false));
     }
+
+    /// <summary>Port of KingsongAdapter.getEmptyRequest() — каркас любой команды и любого запроса.</summary>
+    private static byte[] Empty(byte type) =>
+    [
+        0xAA, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, type, 0x14, 0x5A, 0x5A,
+    ];
 }

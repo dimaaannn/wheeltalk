@@ -264,15 +264,22 @@ public sealed partial class WheelSession : IDisposable
     }
 
     /// <summary>
-    /// Families whose <c>AA AA</c> frame header collides with another supported family — the GATT
-    /// tree is the only thing that tells them apart, so their decoder is picked directly rather than
-    /// through <see cref="AutoDecoder"/>'s sniffing (plan 21 §0.2). Gotway/Veteran genuinely need
-    /// AutoDecoder's sniffing (shared FFE0/FFE1 profile — the plan doesn't attempt to remove that),
-    /// and KingSong doesn't need the family hint at all (its own header <c>AA 55</c> is unambiguous)
-    /// — both are left on the sniffing path unchanged.
+    /// Families the GATT tree names outright, so their decoder is picked directly rather than
+    /// through <see cref="AutoDecoder"/>'s sniffing (plan 21 §0.2). Two different reasons to be
+    /// here:
+    /// <list type="bullet">
+    ///   <item>InMotion V1/V2 — их заголовок <c>AA AA</c> общий, по кадру их не различить вовсе.</item>
+    ///   <item>KingSong — заголовок <c>AA 55</c> как раз однозначен, но <b>колесо молчит, пока его
+    ///   не спросят</b>, а спрашивает декодер: ждать кадра, чтобы выбрать того, кто этот кадр
+    ///   вызовет, — тупик. Живой KS-16S 03.08.2026 в нём и стоял: слушали кадр, которого никто не
+    ///   просил, двадцать секунд до сбора диагностики.</item>
+    /// </list>
+    /// Gotway/Veteran остаются на нюхе: общий профиль FFE0/FFE1 не различает их в принципе, а
+    /// говорить первым там незачем — оба шлют кадры сами.
     /// </summary>
     private static WheelProtocol? DirectProtocolFor(WheelFamily family) => family switch
     {
+        WheelFamily.KingSong => WheelProtocol.KingSong,
         WheelFamily.InMotion => WheelProtocol.InMotion,
         // V2-1, а не V2: по дереву GATT колесо вне таблицы carType (P6) неотличимо от V11/V12, а
         // сам carType приходит уже после рукопожатия — значит выбор делается не здесь, а внутри

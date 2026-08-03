@@ -20,11 +20,16 @@ public sealed class DecoderHarness
     public AppWheelConfig Config { get; }
     public Decoder Decoder { get; }
 
-    private DecoderHarness(AppWheelConfig config, WheelState state, Decoder decoder)
+    /// <summary>Часы декодера — их двигают те тесты, что проверяют его собственные таймеры
+    /// (рукопожатие KingSong, опрос InMotion); остальным довольно того, что они стоят.</summary>
+    public FakeTimeProvider Time { get; }
+
+    private DecoderHarness(AppWheelConfig config, WheelState state, Decoder decoder, FakeTimeProvider time)
     {
         Config = config;
         _state = state;
         Decoder = decoder;
+        Time = time;
     }
 
     public static DecoderHarness ForGotway(Action<AppWheelConfig>? configure = null)
@@ -118,12 +123,12 @@ public sealed class DecoderHarness
     }
 
     /// <summary>Same decoder selection the composition root uses (<see cref="WheelDecoderFactory"/>).</summary>
-    private static DecoderHarness Build(WheelProtocol protocol, AppWheelConfig config, TimeProvider timeProvider)
+    private static DecoderHarness Build(WheelProtocol protocol, AppWheelConfig config, FakeTimeProvider timeProvider)
     {
         var state = new WheelState(config, timeProvider);
         var protocolDecoder = WheelDecoderFactory.Create(protocol, state, config, timeProvider, NullLoggerFactory.Instance);
         var decoder = new Decoder(state, protocolDecoder, new NullEventSink(), NullLogger<Decoder>.Instance);
-        return new DecoderHarness(config, state, decoder);
+        return new DecoderHarness(config, state, decoder, timeProvider);
     }
 
     /// <summary>Feeds each hex string as one frame, in order.</summary>

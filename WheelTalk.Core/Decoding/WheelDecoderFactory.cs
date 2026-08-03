@@ -42,7 +42,7 @@ public static class WheelDecoderFactory
             {
                 var logger = loggerFactory.CreateLogger<KingsongDecoder>();
                 logger.LogInformation(protocolSelected, "Protocol.Selected {Protocol}", protocol);
-                return new KingsongDecoder(state, config, logger);
+                return new KingsongDecoder(state, config, timeProvider, logger);
             }
             case WheelProtocol.InMotion:
             {

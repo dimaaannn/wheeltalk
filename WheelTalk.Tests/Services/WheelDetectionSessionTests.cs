@@ -40,6 +40,16 @@ public class WheelDetectionSessionTests
         Service("ffe0", "ffe1"),
     ];
 
+    /// <summary>Дерево KS-16S — первый отпечаток KingSong.</summary>
+    private static DiscoveredService[] KingSong() =>
+    [
+        Service("1800", "2a00", "2a01", "2a02", "2a03", "2a04"),
+        Service("1801", "2a05"),
+        Service("180a", "2a23", "2a24", "2a25", "2a26", "2a27", "2a28", "2a29", "2a2a", "2a50"),
+        Service("fff0", "fff1", "fff2", "fff3", "fff4", "fff5"),
+        Service("ffe0", "ffe1"),
+    ];
+
     /// <summary>Дерево посредника («третий глаз», план 20): Begode-посредник, метка ffa8.</summary>
     private static DiscoveredService[] GotwayProxy() =>
     [
@@ -163,6 +173,27 @@ public class WheelDetectionSessionTests
         ]);
 
         Assert.Equal(WheelProtocol.Veteran, session.Protocol);
+    }
+
+    /// <summary>
+    /// KingSong — исключение из правила выше, и обязано им быть: колесо молчит, пока его не
+    /// спросят, а спрашивает декодер. Значит декодер берётся по дереву GATT, не по кадру, и первый
+    /// запрос имени уходит в тишину — как у оригинала на CONNECTED (MainActivity.kt:387). Живой
+    /// KS-16S 03.08.2026 без этого стоял немым при исправной связи.
+    /// </summary>
+    [Fact]
+    public async Task A_kingsong_is_asked_for_its_name_without_waiting_for_a_frame()
+    {
+        var (session, transport, time) = Build();
+        transport.Services = KingSong();
+
+        await session.ConnectAsync(Mac);
+        Assert.Equal(WheelProtocol.KingSong, session.Protocol);
+
+        time.Advance(TimeSpan.FromMilliseconds(200));
+
+        byte[] nameRequest = Convert.FromHexString("aa5500000000000000000000000000009b145a5a");
+        Assert.Equal([nameRequest], transport.Written);
     }
 
     /// <summary>
