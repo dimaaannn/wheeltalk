@@ -453,6 +453,10 @@ public sealed class MainActivity : Activity
     /// </summary>
     public override void OnBackPressed()
     {
+        // Экран мог взять кнопку себе — плитки так закрывают режим правки. Спрашиваем до счётчика
+        // двойного нажатия: иначе выход из правки считался бы первым «назад» к выходу из приложения.
+        if (_screen.Current.Back()) return;
+
         if (_timeProvider.GetElapsedTime(_lastBackPressAt) < DoubleBackWindow)
         {
             _ = ExitAsync();

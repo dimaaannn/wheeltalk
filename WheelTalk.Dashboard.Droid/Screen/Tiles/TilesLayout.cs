@@ -1,9 +1,10 @@
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
 /// <summary>
-/// Раскладка плиток и все их размерные величины, зашитые в коде (план 23 §8, шаг 4). Править
-/// раскладку руками — добавлять, убирать, переносить и менять ширину — райдер сможет шагом 5; тогда
-/// же она переедет в настройку, а этот список останется тем, с чего начинается новая установка.
+/// Раскладка плиток и все их размерные величины, зашитые в коде (план 23 §8, шаг 4). Переносить
+/// плитки и менять им ширину руками уже можно — правка ложится в <see cref="TileLayoutDraft"/>, а
+/// этот список остаётся тем, с чего начинается новая установка. Добавление, убирание и хранение
+/// раскладки в настройке — шаг 6.
 /// <para>
 /// Набор подобран так, чтобы на экране были все три ширины и обе стороны правила про молчание:
 /// наклон приходит только от Veteran, температура двигателя — только от Begode, и на любом колесе
@@ -32,13 +33,28 @@ public static class TilesLayout
     // СНЯТЬ ПРАВКУ: найти по слову HOTRELOAD (этот файл, MetricTileView, LabActivity, LabHotReload) и
     // вернуть числа константами.
 
-    /// <summary>Шесть — НОК для одной, двух и трёх плиток в ряд (план 23 §3.3).</summary>
-    public static int Columns => 6;
+    /// <summary>Двенадцать — НОК для одной, двух, трёх и четырёх плиток в ряд (план 23 §3.3).</summary>
+    public static int Columns => 12;
 
     /// <summary>
-    /// Строка сетки — <b>одна мера на всю сетку</b>, а не высота по содержимому: иначе ряд из узкой
-    /// плитки и широкой разъехался бы, а высота плитки перестала бы зависеть только от её ширины.
-    /// <c>GridLayoutManager</c> даёт лишь ширину, высоту ставит сама плитка.
+    /// Каким укладчиком собирать сетку. <c>true</c> — свой <see cref="TileGridLayoutManager"/>: место
+    /// ищется в клетках, и дырки заполняются следующими подходящими плитками.
+    /// <para>
+    /// <c>false</c> — <c>GridLayoutManager</c> из плана, и <b>заданной высоты он не даёт</b>: измерив
+    /// ряд, он пере-меряет всех в нём по высоте самого высокого. Низкая плитка рядом с двухстрочной
+    /// растягивается до неё — проверено глазами 04.08.2026 (мощность 1/4 встала высотой ШИМа).
+    /// Оставлен для сверки, а не как выбор.
+    /// </para>
+    /// <para>
+    /// HOTRELOAD: переключается на ходу, но экран после правки надо пересобрать — укладчик ставится
+    /// при сборке списка.
+    /// </para>
+    /// </summary>
+    public static bool PackTiles => true;
+
+    /// <summary>
+    /// Строка сетки — <b>одна мера на всю сетку</b>, а не высота по содержимому: иначе ряд из низкой
+    /// плитки и высокой разъехался бы, а размер плитки перестал бы быть тем, что задали руками.
     /// </summary>
     public static int RowHeightDp => 64;
 
@@ -85,6 +101,46 @@ public static class TilesLayout
     /// <summary>Шаг подбора кегля, sp. Мельче шаг — точнее посадка числа и дороже замер.</summary>
     public static int ValueStepSp => 1;
 
+    /// <summary>Сторона уголка-ручки, видного только в режиме правки.</summary>
+    public static int HandleSizeDp => 14;
+
+    /// <summary>
+    /// Сторона зоны касания уголка. Шире рисунка намеренно: попадание пальцем меряется не тем, что
+    /// видно, а тем, куда он ложится.
+    /// </summary>
+    public static int HandleTouchDp => 28;
+
+    /// <summary>Густота уголка-ручки (0…255 от основной краски).</summary>
+    public static int HandleAlpha => 110;
+
+    /// <summary>Толщина контура, которым в режиме правки обведено пустое место.</summary>
+    public static int OutlineDp => 1;
+
+    /// <summary>Кегль надписи на кнопках режима правки, sp.</summary>
+    public static int ButtonSp => 15;
+
+    /// <summary>Поля внутри кнопки режима правки — от края до надписи.</summary>
+    public static int ButtonPaddingDp => 12;
+
+    /// <summary>Просвет между кнопками и от края экрана.</summary>
+    public static int ButtonGapDp => 6;
+
+    /// <summary>
+    /// Размеры, которые предлагает меню плитки. Порядок здесь и есть порядок в списке выбора;
+    /// строка ряда — двенадцать колонок, поэтому 3 — четверть, 4 — треть, 6 — половина, 12 — ряд.
+    /// </summary>
+    public static IReadOnlyList<TileSize> Sizes =>
+    [
+        new(3, 1),
+        new(3, 2),
+        new(4, 1),
+        new(4, 2),
+        new(6, 1),
+        new(6, 2),
+        new(12, 1),
+        new(12, 2),
+    ];
+
     /// <summary>
     /// Сама раскладка. Свойство с телом по той же причине, что и величины выше: <c>static readonly</c>
     /// поле считается один раз при загрузке типа, и правка списка при горячей перезагрузке не
@@ -93,24 +149,27 @@ public static class TilesLayout
     /// </summary>
     public static IReadOnlyList<MetricTile> Fixed =>
     [
-        new("speed", TileKind.Value, TileWidth.Full),
+        new("speed", TileKind.Value, new(12, 2)),
 
-        new("pwm", TileKind.Value, TileWidth.Half),
-        new("battery_level", TileKind.Value, TileWidth.Half),
+        new("pwm", TileKind.Value, new(6, 2)),
+        new("battery_level", TileKind.Value, new(6, 2)),
 
-        new("voltage", TileKind.Value, TileWidth.Third),
-        new("current", TileKind.Value, TileWidth.Third),
-        new("power", TileKind.Value, TileWidth.Third),
+        // Половина и четыре четвертных двумя столбиками — ряд, ради которого высота стала своей
+        // мерой. Укладчик кладёт их сам: список идёт слева направо и сверху вниз, а четвертные
+        // ложатся в остаток ряда рядом с двухстрочным напряжением.
+        new("voltage", TileKind.Value, new(6, 2)),
+        new("current", TileKind.Value, new(3, 1)),
+        new("power", TileKind.Value, new(3, 1)),
+        new("phase_current", TileKind.Value, new(3, 1)),
+        new("max_pwm", TileKind.Value, new(3, 1)),
 
-        new("system_temp", TileKind.Value, TileWidth.Third),
-        new("temp2", TileKind.Value, TileWidth.Third),
-        new("phase_current", TileKind.Value, TileWidth.Third),
+        new("system_temp", TileKind.Value, new(4, 1)),
+        new("temp2", TileKind.Value, new(4, 1)),
+        new("tilt", TileKind.Value, new(4, 1)),
 
-        new("distance", TileKind.Value, TileWidth.Half),
-        new("totaldistance", TileKind.Value, TileWidth.Half),
+        new("distance", TileKind.Value, new(6, 1)),
+        new("totaldistance", TileKind.Value, new(6, 1)),
 
-        new("max_pwm", TileKind.Value, TileWidth.Third),
-        new("top_speed", TileKind.Value, TileWidth.Third),
-        new("tilt", TileKind.Value, TileWidth.Third),
+        new("top_speed", TileKind.Value, new(4, 1)),
     ];
 }

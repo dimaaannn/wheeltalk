@@ -36,6 +36,31 @@ public static class LabMetricWords
         ["UnitKm"] = "км",
         ["UnitCelsius"] = "°C",
         ["UnitDegrees"] = "°",
+
+        // Меню плитки показывает весь каталог, а не только зашитую раскладку, — поэтому здесь
+        // лежат все двадцать шесть величин теми же словами, что и в ресурсах приложения.
+        ["TelemetryFromStart"] = "С подключения",
+        ["TelemetrySleep"] = "Автовыключение",
+        ["MetricTorque"] = "Момент",
+        ["MetricMotorPower"] = "Мощность мотора",
+        ["MetricCpuTemp"] = "Контроллер",
+        ["MetricCpuLoad"] = "Загрузка",
+        ["MetricImuTemp"] = "Гироскоп",
+        ["MetricCurrentLimit"] = "Лимит тока",
+        ["MetricSpeedLimit"] = "Предел колеса",
+        ["MetricHardwarePwm"] = "ШИМ колеса",
+        ["MetricFanStatus"] = "Вентилятор",
+        ["MetricRoll"] = "Крен",
+
+        ["UnitNewtonMetres"] = "Н·м",
+        ["UnitSeconds"] = "с",
+
+        ["TilesTileMetric"] = "Величина",
+        ["TilesTileSize"] = "Размер",
+        ["TilesTileRemove"] = "Убрать",
+        ["TilesTileEmpty"] = "Пусто",
+        ["TilesEditSave"] = "Сохранить",
+        ["TilesEditCancel"] = "Отменить",
     };
 
     public static string Get(string key) => Words.GetValueOrDefault(key, key);

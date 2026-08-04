@@ -185,7 +185,7 @@ public sealed class LabActivity : Activity
     /// <summary>
     /// Командный вход стенда — тот же приём, которым гоняют реплей боевого приложения (план 22 §2):
     /// <c>am start -n com.wheeltalk.lab.droid/.LabActivity --es rebuild screen</c>,
-    /// <c>--es screen panel|tiles</c>, <c>--es history new</c>.
+    /// <c>--es screen panel|tiles</c>, <c>--es history new</c>, <c>--es layout reset</c>.
     /// <para>
     /// Заведён затем, что <c>input tap</c> по координатам промахивается хронически, а каждый промах —
     /// потерянный прогон. Своей логики здесь нет: команда зовёт ровно то же, что кнопка.
@@ -199,6 +199,14 @@ public sealed class LabActivity : Activity
         if (intent.GetStringExtra("rebuild") is not null) Rebuild();
         if (intent.GetStringExtra("screen") is { } screen) ShowTiles(screen == "tiles");
         if (intent.GetStringExtra("history") is not null) _ = RefillStore();
+
+        // Переставленная руками раскладка живёт в памяти и закрывает собой зашитую: правку
+        // TilesLayout.Fixed без сброса на экране не увидеть.
+        if (intent.GetStringExtra("layout") is not null)
+        {
+            TileLayoutDraft.Reset();
+            Rebuild();
+        }
     }
 
     /// <summary>
@@ -261,8 +269,42 @@ public sealed class LabActivity : Activity
     /// <summary>
     /// Жест ловит хозяин, а во что касание попало — решает сам экран: метки нарисованы на его канве.
     /// То же разделение, что в <c>MainActivity</c>.
+    /// <para>
+    /// Хром отсюда не зовётся: на экране плиток касание занято правкой раскладки, и возврат стенда
+    /// по любому тапу отменял бы кнопку «⛶» сразу после нажатия. Там стенд зовут Escape, на панели
+    /// по-прежнему кликом по хосту.
+    /// </para>
     /// </summary>
     private void OnTapped(float x, float y) => _screen?.Current.Tap(x, y);
+
+    /// <summary>Кнопка «назад» сперва предлагается экрану: плитки закрывают ею режим правки.</summary>
+    public override void OnBackPressed()
+    {
+        if (_screen?.Current.Back() == true) return;
+
+        base.OnBackPressed();
+    }
+
+    /// <summary>
+    /// Escape возвращает хром стенда. Нужен затем, что в режиме «экран целиком» стенд зовут
+    /// касанием, а касание на экране плиток занято правкой раскладки: клавиша снаружи —
+    /// с клавиатуры или <c>adb shell input keyevent 111</c> — ничему не мешает.
+    /// <para>
+    /// Перехват здесь, а не в <c>OnKeyDown</c>: до него событие не доходит, если клавишу взял себе
+    /// элемент в фокусе — сетка плиток, список или поле. Хром должен зваться отовсюду, где показан
+    /// стенд.
+    /// </para>
+    /// </summary>
+    public override bool DispatchKeyEvent(KeyEvent? e)
+    {
+        if (e is { KeyCode: Keycode.Escape, Action: KeyEventActions.Down })
+        {
+            ShowChrome(true);
+            return true;
+        }
+
+        return base.DispatchKeyEvent(e);
+    }
 
     /// <summary>
     /// Исполнение намерений экрана — по-стендовому. Действия здесь свои, но <b>немых намерений

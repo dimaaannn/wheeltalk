@@ -307,6 +307,12 @@
   <data name="TelemetrySectionWheel" xml:space="preserve"><value>Колесо</value></data>
   <data name="TelemetrySectionBms1" xml:space="preserve"><value>Батарея 1</value></data>
   <data name="TelemetrySectionBms2" xml:space="preserve"><value>Батарея 2</value></data>
+  <data name="TilesTileMetric" xml:space="preserve"><value>Величина</value></data>
+  <data name="TilesTileSize" xml:space="preserve"><value>Размер</value></data>
+  <data name="TilesTileRemove" xml:space="preserve"><value>Убрать</value></data>
+  <data name="TilesTileEmpty" xml:space="preserve"><value>Пусто</value></data>
+  <data name="TilesEditSave" xml:space="preserve"><value>Сохранить</value></data>
+  <data name="TilesEditCancel" xml:space="preserve"><value>Отменить</value></data>
   <data name="TelemetrySpeed" xml:space="preserve"><value>Скорость</value></data>
   <data name="TelemetryTopSpeed" xml:space="preserve"><value>Максимальная</value></data>
   <data name="TelemetryPwm" xml:space="preserve"><value>ШИМ</value></data>

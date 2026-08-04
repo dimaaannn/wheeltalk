@@ -39,6 +39,21 @@ public sealed class LabSettingsActivity : Activity
     private LinearLayout _rows = null!;
     private float _density;
 
+    /// <summary>
+    /// Escape закрывает параметры — тем же движением, каким на стенде им зовут хром. Одна клавиша
+    /// значит «покажи стенд»: там, где он спрятан, она его достаёт, здесь — возвращает к нему.
+    /// </summary>
+    public override bool DispatchKeyEvent(KeyEvent? e)
+    {
+        if (e is { KeyCode: Keycode.Escape, Action: KeyEventActions.Down })
+        {
+            Finish();
+            return true;
+        }
+
+        return base.DispatchKeyEvent(e);
+    }
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
