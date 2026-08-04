@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using WheelTalk.Core.Metrics;
-using WheelTalk.Lab.Droid.Scenarios;
+using WheelTalk.Lab.Data;
 using WheelTalk.Storage;
 
 namespace WheelTalk.Lab.Droid;
@@ -31,17 +31,20 @@ public sealed class LabStore : IAsyncDisposable
     public static readonly TimeSpan HistorySpan = TimeSpan.FromHours(3);
 
     /// <summary>
-    /// Стендовые сроки: коммит чаще боевого, потому что набивка гонит пятьдесят тысяч строк подряд, а
-    /// не пять в секунду. Срок хранения и порог брошенной поездки — боевые: стенд обязан жить по тем
-    /// же правилам, иначе проверяет не то.
+    /// Насколько свежей должна доходить история, чтобы её не перекладывали заново. Пять минут — самое
+    /// короткое окно графика (<c>TilesLayout.ChartWindows</c>): дошла история до него — дойдёт и до
+    /// любого другого.
     /// </summary>
-    private static readonly StorageOptions Timings = new() { CommitInterval = TimeSpan.FromMilliseconds(100) };
+    private static readonly TimeSpan FreshWindow = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// Сколько отсчётов копится до сброса на диск. Не ради скорости, а ради памяти: очередь
-    /// <see cref="RideStore"/> неограниченна, и пятьдесят тысяч снимков разом легли бы в неё все.
+    /// Стендовые сроки: коммит <b>реже</b> боевого, потому что набивка гонит пятьдесят тысяч строк
+    /// подряд, а не пять в секунду. При коммите раз в 100 мс те же строки ложились двумя с половиной
+    /// сотнями транзакций, и на эмуляторе это двадцать пять секунд ожидания — по секунде их
+    /// вдесятеро меньше. Срок хранения и порог брошенной поездки остаются боевыми: стенд обязан жить
+    /// по тем же правилам, иначе проверяет не то.
     /// </summary>
-    private const int FlushEvery = 6000;
+    private static readonly StorageOptions Timings = new() { CommitInterval = TimeSpan.FromSeconds(1) };
 
     private readonly string _path = Path.Combine(LabFiles.Root, "lab-telemetry.db");
 
@@ -53,16 +56,21 @@ public sealed class LabStore : IAsyncDisposable
     public IMetricHistory History { get; private set; } = null!;
 
     /// <summary>
-    /// Открыть базу и, если истории в ней нет, набить. Пустой она бывает при первом запуске и после
-    /// того, как срок хранения съел набитое в прошлый раз.
+    /// Открыть базу и, если история устарела или её нет вовсе, набить заново. Устаревает она просто
+    /// от времени: набитая в обед доходит до обеда, а к вечеру график за последние минуты по ней
+    /// пуст — и это читается как «графики не работают», хотя работают они правильно.
     /// </summary>
     public async Task<string> OpenAsync()
     {
         await Task.Run(Open);
 
-        if (await HasHistoryAsync()) return _summary = $"История на месте: {_path}";
+        if (await EndOfHistoryAsync() is not { } end) return await RefillAsync();
+        if (DateTimeOffset.Now - end < FreshWindow) return _summary = $"История на месте: {_path}";
 
-        return await FillAsync(Environment.TickCount);
+        // Досыпается только разрыв: перекладка всех пятидесяти четырёх тысяч отсчётов идёт двадцать
+        // пять секунд, и всё это время график пуст — последние минуты пишутся последними. После
+        // короткой отлучки дописать надо минуты, и это доли секунды.
+        return await TopUpAsync(end);
     }
 
     /// <summary>
@@ -80,7 +88,7 @@ public sealed class LabStore : IAsyncDisposable
         foreach (string suffix in (string[])["", "-wal", "-shm"]) File.Delete(_path + suffix);
 
         await Task.Run(Open);
-        return await FillAsync(Environment.TickCount);
+        return _summary = await LabHistoryFile.FillAsync(_rides, DateTimeOffset.Now, HistorySpan, Environment.TickCount);
     }
 
     public async ValueTask DisposeAsync() => await _rides.DisposeAsync();
@@ -92,38 +100,33 @@ public sealed class LabStore : IAsyncDisposable
         History = new MetricHistoryReader(_database, () => LabRideHistory.Mac);
     }
 
-    private async Task<bool> HasHistoryAsync()
+    /// <summary>
+    /// Когда кончается набитое. Годность истории мерится не тем, есть ли она вообще, а тем,
+    /// <b>доходит ли она до сейчас</b>: набитая утром покатушка попадает в суточный срок хранения и
+    /// базу заполняет, но график за последние минуты по ней пуст — а это самое частое окно, с
+    /// которым на стенд и смотрят.
+    /// <para>
+    /// <c>null</c> — истории нет вовсе либо она старше, чем стенд вообще набивает: досыпать не к
+    /// чему, надо перекладывать.
+    /// </para>
+    /// </summary>
+    private async Task<DateTimeOffset?> EndOfHistoryAsync()
     {
+        var now = DateTimeOffset.Now;
+        // Корзина в минуту: точнее знать конец незачем — досыпается он с той же частотой, что и
+        // остальная история.
         var points = await History.ReadAsync(
-            "speed", DateTimeOffset.Now - Timings.TelemetryRetention, DateTimeOffset.Now, 8, CancellationToken.None);
+            "speed", now - HistorySpan, now, (int)HistorySpan.TotalMinutes, CancellationToken.None);
 
-        return points.Count > 0;
+        return points.Count == 0 ? null : DateTimeOffset.FromUnixTimeMilliseconds(points[^1].AtMs);
     }
 
-    private async Task<string> FillAsync(int seed)
+    /// <summary>Дописать покатушку от конца набитого до сейчас — тем же генератором, что и всю её.</summary>
+    private async Task<string> TopUpAsync(DateTimeOffset from)
     {
-        int rows = 0;
-        double topSpeed = 0;
-        double lowVolts = double.MaxValue;
-        double highVolts = 0;
-        int lowBattery = 100;
+        var now = DateTimeOffset.Now;
+        string added = await LabHistoryFile.FillAsync(_rides, now, now - from, Environment.TickCount);
 
-        foreach (var (at, snapshot) in LabRideHistory.Generate(DateTimeOffset.Now, HistorySpan, seed))
-        {
-            _rides.Write(LabRideHistory.Mac, LabRideHistory.Protocol, snapshot, at);
-
-            rows++;
-            topSpeed = Math.Max(topSpeed, snapshot.SpeedKmh);
-            lowVolts = Math.Min(lowVolts, snapshot.VoltageV);
-            highVolts = Math.Max(highVolts, snapshot.VoltageV);
-            lowBattery = Math.Min(lowBattery, snapshot.Battery);
-
-            if (rows % FlushEvery == 0) await _rides.FlushAsync();
-        }
-
-        await _rides.FlushAsync();
-
-        return _summary = $"История набита: {HistorySpan.TotalHours:0.#} ч, {rows} отсчётов, "
-            + $"до {topSpeed:F0} км/ч, {lowVolts:F1}–{highVolts:F1} В, заряд до {lowBattery} %";
+        return _summary = $"История продолжена на {(now - from).TotalMinutes:F0} мин. {added}";
     }
 }

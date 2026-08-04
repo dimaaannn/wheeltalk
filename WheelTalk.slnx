@@ -3,6 +3,8 @@
   <Project Path="WheelTalk.Storage/WheelTalk.Storage.csproj" />
   <Project Path="WheelTalk.Test.ConsoleConnection/WheelTalk.Test.ConsoleConnection.csproj" />
   <Project Path="WheelTalk.Droid/WheelTalk.Droid.csproj" />
+  <Project Path="WheelTalk.Lab.Data/WheelTalk.Lab.Data.csproj" />
+  <Project Path="WheelTalk.Charts.Droid/WheelTalk.Charts.Droid.csproj" />
   <Project Path="WheelTalk.Dashboard.Droid/WheelTalk.Dashboard.Droid.csproj" />
   <Project Path="WheelTalk.Lab.Droid/WheelTalk.Lab.Droid.csproj">
     <Deploy />

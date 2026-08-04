@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<!-- Чистый .NET для Android, без MAUI — тем же составом, что WheelTalk.Droid. Стенд
@@ -45,6 +45,9 @@
 		     Стенд получает узкие типы (RideStore на запись, MetricHistoryReader на чтение) — не
 		     соединение и не SQL: тем правилом живут все, кроме самого WheelTalk.Storage. -->
 		<ProjectReference Include="..\WheelTalk.Storage\WheelTalk.Storage.csproj" />
+		<!-- Покатушка стенда и запись её в базу — общие с консолью, которая готовит такой же
+		     файл на машине. -->
+		<ProjectReference Include="..\WheelTalk.Lab.Data\WheelTalk.Lab.Data.csproj" />
 	</ItemGroup>
 
 </Project>

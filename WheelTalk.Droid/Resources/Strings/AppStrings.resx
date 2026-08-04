@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -311,6 +311,15 @@
   <data name="TilesTileSize" xml:space="preserve"><value>Размер</value></data>
   <data name="TilesTileRemove" xml:space="preserve"><value>Убрать</value></data>
   <data name="TilesTileEmpty" xml:space="preserve"><value>Пусто</value></data>
+  <data name="TilesTileKind" xml:space="preserve"><value>Вид</value></data>
+  <data name="TilesKindValue" xml:space="preserve"><value>Число</value></data>
+  <data name="TilesKindChart" xml:space="preserve"><value>График</value></data>
+  <data name="TilesTileWindow" xml:space="preserve"><value>За какое время</value></data>
+  <data name="TilesTileOverlay" xml:space="preserve"><value>Число поверх графика</value></data>
+  <data name="TilesTileZoom" xml:space="preserve"><value>Обрезать по крайним значениям</value></data>
+  <data name="TilesTileLabel" xml:space="preserve"><value>Показывать подпись</value></data>
+  <data name="UnitMinutesShort" xml:space="preserve"><value>мин</value></data>
+  <data name="UnitHoursShort" xml:space="preserve"><value>ч</value></data>
   <data name="TilesEditSave" xml:space="preserve"><value>Сохранить</value></data>
   <data name="TilesEditCancel" xml:space="preserve"><value>Отменить</value></data>
   <data name="TelemetrySpeed" xml:space="preserve"><value>Скорость</value></data>

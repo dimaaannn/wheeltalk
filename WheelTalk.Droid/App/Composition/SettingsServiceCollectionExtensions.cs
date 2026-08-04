@@ -1,8 +1,9 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Alerts;
+using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
@@ -76,6 +77,12 @@ public static class SettingsServiceCollectionExtensions
             sp.GetRequiredService<IOptions<StorageOptions>>().Value,
             sp.GetRequiredService<ILogger<RideStore>>()));
         services.AddSingleton<RideExporter>();
+
+        // История для плиток-графиков (план 23 §5.6). Колесо делегатом, а не строкой: адрес меняется
+        // в живом приложении, а читатель один.
+        services.AddSingleton<IMetricHistory>(sp => new MetricHistoryReader(
+            sp.GetRequiredService<RideDatabase>(),
+            () => sp.GetRequiredService<IOptionsMonitor<WheelOptions>>().CurrentValue.Address));
 
         return services;
     }

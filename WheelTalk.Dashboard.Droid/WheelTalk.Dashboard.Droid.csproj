@@ -31,6 +31,11 @@
 		<!-- DashboardReading.From(TelemetrySnapshot, ...) читает контракт ядра напрямую — та же
 		     зависимость, что у WheelTalk.Dashboard (MAUI) и у WheelTalk.Native. -->
 		<ProjectReference Include="..\WheelTalk.Core\WheelTalk.Core.csproj" />
+
+		<!-- Полноэкранный график (план 23 §4): зум, попадание пальцем в точку из тысяч и маркер,
+		     не уезжающий за край. Мелкие плитки рисуются сами — движок осей и жестов нужен только
+		     здесь. -->
+		<ProjectReference Include="..\WheelTalk.Charts.Droid\WheelTalk.Charts.Droid.csproj" />
 	</ItemGroup>
 
 </Project>

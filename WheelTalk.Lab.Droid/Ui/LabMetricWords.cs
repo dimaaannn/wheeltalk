@@ -1,4 +1,4 @@
-namespace WheelTalk.Lab.Droid.Ui;
+﻿namespace WheelTalk.Lab.Droid.Ui;
 
 /// <summary>
 /// Слова для плиток стенда. Библиотека панели ресурсов не держит и подписи получает готовыми (тот же
@@ -59,6 +59,16 @@ public static class LabMetricWords
         ["TilesTileSize"] = "Размер",
         ["TilesTileRemove"] = "Убрать",
         ["TilesTileEmpty"] = "Пусто",
+        ["TilesTileKind"] = "Вид",
+        ["TilesKindValue"] = "Число",
+        ["TilesKindChart"] = "График",
+        ["TilesTileWindow"] = "За какое время",
+        ["TilesTileOverlay"] = "Число поверх графика",
+        ["TilesTileZoom"] = "Обрезать по крайним значениям",
+        ["TilesTileLabel"] = "Показывать подпись",
+
+        ["UnitMinutesShort"] = "мин",
+        ["UnitHoursShort"] = "ч",
         ["TilesEditSave"] = "Сохранить",
         ["TilesEditCancel"] = "Отменить",
     };

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Придуманная покатушка стенда и запись её в базу. Отдельным переносимым проектом, потому
+		     что пользуются ею с двух сторон: стенд на Android набивает базу у себя, а Windows-консоль
+		     готовит такой же файл на машине — там он делается за секунды вместо минут на телефоне
+		     (владелец 04.08.2026, «положить заполненный файл прямо на устройство»). -->
+		<TargetFramework>net10.0</TargetFramework>
+
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\WheelTalk.Core\WheelTalk.Core.csproj" />
+		<ProjectReference Include="..\WheelTalk.Storage\WheelTalk.Storage.csproj" />
+	</ItemGroup>
+
+</Project>

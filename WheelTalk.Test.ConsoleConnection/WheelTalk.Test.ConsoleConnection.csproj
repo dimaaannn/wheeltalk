@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -31,6 +31,8 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Готовая база стенда одной командой: см. Program.Main, ветка "history". -->
+    <ProjectReference Include="..\WheelTalk.Lab.Data\WheelTalk.Lab.Data.csproj" />
   </ItemGroup>
 
 </Project>

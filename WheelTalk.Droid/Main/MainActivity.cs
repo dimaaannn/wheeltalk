@@ -1,4 +1,4 @@
-using System.Reactive.Linq;
+﻿using System.Reactive.Linq;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Alerts;
 using WheelTalk.Core.Contracts;
+using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
@@ -1151,7 +1152,8 @@ public sealed class MainActivity : Activity
     }
 
     private TilesScreen Tiles() =>
-        _tiles ??= new TilesScreen(this, _dashboardOptions, TranslateExtension.Get);
+        _tiles ??= new TilesScreen(this, _dashboardOptions, TranslateExtension.Get,
+            MainApplication.Services.GetRequiredService<IMetricHistory>());
 
     private void LoadFonts()
     {

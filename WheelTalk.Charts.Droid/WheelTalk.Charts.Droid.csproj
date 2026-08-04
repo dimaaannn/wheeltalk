@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Биндинг чужой Java-библиотеки графиков — форк AppDevNext/AndroidChart 3.1.0.31
+		     (решение владельца 03.08.2026, план 23 §4 и native-ui-libraries.md §4.6). Отдельным
+		     проектом, потому что генератор обёрток работает над .aar целиком и его вывод не должен
+		     смешиваться с нашим кодом: обновление библиотеки — замена одного файла здесь. -->
+		<TargetFramework>net10.0-android</TargetFramework>
+
+		<IsBindingProject>true</IsBindingProject>
+		<RootNamespace>WheelTalk.Charts.Droid</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<Nullable>disable</Nullable>
+
+		<!-- Обёртки генерируются по чужому байткоду: ни XML-документации, ни наших правил
+		     именования в них нет и быть не может. -->
+		<GenerateDocumentationFile>false</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS0108;CS0114;CS0618;CS1591;XA4218;BG8605;BG8606</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Сам архив лежит в репозитории, а не тянется из JitPack на каждой сборке: сборка не
+		     должна зависеть от чужой доступности, а версия — меняться молча. -->
+		<AndroidLibrary Include="AndroidChart-3.1.0.31.aar" Bind="true" />
+		<TransformFile Include="Transforms\Metadata.xml" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Из четырёх зависимостей pom названа одна. Kotlin-рантайм и annotation приходят следом за
+		     Core сами, а `activity-ktx` не назван намеренно: пакет Xamarin.AndroidX.Activity тянет
+		     аннотации Compose двумя артефактами разом (jvm и android), и D8 падает на одинаковых
+		     классах. Обёртки без него собираются целиком — значит и не нужен. Версия Core та же,
+		     что в приложении. -->
+		<PackageReference Include="Xamarin.AndroidX.Core" Version="1.19.0.1" />
+	</ItemGroup>
+
+</Project>

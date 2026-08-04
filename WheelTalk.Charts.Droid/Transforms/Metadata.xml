@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Правка чужого API перед тем, как по нему сгенерируют обёртки.
+
+  Библиотека написана на дженериках Java (`Chart<T extends ChartData>`, `IDataSet<T extends Entry>`,
+  `Comparator<Entry>`), а генератор биндингов их не переносит: у наследника выходит сигнатура, не
+  совпадающая с интерфейсной, и обёртки не компилируются — восемьдесят шесть ошибок в двадцати двух
+  типах.
+
+  Лечится двумя приёмами, и оба сужают биндинг до того, что нам нужно, — до линии:
+
+  1. Виды графиков, которых у нас нет (столбики, свечи, пузыри, точки, круг, радар), выброшены
+     целиком вместе с их поставщиками данных и буферами.
+  2. У оставшихся классов сняты объявления `implements` тех интерфейсов, что и порождают спор о
+     сигнатурах. Это не потеря: мы библиотеку **используем**, а не наследуем и не подменяем её
+     интерфейсы своими. Сами классы (`LineChart`, `LineData`, `LineDataSet`, `Entry`, оси, маркеры)
+     остаются целыми, и всё, ради чего библиотека взята (план 23 §3.2 — зум, попадание в точку,
+     маркер), делается через них.
+-->
+<metadata>
+  <!-- 1. Виды графиков, которых у нас нет и не будет. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='HorizontalBarChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BubbleChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='CandleStickChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='CombinedChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='ScatterChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='PieChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='RadarChart']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='PieRadarChartBase']" />
+
+  <!-- Их поставщики данных и буферы — то же самое с другой стороны. Имена в API идут без «I»:
+       букву приписывает уже генератор обёрток. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='BarDataProvider']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='BubbleDataProvider']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='CandleDataProvider']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='CombinedDataProvider']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='ScatterDataProvider']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='BarLineScatterCandleBubbleDataProvider']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='LineDataProvider']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.dataprovider']/interface[@name='ChartInterface']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.buffer']" />
+
+  <!-- 2. Спорные объявления «реализую интерфейс» у того, что остаётся. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/implements" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/implements" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='LineChart']/implements" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.utils']/class[@name='EntryXComparator']/implements" />
+
+  <!-- А вот у наборов данных `implements` трогать нельзя: `LineData` принимает именно `ILineDataSet`,
+       и класс, переставший его реализовывать, стало бы некуда положить. Спорят там ровно те методы
+       интерфейса, у которых в Java параметр обобщённый (`T extends Entry`), а после стирания —
+       `Object`. Убираем из интерфейса их, а не реализацию: те же методы остаются у самого
+       `LineDataSet`, с точным типом `Entry`, и работать с ним удобнее, чем с интерфейсом. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.datasets']/interface[@name='IDataSet']/method[@name='addEntry']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.datasets']/interface[@name='IDataSet']/method[@name='addEntryOrdered']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.datasets']/interface[@name='IDataSet']/method[@name='removeEntry']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.datasets']/interface[@name='IDataSet']/method[@name='getEntryIndex']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.datasets']/interface[@name='IDataSet']/method[@name='getEntryForIndex']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.datasets']/interface[@name='IDataSet']/method[@name='getEntryForXValue']" />
+
+  <!-- Рисовальщики осей и линий — внутренняя кухня библиотеки: зовёт их она сама, а обёртки над
+       ними спорят с наследованием (`RenderLimitLines`, доступность `CalculateOffsets`). Java-классы
+       остаются в архиве и работают; из C# они просто не видны. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.renderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/method[@name='calculateOffsets']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='calculateOffsets']" />
+</metadata>

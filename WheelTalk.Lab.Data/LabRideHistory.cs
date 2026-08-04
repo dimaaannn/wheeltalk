@@ -1,6 +1,6 @@
-using WheelTalk.Core.Contracts;
+﻿using WheelTalk.Core.Contracts;
 
-namespace WheelTalk.Lab.Droid.Scenarios;
+namespace WheelTalk.Lab.Data;
 
 /// <summary>
 /// Придуманная покатушка длиной в несколько часов — то, чем стенд набивает свою базу, чтобы графики

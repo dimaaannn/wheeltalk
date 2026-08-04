@@ -1,10 +1,12 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using WheelTalk.Ble;
 using WheelTalk.Composition;
 using WheelTalk.Core.Ports;
+using WheelTalk.Lab.Data;
+using WheelTalk.Storage;
 using WheelTalk.Debug;
 
 namespace WheelTalk;
@@ -13,6 +15,23 @@ internal static class Program
 {
     private static async Task Main(string[] args)
     {
+        // Готовая база стенда: `dotnet run -- history <файл> [часы]`. Здесь она делается за секунды,
+        // на телефоне те же сутки писались бы минутами — а всё это время графики пусты. Отдельным
+        // входом до всей BLE-обвязки: ни адаптера, ни колеса ей не нужно.
+        if (args is ["history", var path, ..])
+        {
+            double hours = args.Length > 2 && double.TryParse(args[2], out double given) ? given : 24;
+            Console.WriteLine(await LabHistoryFile.CreateAsync(path, TimeSpan.FromHours(hours), new StorageOptions
+            {
+                // Реже боевого: строки идут сотнями тысяч подряд, и коммит на каждые сто миллисекунд
+                // разложил бы их тысячами транзакций.
+                CommitInterval = TimeSpan.FromSeconds(1),
+            }));
+            Console.WriteLine($"Файл: {Path.GetFullPath(path)}");
+
+            return;
+        }
+
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, eventArgs) =>
         {

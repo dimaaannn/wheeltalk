@@ -34,6 +34,8 @@ public sealed class TilesScreen : IMainScreen
 {
     private readonly Context _context;
     private readonly Func<string, string> _translate;
+    private readonly IMetricHistory? _history;
+    private readonly DashboardPalette _palette;
     private readonly FrameLayout _root;
     private readonly RecyclerView _list;
     private readonly View _buttons;
@@ -42,6 +44,7 @@ public sealed class TilesScreen : IMainScreen
 
     private int _topInset = -1;
     private bool _editing;
+    private long _polledAt;
 
     /// <summary>Раскладка на входе в режим правки: к ней возвращает «отменить» и кнопка «назад».</summary>
     private IReadOnlyList<MetricTile> _beforeEditing = [];
@@ -50,10 +53,17 @@ public sealed class TilesScreen : IMainScreen
     /// Ключ ресурса → слово. Слова — забота вызывающего, как у подписей шторки: у приложения они
     /// переводимые, у стенда свои, а библиотека ресурсов приложения не видит.
     /// </param>
-    public TilesScreen(Context context, DashboardOptions options, Func<string, string> translate)
+    /// <param name="history">
+    /// Откуда плитки-графики берут историю. <c>null</c> — истории нет вовсе (запись выключена, база
+    /// не открыта): графики останутся пустыми, остальные плитки работают как работали.
+    /// </param>
+    public TilesScreen(Context context, DashboardOptions options, Func<string, string> translate,
+        IMetricHistory? history = null)
     {
         _context = context;
         _translate = translate;
+        _history = history;
+        _palette = options.Palette;
         _padding = context.Dp(6);
         _adapter = new TileAdapter(context, options.Palette, translate, TileLayoutDraft.Tiles);
 
@@ -87,6 +97,45 @@ public sealed class TilesScreen : IMainScreen
     {
         ApplyInset((int)frame.TopInset);
         _adapter.Render(frame.Snapshot);
+        PollCharts();
+    }
+
+    /// <summary>
+    /// Перечитать историю показанных графиков. Зовётся с кадром, а работает раз в секунду-две
+    /// (<see cref="TilesLayout.ChartPollMs"/>): своего таймера заводить незачем — кадры и так идут,
+    /// а лишний источник частоты дал бы биение с ними.
+    /// <para>
+    /// Обходятся <b>показанные</b> плитки, а не вся раскладка: то, что уехало за край, читать из
+    /// базы не нужно, а вернётся оно уже с точками.
+    /// </para>
+    /// </summary>
+    private void PollCharts()
+    {
+        if (_history is null) return;
+
+        long now = Environment.TickCount64;
+        if (now - _polledAt < TilesLayout.ChartPollMs) return;
+
+        _polledAt = now;
+
+        for (int index = 0; index < _list.ChildCount; index++)
+        {
+            if (_list.GetChildAt(index) is not ChartTileView chart) continue;
+
+            int position = _list.GetChildAdapterPosition(chart);
+            if (position < 0 || _adapter.TileAt(position) is not { Chart: { } options } tile) continue;
+
+            _ = FillAsync(chart, tile.MetricId, options.Window);
+        }
+    }
+
+    private async Task FillAsync(ChartTileView chart, string metricId, TimeSpan window)
+    {
+        var to = DateTimeOffset.Now;
+        var points = await _history!.ReadAsync(metricId, to - window, to, chart.Points, CancellationToken.None);
+
+        // Читали вне потока отрисовки — возвращаемся в него: точки ставит тот, кто рисует.
+        chart.Post(() => chart.SetPoints(points));
     }
 
     public void Tap(float windowX, float windowY)
@@ -139,9 +188,26 @@ public sealed class TilesScreen : IMainScreen
     /// </summary>
     private void SingleTap(float x, float y)
     {
-        if (!_editing || _list.FindChildViewUnder(x, y) is not { } tile) return;
+        if (_list.FindChildViewUnder(x, y) is not { } view) return;
 
-        ShowEditor(_list.GetChildAdapterPosition(tile));
+        int position = _list.GetChildAdapterPosition(view);
+        if (position < 0) return;
+
+        if (_editing)
+        {
+            ShowEditor(position);
+            return;
+        }
+
+        // Вне правки короткий тап принадлежит графику: он открывает полноэкранный просмотр
+        // (решение владельца 04.08.2026). По остальным плиткам тапать пока нечего.
+        if (_history is { } history
+            && _adapter.TileAt(position) is { Kind: TileKind.Chart, Chart: { } options } tile
+            && MetricCatalogue.Find(tile.MetricId) is { } metric)
+        {
+            ChartViewer.Show(_context, _palette, history, metric, _translate(metric.LabelKey),
+                metric.UnitKey is { } unit ? _translate(unit) : "", options.Window);
+        }
     }
 
     /// <param name="position">Правим плитку с этим номером либо <c>null</c> — заводим новую.</param>
@@ -340,7 +406,7 @@ public sealed class TilesScreen : IMainScreen
         /// экран короткий — так кадр обходит готовый список вместо <c>NotifyItemChanged</c> по
         /// каждой плитке пять раз в секунду.
         /// </summary>
-        private readonly List<MetricTileView> _views = [];
+        private readonly List<TileView> _views = [];
 
         private TelemetrySnapshot? _snapshot;
         private bool _editing;
@@ -441,23 +507,31 @@ public sealed class TilesScreen : IMainScreen
             return MetricCatalogue.Find(tile.MetricId) is { } metric ? (tile, metric) : null;
         }
 
+        /// <summary>
+        /// Вид рисовальщика и есть тип держателя: число и график — разные <c>View</c>, и переиспользовать
+        /// одну под другую нельзя. Пустое место идёт как число: рамка у них общая, а содержимого у
+        /// него нет вовсе.
+        /// </summary>
+        public override int GetItemViewType(int position) => _tiles[position].Tile.Kind == TileKind.Chart ? 1 : 0;
+
         public override RecyclerView.ViewHolder OnCreateViewHolder(ViewGroup parent, int viewType)
         {
-            var view = new MetricTileView(_context, _palette)
-            {
-                // Плитка могла родиться уже посреди правки: сетка создаёт держатели по мере надобности.
-                Editing = _editing,
+            TileView view = viewType == 1
+                ? new ChartTileView(_context, _palette, _translate)
+                : new MetricTileView(_context, _palette);
 
-                // Просветы полями держит GridLayoutManager; свой укладчик отступает сам и эти поля
-                // не читает — вреда от них там нет.
-                LayoutParameters = new RecyclerView.LayoutParams(
-                    ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-                {
-                    LeftMargin = _context.Dp(TilesLayout.GapDp),
-                    RightMargin = _context.Dp(TilesLayout.GapDp),
-                    TopMargin = _context.Dp(TilesLayout.GapDp),
-                    BottomMargin = _context.Dp(TilesLayout.GapDp),
-                },
+            // Плитка могла родиться уже посреди правки: сетка создаёт держатели по мере надобности.
+            view.Editing = _editing;
+
+            // Просветы полями держит GridLayoutManager; свой укладчик отступает сам и эти поля
+            // не читает — вреда от них там нет.
+            view.LayoutParameters = new RecyclerView.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            {
+                LeftMargin = _context.Dp(TilesLayout.GapDp),
+                RightMargin = _context.Dp(TilesLayout.GapDp),
+                TopMargin = _context.Dp(TilesLayout.GapDp),
+                BottomMargin = _context.Dp(TilesLayout.GapDp),
             };
 
             _views.Add(view);
@@ -476,8 +550,19 @@ public sealed class TilesScreen : IMainScreen
                 return;
             }
 
-            tile.Tile.Bind(metric, _translate(metric.LabelKey),
-                metric.UnitKey is { } unit ? _translate(unit) : "", layout.Size);
+            string label = _translate(metric.LabelKey);
+            string unit = metric.UnitKey is { } key ? _translate(key) : "";
+
+            if (tile.Tile is ChartTileView chart)
+            {
+                chart.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
+                    layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false));
+            }
+            else if (tile.Tile is MetricTileView value)
+            {
+                value.Bind(metric, label, unit, layout.Size, layout.ShowLabel);
+            }
+
             tile.Tile.Render(_snapshot);
         }
 
@@ -494,9 +579,9 @@ public sealed class TilesScreen : IMainScreen
             foreach (var view in _views) view.Render(snapshot);
         }
 
-        private sealed class TileHolder(MetricTileView tile) : RecyclerView.ViewHolder(tile)
+        private sealed class TileHolder(TileView tile) : RecyclerView.ViewHolder(tile)
         {
-            public MetricTileView Tile { get; } = tile;
+            public TileView Tile { get; } = tile;
         }
     }
 }

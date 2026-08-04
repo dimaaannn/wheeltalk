@@ -277,10 +277,23 @@ public sealed class LabActivity : Activity
     /// </summary>
     private void OnTapped(float x, float y) => _screen?.Current.Tap(x, y);
 
-    /// <summary>Кнопка «назад» сперва предлагается экрану: плитки закрывают ею режим правки.</summary>
+    /// <summary>
+    /// «Назад» на стенде разбирается по старшинству: сперва её предлагают экрану — плитки закрывают
+    /// ею режим правки; затем она возвращает спрятанный хром и только потом закрывает стенд.
+    /// <para>
+    /// Хром здесь потому, что эмулятор шлёт <c>Esc</c> с клавиатуры как «назад», а не как
+    /// <see cref="Keycode.Escape"/>: без этого клавиша, которой стенд зовут, выкидывала бы из него.
+    /// </para>
+    /// </summary>
     public override void OnBackPressed()
     {
         if (_screen?.Current.Back() == true) return;
+
+        if (_chrome.Visibility != ViewStates.Visible)
+        {
+            ShowChrome(true);
+            return;
+        }
 
         base.OnBackPressed();
     }
@@ -434,6 +447,11 @@ public sealed class LabActivity : Activity
 
             _store = store;
             _statusLabel.Text = summary;
+
+            // База открывается позже, чем строится экран, а читателя он берёт при рождении: пересобрать
+            // плитки — единственный способ отдать им историю, не заводя ради этого отложенной ссылки.
+            _tiles = null;
+            if (_tilesShown) ShowTiles(true);
         }
         catch (Exception ex)
         {
@@ -541,7 +559,12 @@ public sealed class LabActivity : Activity
 
         _tilesShown = tiles;
         screen.Show(tiles
-            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get) { OnIntent = OnScreenIntent }
+            // История графикам идёт из базы стенда — тем же читателем, каким её читает приложение
+            // (LabStore): свой генератор точек проверял бы путь, которого в бою нет.
+            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get, _store?.History)
+            {
+                OnIntent = OnScreenIntent,
+            }
             : screen.Panel);
 
         _driver.Attach(screen.Current, BuildFrame);
