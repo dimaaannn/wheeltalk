@@ -14,9 +14,11 @@ namespace WheelTalk.Dashboard.Droid;
 /// <c>Layouts/TwinTapesDashboard</c>: у обычного Android-View нет системы разметки с общей
 /// инвалидацией между соседями, есть один <c>Invalidate()</c> на весь холст).
 /// <para>
-/// Фон, полосы тревоги и вуаль устаревших данных рисует база, а не раскладка: это не приборы, а
-/// состояние экрана, и одинаково оно во всех вариантах. Раскладке остаётся <see cref="DrawPanel"/> —
-/// только её собственные приборы.
+/// Фон и вуаль устаревших данных рисует база, а не раскладка: это не приборы, а состояние экрана,
+/// и одинаково оно во всех вариантах. Раскладке остаётся <see cref="DrawPanel"/> — только её
+/// собственные приборы. Полосы тревоги панель не рисует вовсе: они не принадлежат экрану (слово
+/// владельца 05.08.2026) и живут самостоятельным элементом <c>Widgets/AlertBarsView</c> поверх
+/// рамки главного экрана.
 /// </para>
 /// <para>
 /// Кадры гонит <c>PostInvalidateOnAnimation</c> в конце <see cref="OnDraw"/>: отрисовка привязана к
@@ -85,7 +87,6 @@ public abstract class DashboardView : View, IMainScreen
     /// <summary>Во сколько раз тень длиннее самого бара: последняя треть — это растворение, чтобы граница не читалась линией.</summary>
     private const float StatusScrimHeight = 1.5f;
 
-    private readonly AlertBarsDrawable _alertBars;
     private readonly LinkBadgeDrawable _link;
     private readonly PanelChromeDrawable _chrome;
     private readonly Paint _background = new() { AntiAlias = true };
@@ -99,7 +100,6 @@ public abstract class DashboardView : View, IMainScreen
     {
         Options = options;
         Density = context.Resources?.DisplayMetrics?.Density ?? 1;
-        _alertBars = new AlertBarsDrawable { Options = options };
         _link = new LinkBadgeDrawable { Options = options };
         _chrome = new PanelChromeDrawable { Options = options };
 
@@ -118,16 +118,6 @@ public abstract class DashboardView : View, IMainScreen
     protected float Density { get; }
 
     protected DashboardReading Reading { get; private set; } = DashboardReading.Idle;
-
-    /// <summary>
-    /// Светлая фаза моргания полос тревоги. Частота (<c>DashboardOptions.BlinkHz</c>) и сам ритм —
-    /// решение вызывающего кода, не библиотеки: панель не знает, откуда берётся тревога, только как
-    /// её показать.
-    /// </summary>
-    public bool AlertLit { get; set; } = true;
-
-    /// <summary>Мягкая тревога по превышению скорости — тоже решение вызывающего кода.</summary>
-    public bool SpeedExceeded { get; set; }
 
     /// <summary>
     /// Последний кадр телеметрии устарел. Порог «сколько это — устарело» задаёт вызывающая сторона
@@ -241,13 +231,6 @@ public abstract class DashboardView : View, IMainScreen
         ShowSheetHint = frame.ShowSheetHint;
         IsStale = frame.IsStale;
         TopInset = frame.TopInset;
-        SpeedExceeded = frame.SpeedExceeded;
-
-        // Часы, а не переключение раз в кадр: при плавающей частоте экрана «раз в кадр» плавало бы
-        // вместе с ней вместо фиксированных BlinkHz. От момента запуска намеренно не считаем — это и
-        // была разошедшаяся стендовая копия (план 19, «Карта проблем» п. 3).
-        double period = Options.BlinkHz > 0 ? 1000 / Options.BlinkHz : 0;
-        AlertLit = period <= 0 || System.Environment.TickCount64 % period < period / 2;
     }
 
     /// <summary>
@@ -328,21 +311,16 @@ public abstract class DashboardView : View, IMainScreen
         // Плашка связи — последней, поверх меток: точка записи стоит в том же верхнем углу, и
         // нарисованная после она ложилась на плашку оранжевым пятном. Порядок и по смыслу такой:
         // плашка — сообщение, метка — справка, и спорить им незачем.
+        //
+        // Полос тревоги здесь больше нет: они не принадлежат экрану (слово владельца 05.08.2026) и
+        // лежат самостоятельным элементом поверх рамки (MainScreenView.Bars) — над вуалью, метками и
+        // плашкой, как лежали здесь последним слоем.
         _link.Phase = LinkPhase;
         _link.StateText = LinkText;
         _link.Seconds = LinkSeconds;
         _link.WheelName = WheelName;
         _link.SpeedKmh = Reading.SpeedKmh;
         _link.Draw(canvas, LinkArea, Density);
-
-        // Полосы тревоги — самым последним слоем, поверх всего: вуали, меток и плашки связи. Тревога
-        // не бывает менее важной, чем то, что её накрывает, и закрыть её нечем — ни «связи нет», ни
-        // «данные устарели» не отменяют предельный ШИМ. До этой правки плашка связи ложилась на них
-        // сверху ровно в том случае, когда обе видны одновременно.
-        _alertBars.Intensity = Reading.AlertIntensity;
-        _alertBars.Lit = AlertLit;
-        _alertBars.SpeedExceeded = SpeedExceeded;
-        _alertBars.Draw(canvas, content);
 
         LastDrawMs = (Java.Lang.JavaSystem.NanoTime() - started) / 1_000_000.0;
         PostInvalidateOnAnimation();

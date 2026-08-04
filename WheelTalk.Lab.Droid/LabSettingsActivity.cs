@@ -1,4 +1,4 @@
-using Android.App;
+﻿using Android.App;
 using Android.Graphics;
 using Android.OS;
 using Android.Util;
@@ -111,7 +111,10 @@ public sealed class LabSettingsActivity : Activity
 
         Group("Тревога");
         Toggle("Показывать полосы тревоги", options.ShowAlertBorder, v => options.ShowAlertBorder = v);
-        Slider("Частота моргания полос, Гц", 1, 6, options.BlinkHz, "F1", v => options.BlinkHz = v);
+        // Ноль — не моргать, как и в боевых настройках: мигающую полосу не поймать ни скриншотом,
+        // ни глазом, пока выверяют её вид (docs/testing-on-device.md).
+        Slider("Частота моргания полос, Гц (0 — не моргать)", 0, 6, options.BlinkHz, "F1",
+            v => options.BlinkHz = v);
 
         Group("Хром панели");
         Note("Всё это рисует сама панель своей канвой: разметке они не стоят ни одной точки, а появляются и исчезают, ничего не двигая.");

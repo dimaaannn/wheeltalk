@@ -1,14 +1,15 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Views;
 using Android.Widget;
 using WheelTalk.Dashboard.Droid.Layouts;
+using WheelTalk.Dashboard.Droid.Widgets;
 
 namespace WheelTalk.Dashboard.Droid.Screen;
 
 /// <summary>
 /// Рамка хозяина главного экрана: полоса тревоги колеса сверху, сам экран (<see cref="Current"/> —
-/// панель <see cref="TwinTapesDashboard"/> либо плитки, см. <see cref="Show"/>) и шторка быстрых
-/// команд поверх. Живёт в
+/// панель <see cref="TwinTapesDashboard"/> либо плитки, см. <see cref="Show"/>), полосы тревоги
+/// поверх него (<see cref="Bars"/>) и шторка быстрых команд поверх всего. Живёт в
 /// библиотеке, а не в приложении, чтобы стенд показывал ровно то, что видит райдер, — тем же
 /// классом, а не похожей копией (тот же ход, которым плашка связи и точка записи раньше переехали
 /// внутрь панели). Приложению остаётся проводка: данные, команды шторки, инсеты и жесты.
@@ -27,6 +28,7 @@ namespace WheelTalk.Dashboard.Droid.Screen;
 public sealed class MainScreenView : FrameLayout
 {
     private readonly LinearLayout _content;
+    private readonly FrameLayout _stage;
 
     public MainScreenView(Context context, DashboardOptions options) : base(context)
     {
@@ -34,12 +36,24 @@ public sealed class MainScreenView : FrameLayout
         Current = Panel;
         Alert = new AlertStrip(context);
         Sheet = new QuickSheet(context);
+        Bars = new AlertBarsView(context, options);
+
+        // Сцена: сменный экран и полосы тревоги поверх него. Полосы принадлежат рамке, а не экрану
+        // (слово владельца 05.08.2026 — «полосы не принадлежат экрану и не дублируются на каждом»):
+        // панель и плитки сменяются под ними, а полосы стоят. Границы сцены — это границы бывших
+        // панельных полос: ниже строки слов (она над ними, как была), выше шторки (Sheet добавлен
+        // позже и остаётся сверху) — вид панели не изменился ни мерой, ни слоем.
+        _stage = new FrameLayout(context);
+        _stage.AddView(Current.View, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+        _stage.AddView(Bars, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
 
         var content = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
         content.SetBackgroundColor(options.Palette.Background);
         content.AddView(Alert, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
-        content.AddView(Current.View, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
+        content.AddView(_stage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
 
         SetBackgroundColor(options.Palette.Background);
         _content = content;
@@ -66,6 +80,17 @@ public sealed class MainScreenView : FrameLayout
     public QuickSheet Sheet { get; }
 
     /// <summary>
+    /// Полосы тревоги — самостоятельный элемент поверх сменного экрана (панели и плиток одинаково).
+    /// Мера у них общая со всеми экранами приложения (<see cref="AlertBarsView.HeightShare"/>): одна
+    /// тревога не должна выглядеть двумя разными. Что полоса в полный голос закроет шкалы лент —
+    /// принято сознательно: полный голос это ШИМ у предела, до которого в поездке почти не доходят.
+    /// Источник тревоги
+    /// (<see cref="AlertBarsView.Alert"/>) ставит хозяин рамки и будит элемент со своего кадра —
+    /// сами данные тревоги рамка не знает, как не знает их и экран.
+    /// </summary>
+    public AlertBarsView Bars { get; }
+
+    /// <summary>
     /// Сменить содержимое рамки (план 23 §2.1: «второй Activity не заводить, меняется только
     /// содержимое»). Полоса тревоги и шторка остаются на месте — они принадлежат рамке, а не
     /// экрану.
@@ -79,11 +104,12 @@ public sealed class MainScreenView : FrameLayout
     {
         if (ReferenceEquals(screen, Current)) return;
 
-        _content.RemoveView(Current.View);
+        _stage.RemoveView(Current.View);
         Current = screen;
 
-        // Первым идёт полоса тревоги, экран — вторым: она общая и остаётся сверху при любой смене.
-        _content.AddView(screen.View, 1, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
+        // Экран — нулевым ребёнком сцены: полосы тревоги общие и остаются поверх при любой смене.
+        _stage.AddView(screen.View, 0, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
     }
 
     /// <summary>

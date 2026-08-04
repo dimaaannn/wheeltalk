@@ -27,7 +27,8 @@ namespace WheelTalk.Droid.Alerts;
 /// </para>
 /// <para>
 /// Главный экран пропускается: там и полоса слов — часть рамки (<c>MainScreenView</c>), и полосы
-/// тревоги рисует сама панель. Второй, плавающий поверх, был бы двойным.
+/// тревоги рамка носит сама (<c>MainScreenView.Bars</c> — тот же элемент <c>AlertBarsView</c>, что
+/// и здесь). Второй комплект, плавающий поверх, был бы двойным.
 /// </para>
 /// </summary>
 public sealed class AlertOverlay : Java.Lang.Object, Application.IActivityLifecycleCallbacks

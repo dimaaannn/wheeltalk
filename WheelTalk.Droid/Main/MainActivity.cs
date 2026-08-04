@@ -540,6 +540,11 @@ public sealed class MainActivity : Activity
     {
         ApplyKeepScreenOn();
         ApplyShowOverLock();
+
+        // Пинок полосам тревоги рамки: силу они спрашивают сами (источник стоит в BuildLayout), но
+        // из тишины их будит кадр — события «тревога началась» у полос нет намеренно, см.
+        // AlertBarsView. Пустая перерисовка тихих полос — два ранних выхода, дешевле подписки.
+        _screen.Bars.Invalidate();
     }
 
     /// <summary>
@@ -583,7 +588,6 @@ public sealed class MainActivity : Activity
             // не заменяет — она говорит «связи нет», а вуаль метит сами цифры (прогон 5).
             IsStale = LinkStatus.IsStale(StaleFor),
             TopInset = _topInsetPx,
-            SpeedExceeded = _alert.SpeedExceeded,
         };
     }
 
@@ -1091,6 +1095,10 @@ public sealed class MainActivity : Activity
     {
         _screen = new MainScreenView(this, _dashboardOptions);
         _screen.Panel.OnIntent = OnScreenIntent;
+
+        // Полосы тревоги рамки — тот же источник, что у наложения прочих экранов: сила приходит из
+        // общего потока тревог, вторых вычислителей нет.
+        _screen.Bars.Alert = () => _alert;
 
         _alertStrip = _screen.Alert;
         _alertStrip.SetTypeface(_bold, TypefaceStyle.Bold);

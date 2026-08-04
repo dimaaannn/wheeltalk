@@ -6,6 +6,7 @@ using Android.OS;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
+using WheelTalk.Core.Alerts;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Dashboard.Droid.Screen.Tiles;
@@ -33,8 +34,9 @@ namespace WheelTalk.Lab.Droid;
 /// <item>Касания ловит сам контейнер панели. В MAUI для этого лежал отдельный прозрачный слой:
 /// жест, повешенный на элемент, содержимое которого обработчик и заменяет, через несколько смен
 /// варианта переставал срабатывать. У <c>ViewGroup</c> такой болезни нет.</item>
-/// <item>Тревожные полосы рисует сама панель (<c>DashboardView</c>), а не отдельная канва стенда
-/// поверх неё — в приложении они уже внутри панели, и стенд обязан показывать то же самое.</item>
+/// <item>Тревожные полосы — общий элемент <see cref="AlertBarsView"/>, а не своя канва стенда:
+/// в режиме «экран целиком» их носит рамка (<see cref="MainScreenView.Bars"/>), в вариант-режиме
+/// стенд кладёт тот же элемент поверх хоста — ровно то, что видит райдер.</item>
 /// </list>
 /// <para>
 /// Кадр панели ведёт общий с приложением <see cref="MainScreenDriver"/> (план 19 Б2): состояние
@@ -72,6 +74,13 @@ public sealed class LabActivity : Activity
     /// первый пункт; пока он показан, здесь не null, и <see cref="_dashboard"/> — его панель.
     /// </summary>
     private MainScreenView? _screen;
+
+    /// <summary>
+    /// Полосы тревоги вариант-режима: рамки там нет, а полосы правят глазами именно на стенде —
+    /// потому поверх хоста стоит тот же элемент, что носит рамка. Живёт только пока показан вариант.
+    /// </summary>
+    private AlertBarsView? _hostBars;
+
     private GestureDetector? _sheetGesture;
     private GestureDetector? _tapGesture;
     private bool _lightOn;
@@ -361,6 +370,10 @@ public sealed class LabActivity : Activity
             WriteTelemetry(source, now);
         }
 
+        // Пинок полосам тревоги — тем же порядком, что MainActivity.BeforeFrame: силу они
+        // спрашивают сами (BarsAlert), а из тишины их будит кадр стенда.
+        (_screen?.Bars ?? _hostBars)?.Invalidate();
+
         if (_source is not { } current || _dashboard is null) return;
 
         // Полоса тревоги колеса — часть рамки экрана, а не панели: есть только в режиме «экран
@@ -414,6 +427,14 @@ public sealed class LabActivity : Activity
         _wroteAt = now;
         store.Write(snapshot);
     }
+
+    /// <summary>
+    /// Сила тревоги для полос — из показаний текущей позиции, то же число, что панель раньше брала
+    /// из кадра (<c>Reading.AlertIntensity</c>). Мягкой тревоги по скорости у стенда нет — ручки
+    /// такой нет и не было.
+    /// </summary>
+    private AlertState BarsAlert() => new(
+        _source?.At(_position) is { } reading ? reading.AlertIntensity : 0, SpeedExceeded: false);
 
     private MainScreenFrame BuildFrame()
     {
@@ -535,6 +556,12 @@ public sealed class LabActivity : Activity
         _dashboard.OnIntent = OnScreenIntent;
         _host.AddView(_dashboard, 0, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+
+        // Полосы — над панелью, под служебной строкой fps: она стендовая и тревоге не ровня.
+        _hostBars = new AlertBarsView(this, _settings.Options) { Alert = BarsAlert };
+        _host.AddView(_hostBars, 1, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+
         _dashboard.Rotation = (float)_settings.Options.Tilt;
 
         // Обход переключает варианты сам, и пикер должен показывать то, что на экране: иначе после
@@ -561,6 +588,8 @@ public sealed class LabActivity : Activity
         // такое знание не нужно и не выдано: у него в руках только контракт IMainScreen.
         _dashboard = _screen.Panel;
         _screen.Panel.OnIntent = OnScreenIntent;
+        // Источник полос рамки — тот же, что у вариант-режима: сила тревоги из показаний позиции.
+        _screen.Bars.Alert = BarsAlert;
         _screen.Sheet.PinLabel = () => "Закрепить";
         _screen.Sheet.SetCommands(BuildFakeCommands());
         _screen.Sheet.SetScreens(BuildScreens());
@@ -609,9 +638,11 @@ public sealed class LabActivity : Activity
         else if (_dashboard is { } dashboard)
         {
             _host.RemoveView(dashboard);
+            if (_hostBars is { } bars) _host.RemoveView(bars);
         }
 
         _dashboard = null;
+        _hostBars = null;
     }
 
     /// <summary>

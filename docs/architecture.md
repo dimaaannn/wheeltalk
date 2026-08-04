@@ -1,4 +1,4 @@
-# Архитектура — карта проектов и поток данных
+﻿# Архитектура — карта проектов и поток данных
 
 > Снимок на 01.08.2026, по ревью архитектуры ([план 19](android-plan-19-ui-seams.md)).
 > При расхождении с кодом прав код; сюда вносить правки тем же коммитом, что двигает границы.
@@ -23,6 +23,8 @@ graph TB
     subgraph Инструменты
         Console["WheelTalk.Test.ConsoleConnection<br/>песочница: BLE на Windows, сценарии<br/>(на неё никто не ссылается)"]
         LabDroid["WheelTalk.Lab.Droid<br/>стенд панели на записях"]
+        Charts["WheelTalk.Charts.Droid<br/>биндинг библиотеки графиков<br/>(форк MPAndroidChart)"]
+        LabData["WheelTalk.Lab.Data<br/>покатушка стенда и запись её в базу"]
         Tests["WheelTalk.Tests<br/>xUnit, TFM net10.0"]
     end
 
@@ -31,6 +33,9 @@ graph TB
     Droid --> DashDroid
     DashDroid -.->|только DashboardReading| Core
     LabDroid --> DashDroid
+    LabDroid --> LabData
+    DashDroid --> Charts
+    Console --> LabData
     Console --> Core
     Console --> Storage
     Tests --> Core

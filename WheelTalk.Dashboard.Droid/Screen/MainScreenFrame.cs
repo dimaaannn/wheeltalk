@@ -45,5 +45,4 @@ public sealed record MainScreenFrame
     public bool ShowSheetHint { get; init; }
     public bool IsStale { get; init; }
     public float TopInset { get; init; }
-    public bool SpeedExceeded { get; init; }
 }

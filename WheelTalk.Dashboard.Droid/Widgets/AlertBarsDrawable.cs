@@ -1,4 +1,4 @@
-using Android.Graphics;
+﻿using Android.Graphics;
 
 namespace WheelTalk.Dashboard.Droid.Widgets;
 
@@ -23,13 +23,38 @@ namespace WheelTalk.Dashboard.Droid.Widgets;
 /// </summary>
 public sealed class AlertBarsDrawable
 {
-    /// <summary>Во сколько раз полоса меньше на пороге тревоги, чем в полный голос.</summary>
-    private const float MinShare = 0.24f;
+    /// <summary>
+    /// Во сколько раз полоса меньше на пороге тревоги, чем в полный голос. Пятая часть: при четверти
+    /// высоты в полный голос порогу достаётся двадцатая — видно, что тревога началась, и приборы ещё
+    /// читаются (решение владельца 05.08.2026).
+    /// </summary>
+    private const float MinShare = 0.2f;
 
     /// <summary>Доля полосы в полный голос, отданная мягкой тревоге.</summary>
     private const float SpeedShare = 0.3f;
 
+    /// <summary>
+    /// Насколько полоса непрозрачна (0…255). Не глухая заливка: сквозь неё видно, что под ней —
+    /// шкала, список настроек или чужое приложение, когда полосы вырастут поверх всех окон (решение
+    /// владельца 05.08.2026). Тревога обязана быть явной, но не слепой заслонкой: закрытый ею
+    /// прибор — это отнятое показание ровно в тот миг, когда оно нужнее всего.
+    /// </summary>
+    private const int Opacity = 190;
+
+    /// <summary>
+    /// Сколько зубцов укладывается по ширине рваной кромки. Доля, а не размер в точках: в этом
+    /// рисовальщике нет абсолютных мер вовсе — только доли, оттого ему и не нужна плотность экрана.
+    /// </summary>
+    private const int Teeth = 20;
+
+    /// <summary>
+    /// Насколько глубоко зубец врезается в полосу, долей её толщины. Толщина растёт вместе с силой
+    /// тревоги, значит растут и зубцы: у порога кромка почти ровная, у предела — рваная.
+    /// </summary>
+    private const float ToothDepth = 0.3f;
+
     private readonly Paint _fill = new() { AntiAlias = true };
+    private readonly Android.Graphics.Path _torn = new();
 
     public required DashboardOptions Options { get; init; }
 
@@ -74,18 +99,64 @@ public sealed class AlertBarsDrawable
         {
             if (!Lit) return;
 
-            Bars(canvas, rect, full * (float)Math.Clamp(Intensity, MinShare, 1), Options.Palette.Danger);
+            // Рваная кромка — только у тревоги по ШИМ (решение владельца 05.08.2026). Усиление
+            // формой, а не вторым цветом: диагональная штриховка в этом приложении уже занята лентой
+            // ШИМ выше критического, а жёлтый занят мягкой тревогой — взяв их, полоса сказала бы
+            // сразу два сообщения об одном.
+            Bars(canvas, rect, full * (float)Math.Clamp(Intensity, MinShare, 1), Options.Palette.Danger,
+                torn: true);
         }
         else if (SpeedExceeded)
         {
-            Bars(canvas, rect, full * SpeedShare, Options.Palette.Caution);
+            // Мягкой тревоге рваная кромка не положена: «есть о чём знать» не должно выглядеть как
+            // «предел».
+            Bars(canvas, rect, full * SpeedShare, Options.Palette.Caution, torn: false);
         }
     }
 
-    private void Bars(Canvas canvas, RectF rect, float height, Color color)
+    private void Bars(Canvas canvas, RectF rect, float height, Color color, bool torn)
     {
-        _fill.Color = color;
-        canvas.DrawRect(rect.Left, rect.Top, rect.Right, rect.Top + height, _fill);
-        canvas.DrawRect(rect.Left, rect.Bottom - height, rect.Right, rect.Bottom, _fill);
+        // Своя прозрачность краски уважается: в палитре WheelLog спокойные цвета сами полупрозрачны,
+        // и затирать их непрозрачностью полосы значило бы спорить с палитрой.
+        _fill.Color = Color.Argb(color.A * Opacity / 255, color.R, color.G, color.B);
+
+        if (!torn)
+        {
+            canvas.DrawRect(rect.Left, rect.Top, rect.Right, rect.Top + height, _fill);
+            canvas.DrawRect(rect.Left, rect.Bottom - height, rect.Right, rect.Bottom, _fill);
+            return;
+        }
+
+        Torn(canvas, rect, rect.Top, height);
+        Torn(canvas, rect, rect.Bottom, -height);
+    }
+
+    /// <summary>
+    /// Полоса с рваной внутренней кромкой. Растёт она от края <paramref name="edge"/> внутрь на
+    /// <paramref name="height"/> — отрицательную высоту даёт нижняя полоса, и тем же кодом выходит
+    /// зеркальной, без второго набора формул.
+    /// </summary>
+    private void Torn(Canvas canvas, RectF rect, float edge, float height)
+    {
+        float inner = edge + height;
+        float tooth = height * ToothDepth;
+        float step = rect.Width() / Teeth;
+
+        _torn.Reset();
+        _torn.MoveTo(rect.Left, edge);
+        _torn.LineTo(rect.Right, edge);
+        _torn.LineTo(rect.Right, inner);
+
+        // Зубцы идут справа налево — по той кромке, что смотрит внутрь экрана. Чётные вершины у
+        // кромки, нечётные врезаны глубже: пила, а не волна.
+        for (int index = 1; index <= Teeth; index++)
+        {
+            float x = rect.Right - step * index;
+            _torn.LineTo(x + step / 2, inner - tooth);
+            _torn.LineTo(x, inner);
+        }
+
+        _torn.Close();
+        canvas.DrawPath(_torn, _fill);
     }
 }
