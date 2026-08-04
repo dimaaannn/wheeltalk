@@ -1162,7 +1162,9 @@ public sealed class MainActivity : Activity
 
     private TilesScreen Tiles() =>
         _tiles ??= new TilesScreen(this, _dashboardOptions, TranslateExtension.Get,
-            MainApplication.Services.GetRequiredService<IMetricHistory>());
+            MainApplication.Services.GetRequiredService<IMetricHistory>(),
+            // Раскладка живёт в слоях настроек; экрану выдан только узкий доступ к своему ключу.
+            new TileLayoutSetting(_layers));
 
     private void LoadFonts()
     {

@@ -88,6 +88,9 @@ public sealed class LabActivity : Activity
     /// <summary>База стенда с придуманной историей. Открывается в фоне: файл, миграции и набивка.</summary>
     private LabStore? _store;
 
+    /// <summary>Раскладка плиток стенда — файлом: слоёв настроек у стенда нет, а перезапуск она пережить обязана.</summary>
+    private readonly LabTileLayoutFile _layoutFile = new();
+
     /// <summary>
     /// Экран плиток в рамке — тот же класс, что показывает райдеру приложение. Живёт ровно столько,
     /// сколько сама рамка: смена варианта панели пересобирает её, и плитка со старым родителем в
@@ -214,11 +217,11 @@ public sealed class LabActivity : Activity
         if (intent.GetStringExtra("screen") is { } screen) ShowTiles(screen == "tiles");
         if (intent.GetStringExtra("history") is not null) _ = RefillStore();
 
-        // Переставленная руками раскладка живёт в памяти и закрывает собой зашитую: правку
+        // Переставленная руками раскладка лежит в файле и закрывает собой зашитую: правку
         // TilesLayout.Fixed без сброса на экране не увидеть.
         if (intent.GetStringExtra("layout") is not null)
         {
-            TileLayoutDraft.Reset();
+            _layoutFile.Reset();
             Rebuild();
         }
     }
@@ -615,7 +618,7 @@ public sealed class LabActivity : Activity
         screen.Show(tiles
             // История графикам идёт из базы стенда — тем же читателем, каким её читает приложение
             // (LabStore): свой генератор точек проверял бы путь, которого в бою нет.
-            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get, _store?.History)
+            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get, _store?.History, _layoutFile)
             {
                 OnIntent = OnScreenIntent,
             }

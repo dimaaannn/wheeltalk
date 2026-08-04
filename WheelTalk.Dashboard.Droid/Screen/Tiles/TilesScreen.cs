@@ -26,8 +26,9 @@ namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 /// </para>
 /// <para>
 /// <b>Правка раскладки</b> (шаг 6): долгий тап включает режим, в нём плитку тащат пальцем, а тап по
-/// плитке открывает её меню — величина, размер, «убрать». Новую заводит кнопка «плюс». Правка живёт
-/// в <see cref="TileLayoutDraft"/>, до настройки она пока не доходит.
+/// плитке открывает её меню — величина, размер, «убрать». Новую заводит кнопка «плюс». «Сохранить»
+/// уносит раскладку в хранилище (<see cref="ITileLayoutStore"/>), выданное хозяином экрана; без
+/// него правки живут до пересборки экрана.
 /// </para>
 /// </summary>
 public sealed class TilesScreen : IMainScreen
@@ -58,8 +59,12 @@ public sealed class TilesScreen : IMainScreen
     /// Откуда плитки-графики берут историю. <c>null</c> — истории нет вовсе (запись выключена, база
     /// не открыта): графики останутся пустыми, остальные плитки работают как работали.
     /// </param>
+    /// <param name="layout">
+    /// Где живёт собранная человеком раскладка (план 23 §3.4). <c>null</c> — хранилища нет: экран
+    /// начинает с зашитой раскладки, а правки живут до его пересборки.
+    /// </param>
     public TilesScreen(Context context, DashboardOptions options, Func<string, string> translate,
-        IMetricHistory? history = null)
+        IMetricHistory? history = null, ITileLayoutStore? layout = null)
     {
         _context = context;
         _translate = translate;
@@ -67,7 +72,7 @@ public sealed class TilesScreen : IMainScreen
         _options = options;
         _palette = options.Palette;
         _padding = context.Dp(6);
-        _adapter = new TileAdapter(context, options, translate, TileLayoutDraft.Tiles);
+        _adapter = new TileAdapter(context, options, translate, layout, layout?.Load() ?? TilesLayout.Fixed);
 
         _list = new RecyclerView(context);
         _list.SetLayoutManager(LayoutManager(context));
@@ -238,8 +243,8 @@ public sealed class TilesScreen : IMainScreen
 
     /// <summary>
     /// Конец правки: сохранить — оставить как есть, отменить — вернуть раскладку, какой она была на
-    /// входе в режим. До этого мига правки живут только в адаптере, а черновик
-    /// (<see cref="TileLayoutDraft"/>) пишется одним разом: пиши он на каждое действие, «отменить»
+    /// входе в режим. До этого мига правки живут только в адаптере, а хранилище
+    /// (<see cref="ITileLayoutStore"/>) пишется одним разом: пиши оно на каждое действие, «отменить»
     /// отменяло бы лишь последнее.
     /// </summary>
     private void StopEditing(bool save)
@@ -417,6 +422,7 @@ public sealed class TilesScreen : IMainScreen
         private readonly Context _context;
         private readonly DashboardOptions _options;
         private readonly Func<string, string> _translate;
+        private readonly ITileLayoutStore? _layout;
         /// <summary>Величина у пустого места пуста: <see cref="TileKind.Empty"/> ни на что не ссылается.</summary>
         private readonly List<(MetricTile Tile, MetricDescriptor? Metric)> _tiles = [];
 
@@ -431,20 +437,22 @@ public sealed class TilesScreen : IMainScreen
         private bool _editing;
 
         public TileAdapter(Context context, DashboardOptions options, Func<string, string> translate,
-            IReadOnlyList<MetricTile> layout)
+            ITileLayoutStore? layoutStore, IReadOnlyList<MetricTile> layout)
         {
             _context = context;
             _options = options;
             _translate = translate;
+            _layout = layoutStore;
 
             foreach (var tile in layout)
             {
                 if (Entry(tile) is { } entry) _tiles.Add(entry);
             }
 
-            // Отсев неизвестных величин уходит и в черновик: иначе позиция плитки на экране разошлась
-            // бы с позицией в хранимом списке, и перенос двигал бы не ту.
-            Keep();
+            // Отсев неизвестных величин уходит и в хранимое: иначе позиция плитки на экране
+            // разошлась бы с позицией в хранимом списке, и перенос двигал бы не ту. Но только когда
+            // отсев что-то выбросил — писать настройку на каждом запуске незачем.
+            if (_tiles.Count != layout.Count) Keep();
         }
 
         public override int ItemCount => _tiles.Count;
@@ -511,8 +519,8 @@ public sealed class TilesScreen : IMainScreen
             NotifyDataSetChanged();
         }
 
-        /// <summary>Запомнить правку — «сохранить».</summary>
-        public void Keep() => TileLayoutDraft.Keep(_tiles.Select(entry => entry.Tile));
+        /// <summary>Запомнить правку — «сохранить». Раскладка уходит в хранилище хозяина экрана.</summary>
+        public void Keep() => _layout?.Save([.. _tiles.Select(entry => entry.Tile)]);
 
         /// <summary>
         /// Плитка со своей величиной. Пустое место величины не имеет вовсе, а плитка, сославшаяся на
