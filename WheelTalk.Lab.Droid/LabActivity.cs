@@ -182,7 +182,7 @@ public sealed class LabActivity : Activity
             // 96 dp — как в MainActivity (владелец 04.08.2026, было 64): стенд открывает шторку
             // тем же порогом, что и приложение, а не своей копией.
             _sheetGesture ??= new GestureDetector(this, new SwipeUpFromEdgeListener(
-                () => _screen?.Sheet.Toggle(), Resources!.DisplayMetrics!.HeightPixels, Dp(96)));
+                () => _screen?.Sheet.Toggle(), Resources!.DisplayMetrics!.HeightPixels, Dp(128)));
             _sheetGesture.OnTouchEvent(ev);
         }
         return base.DispatchTouchEvent(ev);
