@@ -341,4 +341,22 @@
   <data name="SettingWarnBatterySaverHint" xml:space="preserve"><value>Без исключения Android усыпляет приложение при погашенном экране, и связь с колесом рвётся. Просьба приходит при каждом запуске, пока его не выдали.</value></data>
   <data name="ButtonLockScreen" xml:space="preserve"><value>Закрепить экран</value></data>
   <data name="ButtonLockScreenOn" xml:space="preserve"><value>Экран закреплён</value></data>
+  <data name="RidesDetailsUntil" xml:space="preserve"><value>Подробности до {0}</value></data>
+  <data name="RidesSelect" xml:space="preserve"><value>Выбрать несколько</value></data>
+  <data name="RidesSelectedCount" xml:space="preserve"><value>Выбрано: {0}</value></data>
+  <data name="RidesDeleteSelectedConfirm" xml:space="preserve"><value>Удалить выбранные поездки ({0})? Их итоги пропадут — восстановить будет неоткуда.</value></data>
+  <data name="UnitCelsius" xml:space="preserve"><value>°C</value></data>
+  <data name="UnitNewtonMetres" xml:space="preserve"><value>Н·м</value></data>
+  <data name="MetricTorque" xml:space="preserve"><value>Момент</value></data>
+  <data name="MetricMotorPower" xml:space="preserve"><value>Мощность мотора</value></data>
+  <data name="MetricCpuTemp" xml:space="preserve"><value>Контроллер</value></data>
+  <data name="MetricCurrentLimit" xml:space="preserve"><value>Лимит тока</value></data>
+  <data name="MetricRoll" xml:space="preserve"><value>Крен</value></data>
+  <data name="MetricImuTemp" xml:space="preserve"><value>Гироскоп</value></data>
+  <data name="MetricCpuLoad" xml:space="preserve"><value>Загрузка</value></data>
+  <data name="MetricSpeedLimit" xml:space="preserve"><value>Предел колеса</value></data>
+  <data name="MetricHardwarePwm" xml:space="preserve"><value>ШИМ колеса</value></data>
+  <data name="MetricFanStatus" xml:space="preserve"><value>Вентилятор</value></data>
+  <data name="ScreenPanel" xml:space="preserve"><value>Панель</value></data>
+  <data name="ScreenTiles" xml:space="preserve"><value>Цифры</value></data>
 </root>

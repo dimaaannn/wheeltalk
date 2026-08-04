@@ -6,8 +6,9 @@ using WheelTalk.Dashboard.Droid.Layouts;
 namespace WheelTalk.Dashboard.Droid.Screen;
 
 /// <summary>
-/// Рамка хозяина главного экрана: полоса тревоги колеса сверху, сам экран (<see cref="Current"/>,
-/// пока он один — панель <see cref="TwinTapesDashboard"/>) и шторка быстрых команд поверх. Живёт в
+/// Рамка хозяина главного экрана: полоса тревоги колеса сверху, сам экран (<see cref="Current"/> —
+/// панель <see cref="TwinTapesDashboard"/> либо плитки, см. <see cref="Show"/>) и шторка быстрых
+/// команд поверх. Живёт в
 /// библиотеке, а не в приложении, чтобы стенд показывал ровно то, что видит райдер, — тем же
 /// классом, а не похожей копией (тот же ход, которым плашка связи и точка записи раньше переехали
 /// внутрь панели). Приложению остаётся проводка: данные, команды шторки, инсеты и жесты.
@@ -29,7 +30,8 @@ public sealed class MainScreenView : FrameLayout
 
     public MainScreenView(Context context, DashboardOptions options) : base(context)
     {
-        Current = new TwinTapesDashboard(context, options);
+        Panel = new TwinTapesDashboard(context, options);
+        Current = Panel;
         Alert = new AlertStrip(context);
         Sheet = new QuickSheet(context);
 
@@ -50,15 +52,39 @@ public sealed class MainScreenView : FrameLayout
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
     }
 
+    /// <summary>Показанный сейчас экран — тот, которому водитель кадра носит состояние.</summary>
+    public IMainScreen Current { get; private set; }
+
     /// <summary>
-    /// Показанный сейчас экран. Второго пока нет и в этом шаге не появится (план 23 §8, гейт 1):
-    /// смена содержимого — следующий шаг, здесь заводится только сам контракт.
+    /// Панель — экран по умолчанию, и рамка держит его сама: он есть всегда, даже пока показан
+    /// другой. Так стенд мерит её кадр (<c>LastDrawMs</c>), не спрашивая, что сейчас на экране.
     /// </summary>
-    public IMainScreen Current { get; }
+    public DashboardView Panel { get; }
 
     public AlertStrip Alert { get; }
 
     public QuickSheet Sheet { get; }
+
+    /// <summary>
+    /// Сменить содержимое рамки (план 23 §2.1: «второй Activity не заводить, меняется только
+    /// содержимое»). Полоса тревоги и шторка остаются на месте — они принадлежат рамке, а не
+    /// экрану.
+    /// <para>
+    /// Хозяин обязан после этого переставить <see cref="MainScreenDriver.Attach"/> на новый экран:
+    /// цикл кадра ставит себя в очередь <c>PostOnAnimation</c> той <c>View</c>, которую обслуживает,
+    /// а снятая с рамки в этой очереди уже не стоит.
+    /// </para>
+    /// </summary>
+    public void Show(IMainScreen screen)
+    {
+        if (ReferenceEquals(screen, Current)) return;
+
+        _content.RemoveView(Current.View);
+        Current = screen;
+
+        // Первым идёт полоса тревоги, экран — вторым: она общая и остаётся сверху при любой смене.
+        _content.AddView(screen.View, 1, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
+    }
 
     /// <summary>
     /// adaptive-layout.md §2: «≥ 400 dp — суммарная ширина контента ≤ 480 dp, дальше — поля».

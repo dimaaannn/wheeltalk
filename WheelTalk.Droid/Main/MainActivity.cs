@@ -17,8 +17,10 @@ using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
+using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
+using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Droid.Ble;
 using WheelTalk.Droid.Configuration;
@@ -68,6 +70,18 @@ public sealed class MainActivity : Activity
 {
     private static readonly TimeSpan DoubleBackWindow = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Какой основной экран показан. Запоминается между запусками (план 23 §2.3) и <b>общий на все
+    /// колёса</b>: это привычка человека, а не свойство колеса, — потому <c>globalOnly</c> при
+    /// записи. Описания в <c>SettingsCatalogue</c> у ключа нет намеренно: строкой в настройках
+    /// экран не выбирают, его выбирают корешком в шторке, а слой хранения тут нужен ровно один — тот
+    /// же самый.
+    /// </summary>
+    private const string ScreenChoiceKey = "Screen:Main";
+
+    private const string PanelChoice = "panel";
+    private const string TilesChoice = "tiles";
+
     private WheelSession _session = null!;
     private ITransport _transport = null!;
     private RideRecorder _recorder = null!;
@@ -82,8 +96,14 @@ public sealed class MainActivity : Activity
 
     private DashboardOptions _dashboardOptions = null!;
     private RideTrace _trace = null!;
+    private LayeredSettings _layers = null!;
     private MainScreenView _screen = null!;
     private MainScreenDriver _driver = null!;
+
+    /// <summary>Экран плиток. Собирается при первом показе: райдеру, который его не открывает, он не стоит ничего.</summary>
+    private TilesScreen? _tiles;
+
+    private string _screenChoice = PanelChoice;
 
     private IDisposable? _telemetry;
     private IDisposable? _alertSubscription;
@@ -137,8 +157,10 @@ public sealed class MainActivity : Activity
         _tapDetector = new GestureDetector(this, new TapListener(OnTapped));
 
         // Свайп вверх открывает шторку, но только от нижней кромки (quick-commands-design.md §2):
-        // весь остальной экран — приборы, и жест по ним не должен значить ничего.
-        int edgeZonePx = this.Dp(64);
+        // весь остальной экран — приборы, и жест по ним не должен значить ничего. Было 64 dp,
+        // на ходу палец не всегда в них попадал — поднято до 96 (владелец 04.08.2026). Чисто
+        // числовая правка: зона невидима, разметке панели не стоит ни пикселя ни до, ни после.
+        int edgeZonePx = this.Dp(96);
         int screenHeightPx = Resources!.DisplayMetrics!.HeightPixels;
         _sheetGestureDetector = new GestureDetector(this,
             new SwipeUpFromEdgeListener(() => _sheet.Toggle(), screenHeightPx, edgeZonePx));
@@ -154,6 +176,7 @@ public sealed class MainActivity : Activity
         _alerts = MainApplication.Services.GetRequiredService<IObservable<AlertState>>();
         _dashboardOptions = MainApplication.Services.GetRequiredService<DashboardOptions>();
         _trace = MainApplication.Services.GetRequiredService<RideTrace>();
+        _layers = MainApplication.Services.GetRequiredService<LayeredSettings>();
         _timeProvider = MainApplication.Services.GetRequiredService<TimeProvider>();
         _logger = MainApplication.Services.GetRequiredService<ILogger<MainActivity>>();
 
@@ -161,11 +184,12 @@ public sealed class MainActivity : Activity
         // сглаживания у панели, когда она ему понадобится.
         _trace.SmoothingSecondsSource = () => _dashboardOptions.SmoothingSeconds;
 
+        // Водитель кадра — до разметки: она сама выбирает, какой экран показать (запомненный с
+        // прошлого запуска), и ставит водителя на него.
+        _driver = new MainScreenDriver(BeforeFrame);
+
         var root = BuildLayout();
         SetContentView(root);
-
-        _driver = new MainScreenDriver(BeforeFrame);
-        _driver.Attach(_screen.Current, BuildFrame);
 
         // Верхний инсет забирает панель, а не паддинг корня: фон уходит под статус-бар, приборы и
         // плашка связи начинаются ниже него. Прочие экраны применяют инсеты как раньше.
@@ -345,7 +369,7 @@ public sealed class MainActivity : Activity
     {
         if (ev is not null)
         {
-            // Только пока шторка закрыта: её зона свайпа (нижние 64 dp) — та же полоса экрана, где
+            // Только пока шторка закрыта: её зона свайпа (нижние 96 dp) — та же полоса экрана, где
             // сидит ряд её собственных кнопок, когда шторка открыта. Кормить детектор фликов и там
             // тоже значило бы, что обычный тап по кнопке — с естественным дребезгом пальца при
             // отрыве — может попутно распознаться как свайп-вверх-от-кромки и вызвать свой
@@ -520,6 +544,9 @@ public sealed class MainActivity : Activity
             Reading = _session.LastSnapshot is { } snapshot && _trace.HasData
                 ? DashboardFrame.From(snapshot, _trace, _alert.PwmIntensity)
                 : null,
+            // Плиткам — то, что колесо сказало прямо сейчас, без сглаживания и следа: они про
+            // текущее число, а не про ход величины (план 23 §3.2).
+            Snapshot = _session.LastSnapshot,
             LinkPhase = phase,
             LinkText = text,
             LinkSeconds = phase == LinkPhase.Connecting ? (int)StaleFor : 0,
@@ -1044,7 +1071,7 @@ public sealed class MainActivity : Activity
     private View BuildLayout()
     {
         _screen = new MainScreenView(this, _dashboardOptions);
-        _screen.Current.OnIntent = OnScreenIntent;
+        _screen.Panel.OnIntent = OnScreenIntent;
 
         _alertStrip = _screen.Alert;
         _alertStrip.SetTypeface(_bold, TypefaceStyle.Bold);
@@ -1052,9 +1079,62 @@ public sealed class MainActivity : Activity
         _sheet = _screen.Sheet;
         _sheet.PinLabel = () => AppStrings.ButtonPin;
         _sheet.SetCommands(BuildWheelCommands());
+        _sheet.SetScreens(BuildScreenTabs());
+
+        // Тот экран, на котором человек ушёл в прошлый раз. Умолчание — панель: с неё начинали все,
+        // кто ни разу не трогал корешки.
+        ShowScreen(_layers.Get(ScreenChoiceKey).Value ?? PanelChoice);
 
         return _screen;
     }
+
+    /// <summary>
+    /// Корешки экранов над рядом команд (план 23 §2.2). Это не команды: правило «позиции команд
+    /// фиксированы навсегда» их не касается, и полоса у них своя.
+    /// </summary>
+    private IReadOnlyList<QuickSheetScreen> BuildScreenTabs() =>
+    [
+        new()
+        {
+            Icon = "📊",
+            Label = AppStrings.ScreenPanel,
+            IsSelected = () => _screenChoice == PanelChoice,
+            Select = () => ChooseScreen(PanelChoice),
+        },
+        new()
+        {
+            Icon = "🔢",
+            Label = AppStrings.ScreenTiles,
+            IsSelected = () => _screenChoice == TilesChoice,
+            Select = () => ChooseScreen(TilesChoice),
+        },
+    ];
+
+    /// <summary>Выбор человека: показать и запомнить. Общий слой, без «этого колеса» — план 23 §2.3.</summary>
+    private void ChooseScreen(string choice)
+    {
+        if (_screenChoice == choice) return;
+
+        ShowScreen(choice);
+        _layers.Set(ScreenChoiceKey, choice, globalOnly: true);
+    }
+
+    /// <summary>
+    /// Смена содержимого рамки. Водитель кадра переставляется на новый экран тут же: его очередь
+    /// <c>PostOnAnimation</c> принадлежит той <c>View</c>, которую он обслуживает, а снятая с рамки в
+    /// ней больше не стоит. <see cref="MainScreenDriver.Refresh"/> — чтобы новый экран показал
+    /// данные сразу, не дожидаясь очередного vsync.
+    /// </summary>
+    private void ShowScreen(string choice)
+    {
+        _screenChoice = choice;
+        _screen.Show(choice == TilesChoice ? Tiles() : _screen.Panel);
+        _driver.Attach(_screen.Current, BuildFrame);
+        _driver.Refresh();
+    }
+
+    private TilesScreen Tiles() =>
+        _tiles ??= new TilesScreen(this, _dashboardOptions, TranslateExtension.Get);
 
     private void LoadFonts()
     {

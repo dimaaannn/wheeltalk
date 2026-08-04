@@ -8,6 +8,7 @@ using Android.Views;
 using Android.Widget;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
+using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Lab.Droid.Scenarios;
 using WheelTalk.Lab.Droid.Ui;
@@ -70,10 +71,14 @@ public sealed class LabActivity : Activity
     private bool _lightOn;
 
     /// <summary>
-    /// Стендовая заглушка выбора экрана (план 23 §2.2, шаг 2): настоящих экранов ещё нет, поле
-    /// только держит, какой корешок подсвечен в полосе шторки — переключение никуда не ведёт.
+    /// Экран плиток в рамке — тот же класс, что показывает райдеру приложение. Живёт ровно столько,
+    /// сколько сама рамка: смена варианта панели пересобирает её, и плитка со старым родителем в
+    /// новую не встанет.
     /// </summary>
-    private int _screenTab;
+    private TilesScreen? _tiles;
+
+    /// <summary>Какой корешок выбран в полосе шторки: плитки или панель.</summary>
+    private bool _tilesShown;
 
     private TimeSpan _position;
     private double _rate = 1;
@@ -174,8 +179,10 @@ public sealed class LabActivity : Activity
     {
         if (ev is not null && _screen is { } screen && !screen.Sheet.IsOpen)
         {
+            // 96 dp — как в MainActivity (владелец 04.08.2026, было 64): стенд открывает шторку
+            // тем же порогом, что и приложение, а не своей копией.
             _sheetGesture ??= new GestureDetector(this, new SwipeUpFromEdgeListener(
-                () => _screen?.Sheet.Toggle(), Resources!.DisplayMetrics!.HeightPixels, Dp(64)));
+                () => _screen?.Sheet.Toggle(), Resources!.DisplayMetrics!.HeightPixels, Dp(96)));
             _sheetGesture.OnTouchEvent(ev);
         }
         return base.DispatchTouchEvent(ev);
@@ -242,6 +249,9 @@ public sealed class LabActivity : Activity
         return new MainScreenFrame
         {
             Reading = _source?.At(_position),
+            // Живой снимок — для плиток: они показывают то, что сказало колесо, панель — то, что
+            // из этого посчитано.
+            Snapshot = _source?.SnapshotAt(_position),
             LinkPhase = link.Phase,
             LinkText = link.Text,
             LinkSeconds = link.Phase == LinkPhase.Connecting
@@ -327,20 +337,37 @@ public sealed class LabActivity : Activity
         RemoveShown();
         _screen = new MainScreenView(this, _settings.Options);
 
-        // Стенд знает, что в рамке сейчас панель, и это его право: он мерит её кадр (LastDrawMs) —
-        // половина того, ради чего варианты вообще сравнивают на устройстве. Приложению такое
-        // знание не нужно и не выдано: у него в руках только контракт IMainScreen.
-        _dashboard = _screen.Current as DashboardView;
+        // Стенд мерит кадр панели (LastDrawMs) — половина того, ради чего варианты вообще сравнивают
+        // на устройстве, — и потому держит её отдельно от того, что показано сейчас. Приложению
+        // такое знание не нужно и не выдано: у него в руках только контракт IMainScreen.
+        _dashboard = _screen.Panel;
         _screen.Sheet.PinLabel = () => "Закрепить";
         _screen.Sheet.SetCommands(BuildFakeCommands());
-        _screen.Sheet.SetScreens(BuildFakeScreens());
+        _screen.Sheet.SetScreens(BuildScreens());
         _host.AddView(_screen, 0, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
-        _dashboard!.Rotation = (float)_settings.Options.Tilt;
+        _dashboard.Rotation = (float)_settings.Options.Tilt;
 
         if (_variantPicker.SelectedItemPosition != 0) _variantPicker.SetSelection(0);
 
-        _driver.Attach(_screen.Current, BuildFrame);
+        ShowTiles(_tilesShown);
+    }
+
+    /// <summary>
+    /// Переключение экранов в рамке — то же, что делает приложение: рамка меняет содержимое, водитель
+    /// кадра переставляется на новый экран (очередь <c>PostOnAnimation</c> принадлежит его
+    /// <c>View</c>), полоса тревоги и шторка остаются общими.
+    /// </summary>
+    private void ShowTiles(bool tiles)
+    {
+        if (_screen is not { } screen) return;
+
+        _tilesShown = tiles;
+        screen.Show(tiles
+            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get)
+            : screen.Panel);
+
+        _driver.Attach(screen.Current, BuildFrame);
         _driver.Refresh();
     }
 
@@ -350,6 +377,9 @@ public sealed class LabActivity : Activity
         {
             _host.RemoveView(screen);
             _screen = null;
+            // Вместе с рамкой уходит и её экран плиток: у View один родитель, и в новую рамку
+            // старый уже не встанет.
+            _tiles = null;
         }
         else if (_dashboard is { } dashboard)
         {
@@ -360,26 +390,25 @@ public sealed class LabActivity : Activity
     }
 
     /// <summary>
-    /// Полоса переключения экранов (план 23 §2.2, шаг 2) — два корешка-заглушки, чтобы вид был
-    /// виден на стенде. Настоящих экранов ещё нет: выбор меняет только <see cref="_screenTab"/> и
-    /// подсветку, содержимое шторки и панели не трогает — механика проверяется отдельно от того,
-    /// что на неё позже сядет.
+    /// Полоса переключения экранов (план 23 §2.2) — те же два корешка, что у приложения, и ведут
+    /// они туда же. Выбор стенд не запоминает: у него нет слоёв настроек, а держать ради одного
+    /// признака вторую память смысла нет.
     /// </summary>
-    private IReadOnlyList<QuickSheetScreen> BuildFakeScreens() =>
+    private IReadOnlyList<QuickSheetScreen> BuildScreens() =>
     [
         new()
         {
             Icon = "📊",
             Label = "Панель",
-            IsSelected = () => _screenTab == 0,
-            Select = () => _screenTab = 0,
+            IsSelected = () => !_tilesShown,
+            Select = () => ShowTiles(false),
         },
         new()
         {
-            Icon = "📈",
-            Label = "Телеметрия",
-            IsSelected = () => _screenTab == 1,
-            Select = () => _screenTab = 1,
+            Icon = "🔢",
+            Label = "Цифры",
+            IsSelected = () => _tilesShown,
+            Select = () => ShowTiles(true),
         },
     ];
 

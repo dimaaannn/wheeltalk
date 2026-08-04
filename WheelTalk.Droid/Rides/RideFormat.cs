@@ -113,4 +113,32 @@ internal static class RideFormat
 
         return string.Join(" · ", parts);
     }
+
+    /// <summary>
+    /// Whether frame-level detail (graphs, full CSV export) for a closed ride still exists — or when
+    /// it stops existing. The nine numbers <see cref="Summary"/> prints are permanent, stored on the
+    /// ride itself; the frames behind them are not — they go with <c>StorageOptions.TelemetryRetention</c>,
+    /// counted from the ride's end. Told on the list, so a rider learns this before opening a
+    /// month-old ride to graphs that are not there (план 23 §5.8), not after.
+    /// <para><c>null</c> for a ride still being recorded — there is no end to count the retention from.</para>
+    /// <para>
+    /// <c>null</c> too when <c>retention</c> is zero or less: <see cref="StorageOptions.TelemetryRetention"/>
+    /// treats that as "never purge" (a debug loophole, per its own remarks) — nothing to warn about.
+    /// </para>
+    /// </summary>
+    public static string? DetailsExpiry(DateTimeOffset? endedAt, TimeSpan retention, DateTimeOffset now)
+    {
+        if (endedAt is not { } ended || retention <= TimeSpan.Zero) return null;
+
+        var cutoff = ended + retention;
+        return cutoff > now
+            ? string.Format(CultureInfo.CurrentCulture, AppStrings.RidesDetailsUntil, DateOnly(cutoff, now))
+            : AppStrings.RidesNoDetails;
+    }
+
+    /// <summary>Just the day, no time of day — a cutoff a rider checks once, not a clock.</summary>
+    private static string DateOnly(DateTimeOffset at, DateTimeOffset now) =>
+        at.Year == now.Year
+            ? at.ToString("d MMMM", CultureInfo.CurrentCulture)
+            : at.ToString("d MMMM yyyy", CultureInfo.CurrentCulture);
 }

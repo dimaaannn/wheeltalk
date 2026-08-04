@@ -1,3 +1,4 @@
+using WheelTalk.Core.Contracts;
 using WheelTalk.Dashboard.Droid.Widgets;
 
 namespace WheelTalk.Dashboard.Droid.Screen;
@@ -21,6 +22,19 @@ public sealed record MainScreenFrame
 {
     /// <summary>Данные для приборов. <c>null</c> — показывать нечего, экран остаётся с прежними.</summary>
     public DashboardReading? Reading { get; init; }
+
+    /// <summary>
+    /// Живой снимок телеметрии — источник плиток <c>Value</c> (план 23 §3.2: «текущее число —
+    /// из живого снимка, базе тут делать нечего»). Приходит кадром, а не берётся у сессии: экран
+    /// к ядру не ходит, и второй экран заводит ровно столько связей с ним, сколько первый, — ни
+    /// одной.
+    /// <para>
+    /// Панель его не читает — ей нужны посчитанные <see cref="Reading"/>, со сглаживанием, следом
+    /// и пиками; плиткам, наоборот, нужно то, что колесо сказало прямо сейчас. Поэтому в кадре
+    /// оба, а не одно вместо другого. <c>null</c> — колесо ещё не отвечало.
+    /// </para>
+    /// </summary>
+    public TelemetrySnapshot? Snapshot { get; init; }
 
     public LinkPhase LinkPhase { get; init; } = LinkPhase.Idle;
     public string LinkText { get; init; } = "";

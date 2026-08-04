@@ -19,6 +19,12 @@
 		     иначе — не полноэкранным, с чёрной полосой вместо системной строки. Приложение этот
 		     пакет и так тянет; стенд получает его отсюда. -->
 		<PackageReference Include="Xamarin.AndroidX.Core" Version="1.19.0.1" />
+
+		<!-- Сетка плиток второго главного экрана (план 23 §3.3): GridLayoutManager на шесть колонок
+		     и SpanSizeLookup — единственное, чем ширина плитки 1/2/3 в ряд делается встроенным.
+		     RecyclerView уже одобрен решением владельца (native-ui-libraries.md §2) и в приложении
+		     стоит; здесь он нужен потому, что экран живёт в библиотеке — иначе его не увидит стенд. -->
+		<PackageReference Include="Xamarin.AndroidX.RecyclerView" Version="1.4.0.6" />
 	</ItemGroup>
 
 	<ItemGroup>

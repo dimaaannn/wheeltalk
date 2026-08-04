@@ -483,9 +483,9 @@ public sealed partial class RideStore : IAsyncDisposable
         // only Veteran reports tilt, and on a graph "the protocol is silent" and "exactly zero"
         // are not the same picture.
         command.Parameters["$temp2"].Value =
-            s.WheelType == WheelType.GotWay ? s.Temperature2Raw : DBNull.Value;
+            WheelReports.Gotway(s) ? s.Temperature2Raw : DBNull.Value;
         command.Parameters["$tilt"].Value =
-            s.WheelType == WheelType.Veteran ? Hundredths.Of(s.Angle) : DBNull.Value;
+            WheelReports.Veteran(s) ? Hundredths.Of(s.Angle) : DBNull.Value;
 
         // The alert belongs on the row where it happened. Ours is the last value seen and would
         // repeat on every row until something replaced it, so it is drained here — which makes the
@@ -497,10 +497,11 @@ public sealed partial class RideStore : IAsyncDisposable
         // Одиннадцать величин, которых база не видела до плана 23. Каждая сообщается ровно одним
         // семейством протоколов, и у остальных её нет — не «ноль», а нет вовсе. NULL по типу
         // колеса, а не по значению: ровный ноль момента у InMotion — такое же показание, как и
-        // любое другое, и отличить его от молчания Veteran'а можно только здесь.
-        bool inMotion = s.WheelType is WheelType.Inmotion or WheelType.InmotionV2;
-        bool inMotionV2 = s.WheelType == WheelType.InmotionV2;
-        bool kingSong = s.WheelType == WheelType.KingSong;
+        // любое другое, и отличить его от молчания Veteran'а можно только по семейству. Само
+        // правило — общее с плитками (WheelReports): разойтись графику и числу на экране нельзя.
+        bool inMotion = WheelReports.InMotion(s);
+        bool inMotionV2 = WheelReports.InMotionV2(s);
+        bool kingSong = WheelReports.KingSong(s);
 
         command.Parameters["$torque"].Value = inMotionV2 ? Hundredths.Of(s.Torque) : DBNull.Value;
         command.Parameters["$motorPower"].Value = inMotionV2 ? Hundredths.Of(s.MotorPower) : DBNull.Value;

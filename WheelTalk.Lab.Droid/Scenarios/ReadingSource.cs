@@ -1,3 +1,4 @@
+using WheelTalk.Core.Contracts;
 using WheelTalk.Dashboard.Droid;
 
 namespace WheelTalk.Lab.Droid.Scenarios;
@@ -147,6 +148,14 @@ public sealed class ReadingSource
             _intensity[i] = Intensity(MaxOver(i, AlertWindow), options);
         }
     }
+
+    /// <summary>
+    /// Снимок сценария в этой позиции — как его отдало бы колесо, без сглаживания и интерполяции:
+    /// плитки экрана «Цифры» показывают то, что колесо сказало, а не то, что посчитала панель
+    /// (план 23 §3.2).
+    /// </summary>
+    public TelemetrySnapshot SnapshotAt(TimeSpan position) =>
+        Timeline.Frames[Timeline.IndexAt(position)].Snapshot;
 
     public DashboardReading At(TimeSpan position)
     {
