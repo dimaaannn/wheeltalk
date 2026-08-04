@@ -260,6 +260,11 @@ public static class TilesLayout
         new("distance", TileKind.Value, new(6, 1)),
         new("totaldistance", TileKind.Value, new(6, 1)),
 
+        // Крайние значения: у ШИМ важен верхний край, у напряжения нижний — обе стороны правила
+        // видны сразу. Сбрасываются коротким тапом, независимо от поездки (план 23 §3.2).
+        new("pwm", TileKind.Extremum, new(6, 1), Extremum: new TileExtremum(Lowest: false)),
+        new("voltage", TileKind.Extremum, new(6, 1), Extremum: new TileExtremum(Lowest: true)),
+
         // График ШИМ с числом поверх — то, ради чего экран и задуман: пик видно на линии, а текущее
         // значение читается не отходя.
         new("pwm", TileKind.Chart, new(12, 2), ShowLabel: true,

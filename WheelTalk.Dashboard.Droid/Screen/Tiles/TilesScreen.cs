@@ -207,6 +207,14 @@ public sealed class TilesScreen : IMainScreen
             return;
         }
 
+        // Крайнее значение сбрасывается тем же коротким тапом: у этого вида он единственный
+        // свободный, а сброс не разрушителен — число наберётся снова из живого потока.
+        if (view is ExtremumTileView extremum)
+        {
+            extremum.Reset();
+            return;
+        }
+
         // Вне правки короткий тап принадлежит графику: он открывает полноэкранный просмотр
         // (решение владельца 04.08.2026). По остальным плиткам тапать пока нечего.
         if (_history is { } history
@@ -539,13 +547,21 @@ public sealed class TilesScreen : IMainScreen
         /// одну под другую нельзя. Пустое место идёт как число: рамка у них общая, а содержимого у
         /// него нет вовсе.
         /// </summary>
-        public override int GetItemViewType(int position) => _tiles[position].Tile.Kind == TileKind.Chart ? 1 : 0;
+        public override int GetItemViewType(int position) => _tiles[position].Tile.Kind switch
+        {
+            TileKind.Chart => 1,
+            TileKind.Extremum => 2,
+            _ => 0,
+        };
 
         public override RecyclerView.ViewHolder OnCreateViewHolder(ViewGroup parent, int viewType)
         {
-            TileView view = viewType == 1
-                ? new ChartTileView(_context, _options, _translate)
-                : new MetricTileView(_context, _options);
+            TileView view = viewType switch
+            {
+                1 => new ChartTileView(_context, _options, _translate),
+                2 => new ExtremumTileView(_context, _options),
+                _ => new MetricTileView(_context, _options),
+            };
 
             // Плитка могла родиться уже посреди правки: сетка создаёт держатели по мере надобности.
             view.Editing = _editing;
@@ -585,6 +601,11 @@ public sealed class TilesScreen : IMainScreen
                 chart.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
                     layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false),
                     layout.Limits);
+            }
+            else if (tile.Tile is ExtremumTileView extremum)
+            {
+                extremum.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
+                    layout.Extremum ?? new TileExtremum(Lowest: false), layout.Limits);
             }
             else if (tile.Tile is MetricTileView value)
             {

@@ -62,6 +62,8 @@ public static class LabMetricWords
         ["TilesTileKind"] = "Вид",
         ["TilesKindValue"] = "Число",
         ["TilesKindChart"] = "График",
+        ["TilesKindExtremum"] = "Крайнее значение",
+        ["TilesTileLowest"] = "Помнить минимум, а не максимум",
         ["TilesTileWindow"] = "За какое время",
         ["TilesTileOverlay"] = "Число поверх графика",
         ["TilesTileZoom"] = "Обрезать по крайним значениям",

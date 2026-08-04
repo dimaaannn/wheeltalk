@@ -40,8 +40,9 @@ internal static class TileEditor
         // «величиной по имени Пусто», а решением «здесь ничего». Заодно у пустой гаснет всё, чего у
         // неё не бывает, — величина, подпись, пороги.
         var kindPick = Pick(context,
-            [translate("TilesKindValue"), translate("TilesKindChart"), translate("TilesTileEmpty")],
-            empty ? 2 : chart ? 1 : 0);
+            [translate("TilesKindValue"), translate("TilesKindChart"), translate("TilesKindExtremum"),
+                translate("TilesTileEmpty")],
+            empty ? 3 : tile?.Kind == TileKind.Extremum ? 2 : chart ? 1 : 0);
         var metricPick = Pick(context, Choices(translate, chart ? charted : all), 0);
         var sizePick = Pick(context, [.. sizes.Select(size => size.Describe())],
             tile is null ? 0 : Math.Max(0, sizes.ToList().IndexOf(tile.Size)));
@@ -84,6 +85,15 @@ internal static class TileEditor
         {
             Text = translate("TilesTileFalling"),
             Checked = tile?.Limits is { Rising: false },
+        };
+
+        // У крайнего значения свойство одно: какой край помнить. Сброс в меню не живёт — им служит
+        // короткий тап по самой плитке.
+        var lowest = new CheckBox(context)
+        {
+            Text = translate("TilesTileLowest"),
+            Checked = tile?.Extremum?.Lowest == true,
+            Visibility = tile?.Kind == TileKind.Extremum ? ViewStates.Visible : ViewStates.Gone,
         };
 
         // Подпись — свойство всякой плитки, не только графика: на мелкой она забирает место у числа,
@@ -137,8 +147,9 @@ internal static class TileEditor
 
         kindPick.ItemSelected += (_, _) =>
         {
-            bool wantEmpty = kindPick.SelectedItemPosition == 2;
+            bool wantEmpty = kindPick.SelectedItemPosition == 3;
             bool wantChart = kindPick.SelectedItemPosition == 1;
+            lowest.Visibility = kindPick.SelectedItemPosition == 2 ? ViewStates.Visible : ViewStates.Gone;
             var metrics = wantChart ? charted : all;
 
             chartOptions.Visibility = wantChart ? ViewStates.Visible : ViewStates.Gone;
@@ -172,6 +183,7 @@ internal static class TileEditor
         content.AddView(Caption(context, translate("TilesTileSize")));
         content.AddView(sizePick);
         content.AddView(showLabel);
+        content.AddView(lowest);
         content.AddView(chartOptions);
         content.AddView(limitsLine);
 
@@ -190,7 +202,8 @@ internal static class TileEditor
                 showLabel.Checked,
                 new TileChart(windows[windowPick.SelectedItemPosition], overlay.Checked, zoom.Checked,
                     fill.Checked, axis.Checked, (ChartSmoothing)smoothingPick.SelectedItemPosition),
-                Limits(warn, danger, falling.Checked))))!
+                Limits(warn, danger, falling.Checked),
+                new TileExtremum(lowest.Checked))))!
             .SetNegativeButton(Android.Resource.String.Cancel, (_, _) => { })!;
 
         if (remove is not null) dialog.SetNeutralButton(translate("TilesTileRemove"), (_, _) => remove());
@@ -199,16 +212,18 @@ internal static class TileEditor
     }
 
     private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, int kind, int chosen,
-        TileSize size, bool showLabel, TileChart options, TileLimits? limits)
+        TileSize size, bool showLabel, TileChart options, TileLimits? limits, TileExtremum extremum)
     {
-        if (kind == 2 || chosen < 0 || chosen >= metrics.Count) return MetricTile.Empty(size);
+        if (kind == 3 || chosen < 0 || chosen >= metrics.Count) return MetricTile.Empty(size);
 
-        bool chart = kind == 1;
         string id = metrics[chosen].Id;
 
-        return chart
-            ? new MetricTile(id, TileKind.Chart, size, showLabel, options, limits)
-            : new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits);
+        return kind switch
+        {
+            1 => new MetricTile(id, TileKind.Chart, size, showLabel, options, limits),
+            2 => new MetricTile(id, TileKind.Extremum, size, showLabel, Limits: limits, Extremum: extremum),
+            _ => new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits),
+        };
     }
 
     /// <summary>

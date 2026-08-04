@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
@@ -62,6 +62,7 @@ public static partial class TileLayoutJson
         {
             TileKind.Value => "value",
             TileKind.Chart => "chart",
+            TileKind.Extremum => "extremum",
             TileKind.Empty => "empty",
             // Новый вид без строки формата должен упасть у разработчика при первом же сохранении,
             // а не молча записаться числом, которое прошлая версия прочтёт как мусор.
@@ -90,6 +91,9 @@ public static partial class TileLayoutJson
         Limits = tile.Limits is { } limits
             ? new LimitsDto { Warn = limits.Warn, Danger = limits.Danger, Falling = !limits.Rising }
             : null,
+        // Само накопленное крайнее не хранится намеренно: план 23 §3.2 держит его в памяти, и
+        // сохранённый вчерашний максимум сегодня был бы не показанием, а привидением.
+        Lowest = tile.Extremum?.Lowest ?? false,
     };
 
     private static MetricTile? ToTile(TileDto dto)
@@ -112,6 +116,10 @@ public static partial class TileLayoutJson
             case "chart" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Chart, size, dto.Label,
                     ToChart(dto.Chart), ToLimits(dto.Limits));
+
+            case "extremum" when dto.Metric is { Length: > 0 }:
+                return new MetricTile(dto.Metric, TileKind.Extremum, size, dto.Label,
+                    Limits: ToLimits(dto.Limits), Extremum: new TileExtremum(dto.Lowest));
 
             default:
                 // Незнакомый вид или величина без имени: строить нечего.
@@ -145,6 +153,9 @@ public static partial class TileLayoutJson
         public bool Label { get; set; } = true;
         public ChartDto? Chart { get; set; }
         public LimitsDto? Limits { get; set; }
+
+        /// <summary>Какой край помнит плитка крайнего значения. У прочих видов не читается.</summary>
+        public bool Lowest { get; set; }
     }
 
     internal sealed class ChartDto

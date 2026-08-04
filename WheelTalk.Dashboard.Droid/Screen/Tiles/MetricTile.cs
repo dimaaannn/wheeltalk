@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -45,6 +45,13 @@ public enum TileKind
     Chart,
 
     /// <summary>
+    /// Крайнее значение за время наблюдения — максимум либо минимум (план 23 §3.2). Истории не
+    /// требует вовсе: крайнему значению нужна не запись, а память о двух числах, поэтому плитка
+    /// работает и там, где телеметрия не пишется.
+    /// </summary>
+    Extremum,
+
+    /// <summary>
     /// Место, оставленное пустым. Не рисует ничего и занимает клетки — этим и держит дырку в
     /// раскладке: укладчик идёт по списку вперёд и в обход занятого не возвращается, поэтому пустое
     /// место остаётся ровно там, где его поставили.
@@ -78,7 +85,7 @@ public enum TileKind
 /// </param>
 public sealed record MetricTile(
     string MetricId, TileKind Kind, TileSize Size, bool ShowLabel = true, TileChart? Chart = null,
-    TileLimits? Limits = null)
+    TileLimits? Limits = null, TileExtremum? Extremum = null)
 {
     /// <summary>Пустое место заданного размера.</summary>
     public static MetricTile Empty(TileSize size) => new("", TileKind.Empty, size);
@@ -123,6 +130,15 @@ public enum ChartSmoothing
     /// <summary>Только минимумы: видно, как низко проседало.</summary>
     Dips,
 }
+
+/// <summary>
+/// Свойства плитки крайнего значения.
+/// </summary>
+/// <param name="Lowest">
+/// <c>true</c> — помнить минимум, <c>false</c> — максимум. У напряжения и заряда интересен как раз
+/// нижний край, у ШИМ и тока — верхний.
+/// </param>
+public readonly record struct TileExtremum(bool Lowest);
 
 /// <summary>
 /// Пороги плитки — жёлтый и красный. Одни на всё: по ним же красится подложка при текущем значении и
