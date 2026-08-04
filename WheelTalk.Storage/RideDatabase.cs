@@ -64,6 +64,19 @@ public sealed partial class RideDatabase
         }
     }
 
+    /// <summary>
+    /// Закрывает все соединения с базами, открытые в этом процессе. Нужно ровно одному случаю —
+    /// файл базы собираются удалить.
+    /// <para>
+    /// <b>Dispose соединения его не закрывает:</b> Microsoft.Data.Sqlite держит пул и возвращает
+    /// соединение туда. Файл, удалённый при живом соединении, исчезает из каталога, но пул
+    /// продолжает писать в тот же самый безымянный inode — записи уходят в никуда, и молча. Найдено
+    /// прогоном стенда 04.08.2026: набивка «заново» удаляла файл, отчитывалась об успехе и не
+    /// оставляла после себя ничего.
+    /// </para>
+    /// </summary>
+    public static void CloseAllConnections() => SqliteConnection.ClearAllPools();
+
     /// <summary>A fresh connection to the same file. Callers own it and dispose it.</summary>
     public SqliteConnection Connect()
     {

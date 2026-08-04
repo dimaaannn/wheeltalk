@@ -12,6 +12,12 @@ namespace WheelTalk.Dashboard.Droid.Widgets;
 /// сам вызов — жест от нижней кромки, и полоса платилась за то, чтобы про жест знали. Знак в нижнем
 /// поле центральной колонки говорит то же самое и не занимает высоты.
 /// </para>
+/// <para>
+/// Тап по галочке (<see cref="HitsSheetHint"/>) — второй вход к тому же вызову, что и жест: не
+/// каждый нашаривает свайп с первого раза, а знак нарисован ровно затем, чтобы по нему целились.
+/// Своя цель касания, а не общая со свайпом: тап и флик по одной и той же зоне уже разводит
+/// <c>GestureDetector</c> (см. <c>MainActivity</c>), здесь остаётся не спорить с точкой записи.
+/// </para>
 /// </summary>
 public sealed class PanelChromeDrawable
 {
@@ -42,6 +48,15 @@ public sealed class PanelChromeDrawable
 
     /// <summary>Непрозрачность галочки: подсказку видно, но за сигнал её не примешь.</summary>
     private const float HintAlpha = 0.35f;
+
+    /// <summary>
+    /// Цель касания вокруг галочки, точки экрана: чуть больше самого знака (26×7), но много меньше
+    /// зоны свайпа шторки (нижние 128 dp, <c>SwipeUpFromEdgeListener</c>) — прицельная точка, а не
+    /// вторая полоса поверх первой (владелец, план 23).
+    /// </summary>
+    private const float HintTouchWidth = 48f;
+
+    private const float HintTouchHeight = 32f;
 
     /// <summary>
     /// Непрозрачность точки записи, когда запись не идёт: место известно, тревоги нет. Было 0,3 —
@@ -83,6 +98,24 @@ public sealed class PanelChromeDrawable
         float dy = y - (rect.Top + DotTop * density);
         float reach = TouchRadius * density;
         return dx * dx + dy * dy <= reach * reach;
+    }
+
+    /// <summary>
+    /// Попало ли касание в галочку — подсказку про шторку. Тот же приём, что у
+    /// <see cref="HitsRecordDot"/>: координаты знака здешние, вторая их копия снаружи разошлась бы
+    /// при первой же правке отступа. Область не пересекается с целью точки записи — та стоит у
+    /// верхнего края (<see cref="DotTop"/>), эта — у нижнего.
+    /// </summary>
+    public bool HitsSheetHint(RectF rect, float density, float x, float y)
+    {
+        if (!ShowSheetHint) return false;
+
+        float centreX = rect.CenterX();
+        float centreY = rect.Bottom - (HintBottom + HintHeight / 2) * density;
+        float halfWidth = HintTouchWidth / 2 * density;
+        float halfHeight = HintTouchHeight / 2 * density;
+        return x >= centreX - halfWidth && x <= centreX + halfWidth
+            && y >= centreY - halfHeight && y <= centreY + halfHeight;
     }
 
     public void Draw(Canvas canvas, RectF rect, float density)

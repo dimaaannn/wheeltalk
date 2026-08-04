@@ -171,6 +171,12 @@ public abstract class DashboardView : View, IMainScreen
     private bool HitsRecordDot(float x, float y) => _chrome.HitsRecordDot(ChromeArea, Density, x, y);
 
     /// <summary>
+    /// Попало ли касание в галочку — подсказку про шторку. Тот же приём, что у точки записи: панель
+    /// рисует, панель и отвечает, наружу уходит намерение (<see cref="Tap"/>).
+    /// </summary>
+    private bool HitsSheetHint(float x, float y) => _chrome.HitsSheetHint(ChromeArea, Density, x, y);
+
+    /// <summary>
     /// Попало ли касание в плашку связи. Область та же, в которую плашка рисуется
     /// (<see cref="OnDraw"/>), и берётся она отсюда, а не считается заново.
     /// </summary>
@@ -268,6 +274,12 @@ public abstract class DashboardView : View, IMainScreen
         if (HitsRecordDot(x, y))
         {
             OnIntent?.Invoke(MainScreenIntent.ShowRecording);
+            return;
+        }
+
+        if (HitsSheetHint(x, y))
+        {
+            OnIntent?.Invoke(MainScreenIntent.ShowSheet);
         }
     }
 

@@ -34,10 +34,17 @@
 
 	<ItemGroup>
 		<!-- Логгеры сценариев (NullLoggerFactory) приходят с Microsoft.Extensions.Logging.Abstractions,
-		     который тянет WheelTalk.Core; ничего сверх ссылок ниже стенду не нужно — ни BLE, ни базы,
-		     ни настроек приложения. -->
+		     который тянет WheelTalk.Core. BLE и настройки приложения стенду по-прежнему не нужны. -->
 		<ProjectReference Include="..\WheelTalk.Core\WheelTalk.Core.csproj" />
 		<ProjectReference Include="..\WheelTalk.Dashboard.Droid\WheelTalk.Dashboard.Droid.csproj" />
+
+		<!-- База — с 04.08.2026, решением владельца: прежнее «стенду базы не надо» пересмотрено, и
+		     причина в том, ради чего стенд существует. Плитка-график читает таблицу телеметрии, а
+		     стенд обязан показывать тот же путь, каким живёт приложение: со своим генератором точек в
+		     памяти он проверял бы то, чего в бою нет, и разошлись бы эти две картинки молча.
+		     Стенд получает узкие типы (RideStore на запись, MetricHistoryReader на чтение) — не
+		     соединение и не SQL: тем правилом живут все, кроме самого WheelTalk.Storage. -->
+		<ProjectReference Include="..\WheelTalk.Storage\WheelTalk.Storage.csproj" />
 	</ItemGroup>
 
 </Project>

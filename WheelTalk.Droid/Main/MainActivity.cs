@@ -406,6 +406,10 @@ public sealed class MainActivity : Activity
     /// своё: она про запись, и ведёт туда, где видно, что пишется прямо сейчас, и где включается
     /// сырой дамп перед выездом. Здесь стояло обратное, пока входа в шторке не было.
     /// </para>
+    /// <para>
+    /// «Открыть шторку» — тап по галочке, второй вход к тому же <c>_sheet.Toggle()</c>, что и жест
+    /// свайпа (<see cref="DispatchTouchEvent"/>). Экран сам не открывает ничего — он лишь просит.
+    /// </para>
     /// </summary>
     private void OnScreenIntent(MainScreenIntent intent)
     {
@@ -413,6 +417,7 @@ public sealed class MainActivity : Activity
         {
             case MainScreenIntent.ShowConnection: OnLinkBadgeTapped(); break;
             case MainScreenIntent.ShowRecording: OpenScreen(typeof(RecordingActivity)); break;
+            case MainScreenIntent.ShowSheet: _sheet.Toggle(); break;
         }
     }
 

@@ -116,6 +116,8 @@ public static class MetricCatalogue
             UnitKey = "UnitPercent",
             Read = s => s.Battery,
             Column = "battery_level",
+            // Проценты хранятся целыми, а не сотыми: колесо сообщает их целыми.
+            ColumnScale = 1,
         },
 
         // ---- Температура -------------------------------------------------------------------
@@ -145,6 +147,8 @@ public static class MetricCatalogue
             Decimals = 2,
             Read = s => s.WheelDistanceKm,
             Column = "distance",
+            // Пробег база держит в метрах — так его сообщает колесо.
+            ColumnScale = 0.001,
         },
         new()
         {
@@ -161,6 +165,7 @@ public static class MetricCatalogue
             UnitKey = "UnitKm",
             Read = s => s.TotalDistanceKm,
             Column = "totaldistance",
+            ColumnScale = 0.001,
         },
 
         // ---- Что сообщает одно семейство ---------------------------------------------------
@@ -190,6 +195,8 @@ public static class MetricCatalogue
             UnitKey = "UnitCelsius",
             Read = s => WheelReports.InMotionV2(s) ? s.CpuTemp : null,
             Column = "cpu_temp",
+            // Градусы целыми: колесо сообщает их без дробной части (см. TelemetrySnapshot.CpuTemp).
+            ColumnScale = 1,
         },
         new()
         {
@@ -216,6 +223,7 @@ public static class MetricCatalogue
             UnitKey = "UnitCelsius",
             Read = s => WheelReports.InMotion(s) ? s.ImuTemp : null,
             Column = "imu_temp",
+            ColumnScale = 1,
         },
         new()
         {
@@ -224,6 +232,7 @@ public static class MetricCatalogue
             UnitKey = "UnitPercent",
             Read = s => WheelReports.KingSong(s) ? s.CpuLoad : null,
             Column = "cpu_load",
+            ColumnScale = 1,
         },
         new()
         {

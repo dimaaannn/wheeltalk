@@ -44,7 +44,11 @@ namespace WheelTalk.Lab.Droid;
 /// новую панель методом <c>Attach</c>, без остановки цикла.
 /// </para>
 /// </summary>
-[Activity(Label = "WheelTalk Lab", MainLauncher = true, LaunchMode = LaunchMode.SingleTop,
+// Имя компонента задано явно, как у боевой MainActivity: иначе Android собирает имя Java-класса из
+// crc64-хеша пространства имён, и `am start -n …` отвалился бы от переименования папки. Имя —
+// контракт командного входа (см. HandleCommand), а не деталь сборки.
+[Activity(Name = "com.wheeltalk.lab.droid.LabActivity",
+    Label = "WheelTalk Lab", MainLauncher = true, LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode
         | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 public sealed class LabActivity : Activity
@@ -68,7 +72,11 @@ public sealed class LabActivity : Activity
     /// </summary>
     private MainScreenView? _screen;
     private GestureDetector? _sheetGesture;
+    private GestureDetector? _tapGesture;
     private bool _lightOn;
+
+    /// <summary>База стенда с придуманной историей. Открывается в фоне: файл, миграции и набивка.</summary>
+    private LabStore? _store;
 
     /// <summary>
     /// Экран плиток в рамке — тот же класс, что показывает райдеру приложение. Живёт ровно столько,
@@ -141,12 +149,68 @@ public sealed class LabActivity : Activity
         // показываем первым. Отдельные варианты панели — следующие пункты того же пикера.
         ShowScreen();
         _ = LoadScenario();
+        _ = OpenStore();
+
+        // HOTRELOAD: правка, применённая из Visual Studio, пересобирает экран сама — см. LabHotReload.
+        LabHotReload.Rebuild = () => RunOnUiThread(Rebuild);
+
+        // Стенд подняли самой командой — тогда extras лежат в стартовом Intent, и OnNewIntent не
+        // будет вовсе.
+        HandleCommand(Intent);
     }
 
     protected override void OnDestroy()
     {
+        LabHotReload.Rebuild = null;
         _settings.Changed -= OnSettingsChanged;
+
+        // База переживает экран ровно до этого места: держать соединение открытым после ухода
+        // стенда незачем, а ждать закрытия — тем более.
+        var store = _store;
+        _store = null;
+        if (store is not null) _ = store.DisposeAsync().AsTask();
+
         base.OnDestroy();
+    }
+
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+
+        // SetIntent не зовём по той же причине, что MainActivity: подменённый Intent пережил бы
+        // пересоздание Activity и повторил бы команду при восстановлении экрана.
+        HandleCommand(intent);
+    }
+
+    /// <summary>
+    /// Командный вход стенда — тот же приём, которым гоняют реплей боевого приложения (план 22 §2):
+    /// <c>am start -n com.wheeltalk.lab.droid/.LabActivity --es rebuild screen</c>,
+    /// <c>--es screen panel|tiles</c>, <c>--es history new</c>.
+    /// <para>
+    /// Заведён затем, что <c>input tap</c> по координатам промахивается хронически, а каждый промах —
+    /// потерянный прогон. Своей логики здесь нет: команда зовёт ровно то же, что кнопка.
+    /// </para>
+    /// </summary>
+    private void HandleCommand(Intent? intent)
+    {
+        if (intent is null) return;
+
+        // HOTRELOAD: пересобрать экран, не трогая телефон руками.
+        if (intent.GetStringExtra("rebuild") is not null) Rebuild();
+        if (intent.GetStringExtra("screen") is { } screen) ShowTiles(screen == "tiles");
+        if (intent.GetStringExtra("history") is not null) _ = RefillStore();
+    }
+
+    /// <summary>
+    /// HOTRELOAD: пересборка показанного экрана на месте. Горячая перезагрузка подменяет тела
+    /// методов, но собранную иерархию <c>View</c> не перестроит — числа раскладки прочитаны в
+    /// конструкторе плитки и там же остались. Пересобираем то, что показано: рамку с экраном либо
+    /// отдельный вариант панели.
+    /// </summary>
+    private void Rebuild()
+    {
+        if (_screen is null) ShowVariant(_variant);
+        else ShowScreen();
     }
 
     protected override void OnStart()
@@ -184,8 +248,36 @@ public sealed class LabActivity : Activity
             _sheetGesture ??= new GestureDetector(this, new SwipeUpFromEdgeListener(
                 () => _screen?.Sheet.Toggle(), Resources!.DisplayMetrics!.HeightPixels, Dp(128)));
             _sheetGesture.OnTouchEvent(ev);
+
+            // Тап по экрану — тем же слушателем из библиотеки, что в приложении. Без него на стенде
+            // молчали все попадания разом: галочка шторки, точка записи, плашка связи. Правят вид
+            // здесь, и «не отзывается» читалось бы как «сломал правкой».
+            _tapGesture ??= new GestureDetector(this, new SingleTapListener(OnTapped));
+            _tapGesture.OnTouchEvent(ev);
         }
         return base.DispatchTouchEvent(ev);
+    }
+
+    /// <summary>
+    /// Жест ловит хозяин, а во что касание попало — решает сам экран: метки нарисованы на его канве.
+    /// То же разделение, что в <c>MainActivity</c>.
+    /// </summary>
+    private void OnTapped(float x, float y) => _screen?.Current.Tap(x, y);
+
+    /// <summary>
+    /// Исполнение намерений экрана — по-стендовому. Действия здесь свои, но <b>немых намерений
+    /// нет</b>: на каждое видно, что экран услышан, иначе правящий вид решит, что сломал его правкой.
+    /// </summary>
+    private void OnScreenIntent(MainScreenIntent intent)
+    {
+        switch (intent)
+        {
+            // Связи у стенда нет — вместо неё перебор состояний плашки, тот же, что у кнопки «⇄».
+            case MainScreenIntent.ShowConnection: CycleLink(); break;
+            // Экрана записи нет — щёлкаем саму точку записи, как это делает команда шторки.
+            case MainScreenIntent.ShowRecording: _settings.Recording = !_settings.Recording; break;
+            case MainScreenIntent.ShowSheet: _screen?.Sheet.Toggle(); break;
+        }
     }
 
     /// <summary>
@@ -285,6 +377,47 @@ public sealed class LabActivity : Activity
         _driver.Refresh();
     }
 
+    /// <summary>
+    /// База стенда с историей на несколько часов: графикам плиток нужно, из чего строиться, а на
+    /// свежей установке база пуста. Открытие, миграции и набивка — в фоне: это десятки тысяч строк,
+    /// и на UI-потоке им делать нечего.
+    /// </summary>
+    private async Task OpenStore()
+    {
+        try
+        {
+            var store = new LabStore();
+            _statusLabel.Text = "История: открываю базу…";
+            string summary = await store.OpenAsync();
+
+            _store = store;
+            _statusLabel.Text = summary;
+        }
+        catch (Exception ex)
+        {
+            // Стенд без истории всё ещё стенд: панель и плитки живут на записи, а не на базе.
+            _statusLabel.Text = $"История недоступна: {ex.Message}";
+        }
+    }
+
+    /// <summary>Набить другую покатушку — по команде <c>--es history new</c>.</summary>
+    private async Task RefillStore()
+    {
+        if (_store is not { } store) return;
+
+        try
+        {
+            _statusLabel.Text = "История: набиваю заново…";
+            _statusLabel.Text = await store.RefillAsync();
+        }
+        catch (Exception ex)
+        {
+            // Молча упавшая набивка выглядит как набивка удавшаяся: строка состояния — единственное
+            // место, где стенд может сказать правду про базу.
+            _statusLabel.Text = $"История не набилась: {ex.Message}";
+        }
+    }
+
     private void BuildMarks(Timeline timeline)
     {
         _markBar.RemoveAllViews();
@@ -314,6 +447,7 @@ public sealed class LabActivity : Activity
 
         RemoveShown();
         _dashboard = variant.Create(this, _settings.Options);
+        _dashboard.OnIntent = OnScreenIntent;
         _host.AddView(_dashboard, 0, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         _dashboard.Rotation = (float)_settings.Options.Tilt;
@@ -341,6 +475,7 @@ public sealed class LabActivity : Activity
         // на устройстве, — и потому держит её отдельно от того, что показано сейчас. Приложению
         // такое знание не нужно и не выдано: у него в руках только контракт IMainScreen.
         _dashboard = _screen.Panel;
+        _screen.Panel.OnIntent = OnScreenIntent;
         _screen.Sheet.PinLabel = () => "Закрепить";
         _screen.Sheet.SetCommands(BuildFakeCommands());
         _screen.Sheet.SetScreens(BuildScreens());
@@ -364,7 +499,7 @@ public sealed class LabActivity : Activity
 
         _tilesShown = tiles;
         screen.Show(tiles
-            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get)
+            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get) { OnIntent = OnScreenIntent }
             : screen.Panel);
 
         _driver.Attach(screen.Current, BuildFrame);
@@ -631,6 +766,8 @@ public sealed class LabActivity : Activity
         // Кнопки — ровно по значку. Без явной ширины системная Button держит свои 64 dp минимума и
         // поля фона, три штуки съедали больше половины строки, а пикеры ужимались до одних стрелок.
         _chrome.AddView(ChromeButton("⚙", () => StartActivity(new Intent(this, typeof(LabSettingsActivity)))), IconSize());
+        // HOTRELOAD: пересобрать экран пальцем — тот же вход, что у команды и у события перезагрузки.
+        _chrome.AddView(ChromeButton("♻", Rebuild), IconSize());
         _chrome.AddView(ChromeButton("⇄", CycleLink), IconSize());
         _chrome.AddView(ChromeButton("⤓", StartWalk), IconSize());
         _chrome.AddView(ChromeButton("⛶", () => ShowChrome(false)), IconSize());

@@ -51,4 +51,7 @@ public enum MainScreenIntent
 
     /// <summary>Тап по точке записи — «показать запись».</summary>
     ShowRecording,
+
+    /// <summary>Тап по галочке снизу — «открыть шторку быстрых команд».</summary>
+    ShowSheet,
 }

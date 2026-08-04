@@ -31,22 +31,27 @@ internal sealed class MetricTileView : LinearLayout
     private string _format = "F0";
     private string _shown = "";
 
+    /// <summary>
+    /// HOTRELOAD: своих чисел у плитки нет — все до одного берутся из <see cref="TilesLayout"/>.
+    /// Подгонять вид глазами открывают тот файл, а прочитаны они здесь, в конструкторе: оттого
+    /// правка и требует пересборки экрана, а не только применения перезагрузки.
+    /// </summary>
     public MetricTileView(Context context, DashboardPalette palette) : base(context)
     {
         Orientation = Android.Widget.Orientation.Vertical;
-        int pad = context.Dp(9);
+        int pad = context.Dp(TilesLayout.PaddingDp);
         SetPadding(pad, pad, pad, pad);
 
         var background = new GradientDrawable();
         background.SetShape(ShapeType.Rectangle);
-        background.SetCornerRadius(context.Dp(12));
+        background.SetCornerRadius(context.Dp(TilesLayout.CornerRadiusDp));
         // Фон плитки — та же приглушённая краска палитры, взятая почти прозрачной: так плитки видны
         // на фоне панели при любой палитре, и второго набора цветов заводить не пришлось.
-        background.SetColor(Color.Argb(28, palette.Dim.R, palette.Dim.G, palette.Dim.B));
+        background.SetColor(Color.Argb(TilesLayout.BackgroundAlpha, palette.Dim.R, palette.Dim.G, palette.Dim.B));
         Background = background;
 
         _label = new TextView(context);
-        _label.SetTextSize(ComplexUnitType.Sp, 11);
+        _label.SetTextSize(ComplexUnitType.Sp, TilesLayout.LabelSp);
         _label.SetTextColor(palette.Dim);
         _label.SetMaxLines(1);
         _label.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
@@ -64,20 +69,21 @@ internal sealed class MetricTileView : LinearLayout
         //
         // Ширина и высота у него не WrapContent намеренно — при них автоподбору не от чего
         // отталкиваться, и он не работает вовсе (документация Android, «Autosizing TextView»).
-        _value.SetAutoSizeTextTypeUniformWithConfiguration(12, 64, 1, (int)ComplexUnitType.Sp);
+        _value.SetAutoSizeTextTypeUniformWithConfiguration(
+            TilesLayout.ValueMinSp, TilesLayout.ValueMaxSp, TilesLayout.ValueStepSp, (int)ComplexUnitType.Sp);
         row.AddView(_value, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MatchParent, 1f));
 
         _unit = new TextView(context);
-        _unit.SetTextSize(ComplexUnitType.Sp, 11);
+        _unit.SetTextSize(ComplexUnitType.Sp, TilesLayout.UnitSp);
         _unit.SetTextColor(palette.Dim);
-        _unit.SetPadding(context.Dp(3), 0, 0, 0);
+        _unit.SetPadding(context.Dp(TilesLayout.UnitGapDp), 0, 0, 0);
         row.AddView(_unit);
 
         // Остаток плитки под числом: подпись сверху, число — во всём, что осталось, и по центру
         // этого остатка. Отсюда и «стоит по центру плитки», и то, во что упирается автоподбор.
         AddView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f)
         {
-            TopMargin = context.Dp(2),
+            TopMargin = context.Dp(TilesLayout.ValueTopMarginDp),
         });
     }
 
