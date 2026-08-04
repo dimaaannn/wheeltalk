@@ -23,6 +23,7 @@ using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
+using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.Ble;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
@@ -92,6 +93,7 @@ public sealed class MainActivity : Activity
     private PowerOptions _power = null!;
     private IWheelConfig _wheelConfig = null!;
     private IObservable<AlertState> _alerts = null!;
+    private AlertBanner _banner = null!;
     private TimeProvider _timeProvider = null!;
     private ILogger<MainActivity> _logger = null!;
 
@@ -183,6 +185,7 @@ public sealed class MainActivity : Activity
         _power = MainApplication.Services.GetRequiredService<IOptions<PowerOptions>>().Value;
         _wheelConfig = MainApplication.Services.GetRequiredService<IWheelConfig>();
         _alerts = MainApplication.Services.GetRequiredService<IObservable<AlertState>>();
+        _banner = MainApplication.Services.GetRequiredService<AlertBanner>();
         _dashboardOptions = MainApplication.Services.GetRequiredService<DashboardOptions>();
         _trace = MainApplication.Services.GetRequiredService<RideTrace>();
         _layers = MainApplication.Services.GetRequiredService<LayeredSettings>();
@@ -317,6 +320,9 @@ public sealed class MainActivity : Activity
 
         _alertSubscription = _alerts.Subscribe(a => _alert = a);
 
+        _banner.Changed += OnBannerChanged;
+        ShowWheelAlert();
+
         _driver.Start();
 
         // Реплей не запускается сам: на телефоне это внезапная тревога в полный голос, и не факт,
@@ -352,6 +358,7 @@ public sealed class MainActivity : Activity
         _telemetry = null;
         _alertSubscription?.Dispose();
         _alertSubscription = null;
+        _banner.Changed -= OnBannerChanged;
 
         _driver.Stop();
 
@@ -731,29 +738,23 @@ public sealed class MainActivity : Activity
 
     /// <summary>
     /// Приход очередного отсчёта. Экран здесь не трогается вовсе: он живёт на своём кадровом
-    /// цикле (<see cref="MainScreenDriver"/>) и берёт то, что накопилось. Здесь только копится — и
-    /// поднимается полоса тревоги, которая на приход отсчёта как раз и должна реагировать.
+    /// цикле (<see cref="MainScreenDriver"/>) и берёт то, что накопилось. Здесь только копится.
     /// </summary>
-    private void Render(TelemetrySnapshot snapshot)
-    {
-        _trace.Push(snapshot);
-        ShowWheelAlert(snapshot);
-    }
+    private void Render(TelemetrySnapshot snapshot) => _trace.Push(snapshot);
 
-    private void ShowWheelAlert(TelemetrySnapshot snapshot)
-    {
-        if (_session.CurrentState != ConnectionState.Connected) return;
+    private void OnBannerChanged() => RunOnUiThread(ShowWheelAlert);
 
-        string alertText = snapshot.AlertForDisplay;
-        bool alarming = snapshot.WheelAlarm || alertText.Length > 0;
-        if (alarming)
-        {
-            _alertStrip.Show(alertText.Length > 0 ? alertText : AppStrings.StripWheelAlarm, AlertStrip.Danger);
-        }
-        else
-        {
-            _alertStrip.Hide();
-        }
+    /// <summary>
+    /// Полоса тревоги главного экрана. Слова считает <see cref="AlertBanner"/> — один на всё
+    /// приложение, — а берётся отсюда только его «колёсная» половина: перегрузку и превышение панель
+    /// показывает сама, и всплывающая над ней полоса сдвинула бы приборы вниз ровно тогда, когда
+    /// цифрам надо стоять на месте. На прочих экранах приборов нет, и там полоса
+    /// (<see cref="AlertOverlay"/>) говорит обо всём.
+    /// </summary>
+    private void ShowWheelAlert()
+    {
+        if (_banner.WheelText is { Length: > 0 } text) _alertStrip.Show(text, AlertStrip.Danger);
+        else _alertStrip.Hide();
     }
 
     private async void OnStateTapped()

@@ -71,8 +71,14 @@ public enum TileKind
 /// Свойства вида — пока они есть только у графика (план 23 §3.2, дополнение владельца 04.08.2026).
 /// Отдельным членом, а не общим мешком: свойств сегодня три, но лежат они там, где применяются.
 /// </param>
+/// <param name="Limits">
+/// Свои пороги плитки. <c>null</c> — брать их из настроек тревог, как делает панель; заданные здесь
+/// старше настроечных и работают для любой величины, а не только для тех двух, у которых пороги в
+/// настройках есть.
+/// </param>
 public sealed record MetricTile(
-    string MetricId, TileKind Kind, TileSize Size, bool ShowLabel = true, TileChart? Chart = null)
+    string MetricId, TileKind Kind, TileSize Size, bool ShowLabel = true, TileChart? Chart = null,
+    TileLimits? Limits = null)
 {
     /// <summary>Пустое место заданного размера.</summary>
     public static MetricTile Empty(TileSize size) => new("", TileKind.Empty, size);
@@ -87,4 +93,43 @@ public sealed record MetricTile(
 /// ход величины, у которой размах мал против самого значения (напряжение, температура).
 /// <c>false</c> — низ шкалы прибит к нулю, и линия показывает долю от него.
 /// </param>
-public readonly record struct TileChart(TimeSpan Window, bool ShowValue, bool Zoom);
+/// <param name="Fill">Заливать ли под линией.</param>
+/// <param name="Axis">Показывать ли шкалу значений слева. На четвертной плитке она съедает треть ширины.</param>
+/// <param name="Smoothing">Какой стороной периода рисовать линию.</param>
+public readonly record struct TileChart(
+    TimeSpan Window,
+    bool ShowValue,
+    bool Zoom,
+    bool Fill = true,
+    bool Axis = true,
+    ChartSmoothing Smoothing = ChartSmoothing.MinMax);
+
+/// <summary>
+/// Что показывать за период прореживания. История приходит корзинами по времени, и от каждой в ней
+/// лежат <b>минимум и максимум</b> (план 23 §5.6) — по ним и выбирается, чем рисовать линию.
+/// <para>
+/// Кривой Безье вместо этого не делаем: она сглаживает короткие пики, а пик — то самое, ради чего на
+/// график и смотрят. Сглаживание должно быть решением о данных, а не о рисунке.
+/// </para>
+/// </summary>
+public enum ChartSmoothing
+{
+    /// <summary>Обе крайние точки корзины: линия дрожит, но не врёт ни одним пиком.</summary>
+    MinMax,
+
+    /// <summary>Только максимумы: видно, как высоко поднималось.</summary>
+    Peaks,
+
+    /// <summary>Только минимумы: видно, как низко проседало.</summary>
+    Dips,
+}
+
+/// <summary>
+/// Пороги плитки — жёлтый и красный. Одни на всё: по ним же красится подложка при текущем значении и
+/// пики на её графике (решение владельца 05.08.2026 — порогов для графика и числа не разносим).
+/// </summary>
+/// <param name="Rising">
+/// <c>true</c> — хуже, когда больше (ШИМ, ток, температура); <c>false</c> — когда меньше
+/// (напряжение, заряд).
+/// </param>
+public readonly record struct TileLimits(double Warn, double Danger, bool Rising);

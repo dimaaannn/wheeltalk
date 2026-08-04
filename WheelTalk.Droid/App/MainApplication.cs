@@ -3,6 +3,7 @@ using Android.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Settings;
+using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.App.Composition;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
@@ -84,6 +85,11 @@ public sealed class MainApplication : Application
         Services.GetRequiredService<SettingsBinder>().Apply();
 
         CrashGuard.SubscribeAppLevelHandlers();
+
+        // Полоса тревоги поверх любого экрана (требование владельца 05.08.2026). Ставится здесь, а
+        // не в CrashGuard: RegisterActivityLifecycleCallbacks — метод самого Application, и другого
+        // места, где этот экземпляр есть под рукой, в приложении нет.
+        RegisterActivityLifecycleCallbacks(Services.GetRequiredService<AlertOverlay>());
 
         Services.GetRequiredService<ILogger<MainApplication>>().LogInformation("App.Started");
     }

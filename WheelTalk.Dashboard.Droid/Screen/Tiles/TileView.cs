@@ -31,30 +31,35 @@ internal abstract class TileView : LinearLayout
     /// <summary>Контур пустого места — виден только в правке: иначе пустоту нечем поймать пальцем.</summary>
     private readonly Paint _outlinePaint = new() { AntiAlias = true };
     private readonly RectF _outline = new();
-    private readonly Drawable _filled;
+    private readonly GradientDrawable _filled;
     private readonly float _radius;
+
+    /// <summary>Каким цветом покрашена подложка сейчас — чтобы не перекрашивать её тем же самым.</summary>
+    private Color _fill;
 
     private bool _editing;
     private bool _empty;
 
-    protected TileView(Context context, DashboardPalette palette) : base(context)
+    protected TileView(Context context, DashboardOptions options) : base(context)
     {
-        Palette = palette;
+        Options = options;
         Orientation = Android.Widget.Orientation.Vertical;
+
+        var palette = options.Palette;
 
         int pad = context.Dp(TilesLayout.PaddingDp);
         SetPadding(pad, pad, pad, pad);
 
         _radius = context.Dp(TilesLayout.CornerRadiusDp);
 
-        var background = new GradientDrawable();
-        background.SetShape(ShapeType.Rectangle);
-        background.SetCornerRadius(_radius);
-        // Фон плитки — та же приглушённая краска палитры, взятая почти прозрачной: так плитки видны
-        // на фоне панели при любой палитре, и второго набора цветов заводить не пришлось.
-        background.SetColor(Color.Argb(TilesLayout.BackgroundAlpha, palette.Dim.R, palette.Dim.G, palette.Dim.B));
-        _filled = background;
-        Background = background;
+        _filled = new GradientDrawable();
+        _filled.SetShape(ShapeType.Rectangle);
+        _filled.SetCornerRadius(_radius);
+        // Фон плитки — краска палитры, взятая почти прозрачной: так плитки видны при любой палитре, и
+        // второго набора цветов заводить не пришлось. Спокойная величина берёт приглушённую Dim,
+        // подошедшая к тревоге — тёплую и погуще (см. ShowHeat).
+        ShowHeat(0);
+        Background = _filled;
 
         _handlePaint.Color = Color.Argb(TilesLayout.HandleAlpha, palette.Ink.R, palette.Ink.G, palette.Ink.B);
 
@@ -70,10 +75,35 @@ internal abstract class TileView : LinearLayout
         AddView(Label);
     }
 
-    protected DashboardPalette Palette { get; }
+    /// <summary>
+    /// Настройки панели целиком, а не одна её палитра: подложка красится по порогам тревоги, а
+    /// пороги живут здесь же (<see cref="DashboardOptions.Thresholds"/>).
+    /// </summary>
+    protected DashboardOptions Options { get; }
+
+    protected DashboardPalette Palette => Options.Palette;
 
     /// <summary>Подпись величины сверху — одна на все виды плиток.</summary>
     protected TextView Label { get; }
+
+    /// <summary>
+    /// Подкрасить подложку по тому, насколько величина подошла к тревоге (<see cref="MetricHeat"/>).
+    /// Красится подложка, а не число: показание должно читаться одинаково при любом значении.
+    /// <para>
+    /// Тем же цветом второй раз не красим: <c>SetColor</c> тянет за собой перерисовку, а зовут это
+    /// с каждым новым показанием.
+    /// </para>
+    /// </summary>
+    protected void ShowHeat(double heat)
+    {
+        var tint = MetricHeat.Tint(heat, Palette);
+        var fill = Color.Argb(MetricHeat.Alpha(heat), tint.R, tint.G, tint.B);
+
+        if (_fill == fill) return;
+
+        _fill = fill;
+        _filled.SetColor(fill);
+    }
 
     /// <summary>
     /// Режим правки: плитка помечается уголком, пустое место — контуром. Метка, а не ручка: размер и

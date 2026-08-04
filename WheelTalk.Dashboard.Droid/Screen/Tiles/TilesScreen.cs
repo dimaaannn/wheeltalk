@@ -1,4 +1,4 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.Util;
@@ -35,6 +35,7 @@ public sealed class TilesScreen : IMainScreen
     private readonly Context _context;
     private readonly Func<string, string> _translate;
     private readonly IMetricHistory? _history;
+    private readonly DashboardOptions _options;
     private readonly DashboardPalette _palette;
     private readonly FrameLayout _root;
     private readonly RecyclerView _list;
@@ -63,9 +64,10 @@ public sealed class TilesScreen : IMainScreen
         _context = context;
         _translate = translate;
         _history = history;
+        _options = options;
         _palette = options.Palette;
         _padding = context.Dp(6);
-        _adapter = new TileAdapter(context, options.Palette, translate, TileLayoutDraft.Tiles);
+        _adapter = new TileAdapter(context, options, translate, TileLayoutDraft.Tiles);
 
         _list = new RecyclerView(context);
         _list.SetLayoutManager(LayoutManager(context));
@@ -132,10 +134,11 @@ public sealed class TilesScreen : IMainScreen
     private async Task FillAsync(ChartTileView chart, string metricId, TimeSpan window)
     {
         var to = DateTimeOffset.Now;
-        var points = await _history!.ReadAsync(metricId, to - window, to, chart.Points, CancellationToken.None);
+        var from = to - window;
+        var points = await _history!.ReadAsync(metricId, from, to, chart.Points, CancellationToken.None);
 
         // Читали вне потока отрисовки — возвращаемся в него: точки ставит тот, кто рисует.
-        chart.Post(() => chart.SetPoints(points));
+        chart.Post(() => chart.SetPoints(points, from, to));
     }
 
     public void Tap(float windowX, float windowY)
@@ -205,8 +208,8 @@ public sealed class TilesScreen : IMainScreen
             && _adapter.TileAt(position) is { Kind: TileKind.Chart, Chart: { } options } tile
             && MetricCatalogue.Find(tile.MetricId) is { } metric)
         {
-            ChartViewer.Show(_context, _palette, history, metric, _translate(metric.LabelKey),
-                metric.UnitKey is { } unit ? _translate(unit) : "", options.Window);
+            ChartViewer.Show(_context, _options, history, metric, _translate(metric.LabelKey),
+                metric.UnitKey is { } unit ? _translate(unit) : "", options, tile.Limits);
         }
     }
 
@@ -218,8 +221,17 @@ public sealed class TilesScreen : IMainScreen
         TileEditor.Show(_context, _translate, tile,
             saved =>
             {
-                if (position is { } index) _adapter.Replace(index, saved);
-                else _adapter.Add(saved);
+                if (position is { } index)
+                {
+                    _adapter.Replace(index, saved);
+                    return;
+                }
+
+                _adapter.Add(saved);
+
+                // Новая плитка встаёт в конец, а конец бывает за краем экрана: без этого «нажал ОК —
+                // и ничего не изменилось», хотя плитка уже есть.
+                _list.SmoothScrollToPosition(_adapter.ItemCount - 1);
             },
             position is { } removed ? () => _adapter.RemoveAt(removed) : null);
     }
@@ -377,6 +389,13 @@ public sealed class TilesScreen : IMainScreen
         /// <summary>Тащить можно только в режиме правки: иначе экран уезжал бы под пальцем у того, кто просто смотрит.</summary>
         public override bool IsLongPressDragEnabled => screen._editing;
 
+        /// <summary>
+        /// Насколько глубоко палец должен зайти на соседа, чтобы сетка переложилась. При половине —
+        /// значении по умолчанию — она перетекает от каждого касания краёв, и предсказать, куда
+        /// встанет плитка, нельзя: к отпусканию картина уже другая, чем была в начале.
+        /// </summary>
+        public override float GetMoveThreshold(RecyclerView.ViewHolder holder) => TilesLayout.DragMoveThreshold;
+
         public override bool OnMove(RecyclerView view, RecyclerView.ViewHolder holder, RecyclerView.ViewHolder target)
         {
             screen._adapter.Move(holder.BindingAdapterPosition, target.BindingAdapterPosition);
@@ -396,7 +415,7 @@ public sealed class TilesScreen : IMainScreen
     private sealed class TileAdapter : RecyclerView.Adapter
     {
         private readonly Context _context;
-        private readonly DashboardPalette _palette;
+        private readonly DashboardOptions _options;
         private readonly Func<string, string> _translate;
         /// <summary>Величина у пустого места пуста: <see cref="TileKind.Empty"/> ни на что не ссылается.</summary>
         private readonly List<(MetricTile Tile, MetricDescriptor? Metric)> _tiles = [];
@@ -411,11 +430,11 @@ public sealed class TilesScreen : IMainScreen
         private TelemetrySnapshot? _snapshot;
         private bool _editing;
 
-        public TileAdapter(Context context, DashboardPalette palette, Func<string, string> translate,
+        public TileAdapter(Context context, DashboardOptions options, Func<string, string> translate,
             IReadOnlyList<MetricTile> layout)
         {
             _context = context;
-            _palette = palette;
+            _options = options;
             _translate = translate;
 
             foreach (var tile in layout)
@@ -517,8 +536,8 @@ public sealed class TilesScreen : IMainScreen
         public override RecyclerView.ViewHolder OnCreateViewHolder(ViewGroup parent, int viewType)
         {
             TileView view = viewType == 1
-                ? new ChartTileView(_context, _palette, _translate)
-                : new MetricTileView(_context, _palette);
+                ? new ChartTileView(_context, _options, _translate)
+                : new MetricTileView(_context, _options);
 
             // Плитка могла родиться уже посреди правки: сетка создаёт держатели по мере надобности.
             view.Editing = _editing;
@@ -556,11 +575,12 @@ public sealed class TilesScreen : IMainScreen
             if (tile.Tile is ChartTileView chart)
             {
                 chart.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
-                    layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false));
+                    layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false),
+                    layout.Limits);
             }
             else if (tile.Tile is MetricTileView value)
             {
-                value.Bind(metric, label, unit, layout.Size, layout.ShowLabel);
+                value.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits);
             }
 
             tile.Tile.Render(_snapshot);

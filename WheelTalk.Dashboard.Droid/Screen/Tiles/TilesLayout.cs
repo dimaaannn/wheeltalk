@@ -71,10 +71,17 @@ public static class TilesLayout
     public static int CornerRadiusDp => 12;
 
     /// <summary>
-    /// Насколько густа подложка плитки (0…255 от приглушённой краски палитры). Второго набора цветов
-    /// не заводим: почти прозрачная <c>Dim</c> видна при любой палитре.
+    /// Насколько густа подложка спокойной плитки (0…255 от приглушённой краски палитры). Второго
+    /// набора цветов не заводим: почти прозрачная <c>Dim</c> видна при любой палитре.
     /// </summary>
     public static int BackgroundAlpha => 40;
+
+    /// <summary>
+    /// Густота подложки у величины, дошедшей до тревожного порога (<see cref="MetricHeat"/>). Растёт
+    /// вместе с цветом, потому что одного поворота краски мало: тёплый тон при прежней прозрачности
+    /// отличается от серого слабее, чем нужно, чтобы плитку заметили, не разглядывая.
+    /// </summary>
+    public static int BackgroundHotAlpha => 96;
 
     /// <summary>Кегль подписи величины, sp.</summary>
     public static int LabelSp => 11;
@@ -116,6 +123,12 @@ public static class TilesLayout
     /// <summary>Толщина контура, которым в режиме правки обведено пустое место.</summary>
     public static int OutlineDp => 1;
 
+    /// <summary>
+    /// Насколько глубоко перетаскиваемая плитка должна зайти на соседа, чтобы сетка переложилась.
+    /// Половина — значение платформы — заставляет её перетекать от каждого касания краёв.
+    /// </summary>
+    public static float DragMoveThreshold => 0.65f;
+
     /// <summary>Толщина линии графика.</summary>
     public static int ChartStrokeDp => 2;
 
@@ -129,7 +142,7 @@ public static class TilesLayout
     /// Потолок кегля числа, лежащего поверх графика: у плитки значения число — главное, здесь —
     /// подпись к линии, и заслонять её собой оно не должно.
     /// </summary>
-    public static int ChartValueMaxSp => 34;
+    public static int ChartValueMaxSp => 28;
 
     /// <summary>
     /// Как часто перечитывается история, мс. Раз в секунду-две, а не на кадр (план 23 §5.6): запрос
@@ -137,6 +150,12 @@ public static class TilesLayout
     /// отсчётов, а на плитке шириной в палец это меньше пикселя.
     /// </summary>
     public static int ChartPollMs => 1500;
+
+    /// <summary>
+    /// Во сколько обычных шагов промежуток считается дырой и линия рвётся. Три — чтобы пропущенный
+    /// отсчёт-другой не резал линию, а выключенное колесо резало сразу.
+    /// </summary>
+    public static int ChartGapSteps => 3;
 
     /// <summary>Кегль подписей шкалы на плитке-графике, sp.</summary>
     public static float ChartAxisSp => 8f;
@@ -146,6 +165,15 @@ public static class TilesLayout
 
     /// <summary>Кегль подписи «за какое время», sp.</summary>
     public static int ChartRangeSp => 8;
+
+    /// <summary>
+    /// Густота сетки полноэкранного просмотра. Приглушённая краска в полную силу спорит с самой
+    /// линией: оси — это фон, данные — фигура.
+    /// </summary>
+    public static int ViewerGridAlpha => 64;
+
+    /// <summary>Длина штриха и просвета у пороговой черты в полноэкранном просмотре.</summary>
+    public static int LimitDashDp => 4;
 
     /// <summary>Кегль подписи величины в полноэкранном просмотре, sp.</summary>
     public static int ViewerTitleSp => 20;

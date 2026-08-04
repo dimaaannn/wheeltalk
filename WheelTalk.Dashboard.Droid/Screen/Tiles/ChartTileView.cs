@@ -37,13 +37,16 @@ internal sealed class ChartTileView : TileView
     private string _shown = "";
     private readonly Func<string, string> _words;
 
-    private bool _zoom;
+    private TileChart _options = new(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: false);
+    private TileLimits? _limits;
 
     /// <param name="words">Ключ ресурса → слово: библиотека ресурсов приложения не видит, слова ей отдаёт экран.</param>
-    public ChartTileView(Context context, DashboardPalette palette, Func<string, string> words)
-        : base(context, palette)
+    public ChartTileView(Context context, DashboardOptions options, Func<string, string> words)
+        : base(context, options)
     {
         _words = words;
+
+        var palette = Palette;
 
         _chart = new LineChart(context);
 
@@ -63,11 +66,16 @@ internal sealed class ChartTileView : TileView
         _chart.AxisLeft!.Enabled = true;
         _chart.AxisLeft.TextColor = palette.Dim;
         _chart.AxisLeft.TextSize = TilesLayout.ChartAxisSp;
-        _chart.AxisLeft.SetLabelCount(TilesLayout.ChartAxisLabels, true);
+        // Деления выбирает библиотека, а не делим диапазон поровну: ровно три части дают некруглые
+        // «76 / 38 / 0», а на плитке круглое число дороже точного их счёта.
+        _chart.AxisLeft.SetLabelCount(TilesLayout.ChartAxisLabels, false);
         _chart.AxisLeft.SetDrawAxisLine(false);
         _chart.AxisLeft.SetDrawGridLines(false);
 
-        _value = new TextView(context) { Gravity = GravityFlags.Center };
+        // Число — в правый верхний угол, а не по центру: типичный ход величины идёт через середину
+        // плитки, и центрированное число ложилось ровно на линию. Угол свободен — там нет ни шкалы,
+        // ни подписи окна.
+        _value = new TextView(context) { Gravity = GravityFlags.Top | GravityFlags.End };
         _value.SetTextColor(palette.Ink);
         _value.SetMaxLines(1);
         _value.SetAutoSizeTextTypeUniformWithConfiguration(
@@ -98,13 +106,18 @@ internal sealed class ChartTileView : TileView
     public int Points => Math.Max(1, Width);
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileChart options)
+        TileChart options, TileLimits? limits)
     {
         _metric = metric;
         _format = "F" + metric.Decimals;
         _unit = unit;
         _shown = "";
-        _zoom = options.Zoom;
+        _options = options;
+        _limits = limits;
+
+        // Шкала слева — по выбору плитки: на четвертной она съедает треть ширины, а на широкой без
+        // неё линия показывает форму, но не величину.
+        _chart.AxisLeft!.Enabled = options.Axis;
 
         _chart.Data = null;
         _chart.Invalidate();
@@ -116,33 +129,58 @@ internal sealed class ChartTileView : TileView
         Render(null);
     }
 
-    /// <summary>Свежая история. Зовётся раз в секунду-две, а не на кадр, — потому набор строится заново.</summary>
-    public void SetPoints(IReadOnlyList<MetricPoint> points)
+    /// <summary>
+    /// Свежая история за окно <paramref name="from"/>…<paramref name="to"/>. Зовётся раз в
+    /// секунду-две, а не на кадр, — потому набор строится заново.
+    /// <para>
+    /// <b>Окно едет, а не растёт.</b> Границы по времени ставятся здесь и всегда, независимо от
+    /// того, докуда дотянулись данные: кончились они раньше срока — линия просто уезжает влево, а
+    /// справа остаётся пустота. Без этого библиотека растягивала бы диапазон по пришедшим точкам, и
+    /// правый край липнул бы к «сейчас», пока левый уползает за экран.
+    /// </para>
+    /// </summary>
+    public void SetPoints(IReadOnlyList<MetricPoint> points, DateTimeOffset from, DateTimeOffset to)
     {
         // Масштаб по крайним значениям или от нуля — решает плитка (решение владельца 04.08.2026).
         // У напряжения и температуры размах мал против самого значения, и без обрезки линия у них
         // прямая; у тока и ШИМ, наоборот, важна доля от нуля.
-        if (_zoom) _chart.AxisLeft!.ResetAxisMinimum();
+        if (_options.Zoom) _chart.AxisLeft!.ResetAxisMinimum();
         else _chart.AxisLeft!.AxisMinimum = 0f;
 
-        _chart.Data = ChartLine.Build(points, Palette, label: "");
+        _chart.XAxis!.AxisMinimum = 0f;
+        _chart.XAxis.AxisMaximum = (float)(to - from).TotalSeconds;
+
+        _chart.Data = ChartLine.Build(points, Palette, label: "", from, _options, Heat);
         _chart.Invalidate();
     }
 
     protected override void ShowContent(bool visible) =>
         _stack.Visibility = visible ? ViewStates.Visible : ViewStates.Gone;
 
+    /// <summary>
+    /// Очередной снимок — только число поверх линии. <b>Подложка тут не греется</b>, в отличие от
+    /// плитки значения (<see cref="MetricHeat"/>): плитка рассказывает про четверть часа, а жар — про
+    /// одно мгновение, и покрашенная им карточка сказала бы про эти пятнадцать минут неправду.
+    /// Проверено глазами 05.08.2026 и вторым доводом: заливка линии, взятая спокойной краской,
+    /// на тёплой подложке даёт грязь, а не подкрас.
+    /// </summary>
     public override void Render(TelemetrySnapshot? snapshot)
     {
         if (_metric is not { } metric || _value.Visibility != ViewStates.Visible) return;
 
-        string text = MetricNumber.Text(metric, snapshot, _format);
+        string text = MetricNumber.Text(MetricNumber.Value(metric, snapshot), _format);
 
         if (_shown == text) return;
 
         _shown = text;
         _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim);
     }
+
+    /// <summary>
+    /// Жар точки графика — теми же порогами, какими греется плитка значения: у графика и у числа они
+    /// одни (решение владельца 05.08.2026). Пики уходят в красное там, где величина перешла порог.
+    /// </summary>
+    private double Heat(double value) => MetricHeat.Of(_metric?.Id ?? "", value, Options, _limits);
 
     /// <summary>Окно словами: «15 мин», «3 ч». Слов на это хватает двух, и оба уже переведены.</summary>
     private string Describe(TimeSpan window) => window < TimeSpan.FromHours(1)

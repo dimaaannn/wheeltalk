@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging.Abstractions;
+using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Metrics;
 using WheelTalk.Lab.Data;
 using WheelTalk.Storage;
@@ -90,6 +91,18 @@ public sealed class LabStore : IAsyncDisposable
         await Task.Run(Open);
         return _summary = await LabHistoryFile.FillAsync(_rides, DateTimeOffset.Now, HistorySpan, Environment.TickCount);
     }
+
+    /// <summary>
+    /// Живой отсчёт стенда — в ту же базу и под тем же колесом, что набитая история: иначе поток
+    /// проигрываемого сценария никуда не ложится, и график за пять минут пустеет на глазах, пока
+    /// окно уезжает вперёд от набитого.
+    /// <para>
+    /// Пишется тем же <see cref="RideStore"/>, что и в бою, и с той же частотой — пять раз в
+    /// секунду; коммит берёт на себя он сам.
+    /// </para>
+    /// </summary>
+    public void Write(TelemetrySnapshot snapshot) =>
+        _rides.Write(LabRideHistory.Mac, LabRideHistory.Protocol, snapshot, DateTimeOffset.Now);
 
     public async ValueTask DisposeAsync() => await _rides.DisposeAsync();
 

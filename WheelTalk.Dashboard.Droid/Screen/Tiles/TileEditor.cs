@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Android.App;
 using Android.Content;
 using Android.Util;
@@ -36,7 +36,12 @@ internal static class TileEditor
         bool chart = tile?.Kind == TileKind.Chart;
         bool empty = tile is null || tile.Kind == TileKind.Empty;
 
-        var kindPick = Pick(context, [translate("TilesKindValue"), translate("TilesKindChart")], chart ? 1 : 0);
+        // Пустое место — третий вид плитки, а не первый пункт в списке величин: дырку ставят не
+        // «величиной по имени Пусто», а решением «здесь ничего». Заодно у пустой гаснет всё, чего у
+        // неё не бывает, — величина, подпись, пороги.
+        var kindPick = Pick(context,
+            [translate("TilesKindValue"), translate("TilesKindChart"), translate("TilesTileEmpty")],
+            empty ? 2 : chart ? 1 : 0);
         var metricPick = Pick(context, Choices(translate, chart ? charted : all), 0);
         var sizePick = Pick(context, [.. sizes.Select(size => size.Describe())],
             tile is null ? 0 : Math.Max(0, sizes.ToList().IndexOf(tile.Size)));
@@ -55,6 +60,32 @@ internal static class TileEditor
             Checked = tile?.Chart?.Zoom == true,
         };
 
+        var fill = new CheckBox(context)
+        {
+            Text = translate("TilesTileFill"),
+            Checked = tile?.Chart?.Fill != false,
+        };
+
+        var axis = new CheckBox(context)
+        {
+            Text = translate("TilesTileAxis"),
+            Checked = tile?.Chart?.Axis != false,
+        };
+
+        var smoothingPick = Pick(context,
+            [translate("TilesSmoothMinMax"), translate("TilesSmoothPeaks"), translate("TilesSmoothDips")],
+            (int)(tile?.Chart?.Smoothing ?? ChartSmoothing.MinMax));
+
+        // Пороги — одни на плитку: по ним же красится подложка при текущем значении и пики её
+        // графика (решение владельца 05.08.2026). Пусто в поле значит «брать из настроек тревог».
+        var warn = Number(context, translate("TilesTileWarn"), tile?.Limits?.Warn);
+        var danger = Number(context, translate("TilesTileDanger"), tile?.Limits?.Danger);
+        var falling = new CheckBox(context)
+        {
+            Text = translate("TilesTileFalling"),
+            Checked = tile?.Limits is { Rising: false },
+        };
+
         // Подпись — свойство всякой плитки, не только графика: на мелкой она забирает место у числа,
         // и выключают её чаще, чем кажется.
         var showLabel = new CheckBox(context)
@@ -63,7 +94,7 @@ internal static class TileEditor
             Checked = tile?.ShowLabel != false,
         };
 
-        Select(metricPick, empty ? 0 : IndexOfMetric(chart ? charted : all, tile!.MetricId) + 1);
+        Select(metricPick, empty ? 0 : IndexOfMetric(chart ? charted : all, tile!.MetricId));
 
         // Окно и наложение числа — свойства одного только графика: у плитки значения их нет, и
         // показывать их выключенными значило бы спрашивать о том, чего не бывает.
@@ -77,42 +108,89 @@ internal static class TileEditor
         chartOptions.AddView(windowPick);
         chartOptions.AddView(overlay);
         chartOptions.AddView(zoom);
+        chartOptions.AddView(fill);
+        chartOptions.AddView(axis);
+        chartOptions.AddView(Caption(context, translate("TilesTileSmoothing")));
+        chartOptions.AddView(smoothingPick);
 
-        // Смена вида пересобирает список величин: у графика в нём остаются только те, у кого есть
-        // история. Выбранная величина переносится, если она есть и в новом списке.
+        // Величина первой, вид вторым: человек думает «хочу ток», а не «хочу число» — вид это
+        // свойство показа, а не предмет разговора.
+        var metricLine = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
+        metricLine.AddView(Caption(context, translate("TilesTileMetric")));
+        metricLine.AddView(metricPick);
+        metricLine.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
+
+        var limitsLine = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
+        limitsLine.AddView(Caption(context, translate("TilesTileLimits")));
+        limitsLine.AddView(warn);
+        limitsLine.AddView(danger);
+        limitsLine.AddView(falling);
+        limitsLine.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
+
+        showLabel.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
+
+        // Какой список величин лежит в спиннере прямо сейчас. Держим его сами, а не выводим из вида:
+        // `Spinner` стреляет `ItemSelected` вхолостую сразу после раскладки, ещё до всякого выбора, и
+        // обработчик, считавший вид, принимал старый список за другой — выбор перекладывался через
+        // чужой, и «Напряжение» превращалось в «Фазный ток» молча, при одном открытии меню.
+        var shownMetrics = chart ? charted : all;
+
         kindPick.ItemSelected += (_, _) =>
         {
+            bool wantEmpty = kindPick.SelectedItemPosition == 2;
             bool wantChart = kindPick.SelectedItemPosition == 1;
             var metrics = wantChart ? charted : all;
-            string chosen = ChosenMetric(metricPick, wantChart ? all : charted);
-
-            Fill(metricPick, Choices(translate, metrics));
-            Select(metricPick, chosen.Length == 0 ? 0 : IndexOfMetric(metrics, chosen) + 1);
 
             chartOptions.Visibility = wantChart ? ViewStates.Visible : ViewStates.Gone;
+
+            // У пустого места нет ни величины, ни подписи, ни порогов — спрашивать о них незачем.
+            var forFilled = wantEmpty ? ViewStates.Gone : ViewStates.Visible;
+            metricLine.Visibility = forFilled;
+            showLabel.Visibility = forFilled;
+            limitsLine.Visibility = forFilled;
+
+            if (wantEmpty) return;
+
+            // Список тот же — перекладывать нечего: холостой выстрел не должен трогать выбор.
+            if (ReferenceEquals(metrics, shownMetrics)) return;
+
+            // У графика в списке остаются только величины с историей, поэтому выбранное переносится
+            // по имени, а не по номеру: номера в двух списках разные.
+            string chosen = ChosenMetric(metricPick, shownMetrics);
+            shownMetrics = metrics;
+
+            Fill(metricPick, Choices(translate, metrics));
+            Select(metricPick, IndexOfMetric(metrics, chosen));
         };
 
         int pad = context.Dp(TilesLayout.PaddingDp * 2);
         var content = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
         content.SetPadding(pad, pad, pad, pad);
+        content.AddView(metricLine);
         content.AddView(Caption(context, translate("TilesTileKind")));
         content.AddView(kindPick);
-        content.AddView(Caption(context, translate("TilesTileMetric")));
-        content.AddView(metricPick);
         content.AddView(Caption(context, translate("TilesTileSize")));
         content.AddView(sizePick);
         content.AddView(showLabel);
         content.AddView(chartOptions);
+        content.AddView(limitsLine);
+
+        // Меню длинное, а экраны разные: без прокрутки на телефоне поменьше или при крупном
+        // системном шрифте пороги уезжают за край вместе с кнопками.
+        var scroller = new ScrollView(context);
+        scroller.AddView(content);
 
         var dialog = new AlertDialog.Builder(context)
-            .SetView(content)!
+            .SetView(scroller)!
             .SetPositiveButton(Android.Resource.String.Ok, (_, _) => save(Result(
                 kindPick.SelectedItemPosition == 1 ? charted : all,
-                kindPick.SelectedItemPosition == 1,
+                kindPick.SelectedItemPosition,
                 metricPick.SelectedItemPosition,
                 sizes[sizePick.SelectedItemPosition],
                 showLabel.Checked,
-                new TileChart(windows[windowPick.SelectedItemPosition], overlay.Checked, zoom.Checked))))!
+                new TileChart(windows[windowPick.SelectedItemPosition], overlay.Checked, zoom.Checked,
+                    fill.Checked, axis.Checked, (ChartSmoothing)smoothingPick.SelectedItemPosition),
+                Limits(warn, danger, falling.Checked))))!
             .SetNegativeButton(Android.Resource.String.Cancel, (_, _) => { })!;
 
         if (remove is not null) dialog.SetNeutralButton(translate("TilesTileRemove"), (_, _) => remove());
@@ -120,16 +198,46 @@ internal static class TileEditor
         dialog.Show();
     }
 
-    private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, bool chart, int chosen,
-        TileSize size, bool showLabel, TileChart options)
+    private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, int kind, int chosen,
+        TileSize size, bool showLabel, TileChart options, TileLimits? limits)
     {
-        if (chosen == 0) return MetricTile.Empty(size);
+        if (kind == 2 || chosen < 0 || chosen >= metrics.Count) return MetricTile.Empty(size);
 
-        string id = metrics[chosen - 1].Id;
+        bool chart = kind == 1;
+        string id = metrics[chosen].Id;
 
         return chart
-            ? new MetricTile(id, TileKind.Chart, size, showLabel, options)
-            : new MetricTile(id, TileKind.Value, size, showLabel);
+            ? new MetricTile(id, TileKind.Chart, size, showLabel, options, limits)
+            : new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits);
+    }
+
+    /// <summary>
+    /// Свои пороги плитки. Пустое поле — не ноль, а «нет своего»: ноль в настройках тревог означает
+    /// «не предупреждать», и путать эти два ответа нельзя. Пуст хоть один — берём пороги из настроек.
+    /// </summary>
+    private static TileLimits? Limits(EditText warn, EditText danger, bool falling) =>
+        Read(warn) is { } low && Read(danger) is { } high
+            ? new TileLimits(low, high, !falling)
+            : null;
+
+    private static double? Read(EditText field) =>
+        double.TryParse(field.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out double value)
+        || double.TryParse(field.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out value)
+            ? value
+            : null;
+
+    private static EditText Number(Context context, string hint, double? value)
+    {
+        var field = new EditText(context)
+        {
+            Hint = hint,
+            InputType = Android.Text.InputTypes.ClassNumber | Android.Text.InputTypes.NumberFlagDecimal,
+            Text = value is { } number ? number.ToString("0.##", CultureInfo.CurrentCulture) : "",
+        };
+
+        field.SetSingleLine(true);
+
+        return field;
     }
 
     /// <summary>
@@ -137,14 +245,21 @@ internal static class TileEditor
     /// же — чем будет плитка.
     /// </summary>
     private static string[] Choices(Func<string, string> translate, IReadOnlyList<MetricDescriptor> metrics) =>
-        [translate("TilesTileEmpty"), .. metrics.Select(metric => translate(metric.LabelKey))];
+        [.. metrics.Select(metric => Name(translate, metric))];
+
+    /// <summary>
+    /// Величина с единицей — «Двигатель, °C». Без неё в списке два «Двигателя» (градусы и ватты) и
+    /// «Максимум» неизвестно чего: имена коротки нарочно, а единица разводит их даром.
+    /// </summary>
+    private static string Name(Func<string, string> translate, MetricDescriptor metric) =>
+        metric.UnitKey is { } unit ? $"{translate(metric.LabelKey)}, {translate(unit)}" : translate(metric.LabelKey);
 
     /// <summary>Что выбрано сейчас, именем величины. Пусто — выбрано пустое место.</summary>
     private static string ChosenMetric(Spinner pick, IReadOnlyList<MetricDescriptor> metrics)
     {
         int chosen = pick.SelectedItemPosition;
 
-        return chosen <= 0 || chosen > metrics.Count ? "" : metrics[chosen - 1].Id;
+        return chosen < 0 || chosen >= metrics.Count ? "" : metrics[chosen].Id;
     }
 
     /// <summary>Величины может не быть в списке — тогда меню открывается на пустом месте, а не падает.</summary>
@@ -155,7 +270,7 @@ internal static class TileEditor
             if (metrics[index].Id == id) return index;
         }
 
-        return -1;
+        return 0;
     }
 
     /// <summary>Окно графика: «15 мин», «3 ч». Число и краткая единица — двух слов на всё меню хватает.</summary>

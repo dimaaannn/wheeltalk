@@ -1,4 +1,4 @@
-using WheelTalk.Core.Settings;
+﻿using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid.Configuration;
 
@@ -293,7 +293,10 @@ internal static class DisplayPage
                 UnitKey = "UnitHertz",
                 GlobalOnly = true,
                 IsVisible = () => dashboard.ShowAlertBorder,
-                Minimum = 1,
+                // Ноль — не «сломанная настройка», а «не моргать»: полоса тогда горит ровно, и это
+                // выбор человека, а не отсутствие сигнала. Тем же нулём выключаются пороги в
+                // «Предупреждениях» — соглашение оригинала, «ноль выключает».
+                Minimum = 0,
                 Maximum = 5,
                 Current = () => SettingsCatalogue.Fixed(dashboard.BlinkHz, 0),
                 Apply = text => dashboard.BlinkHz = SettingsCatalogue.ParseNumber(text),

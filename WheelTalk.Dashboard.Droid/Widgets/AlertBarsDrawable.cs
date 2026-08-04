@@ -52,11 +52,23 @@ public sealed class AlertBarsDrawable
     /// </summary>
     public bool SpeedExceeded { get; set; }
 
-    public void Draw(Canvas canvas, RectF rect)
+    /// <param name="fullThickness">
+    /// Толщина полосы в полный голос, если вызывающий считает её сам. Не задана — своя мера: доля
+    /// <see cref="IDashboardThresholds.AlertBarCoverage"/> от <b>меньшей</b> стороны. Меньшая она
+    /// потому, что под полосами панели стоят приборы, и расти вниз полосе некуда.
+    /// <para>
+    /// Задают её там, где приборов под полосами нет вовсе — на обычных экранах приложения
+    /// (<c>AlertOverlayView</c>): места там больше, и доля берётся от высоты (решение владельца
+    /// 05.08.2026). Сила тревоги множит толщину в обоих случаях одинаково — этим правилом полосы и
+    /// остаются одной и той же тревогой, а не двумя разными.
+    /// </para>
+    /// </param>
+    public void Draw(Canvas canvas, RectF rect, float? fullThickness = null)
     {
         if (!Options.ShowAlertBorder) return;
 
-        float full = Math.Min(rect.Width(), rect.Height()) * (float)Options.Thresholds.AlertBarCoverage;
+        float full = fullThickness
+            ?? Math.Min(rect.Width(), rect.Height()) * (float)Options.Thresholds.AlertBarCoverage;
 
         if (Intensity > 0)
         {

@@ -37,6 +37,8 @@
   <data name="StateReconnecting" xml:space="preserve"><value>Переподключение…</value></data>
   <data name="StateNoWheelSelected" xml:space="preserve"><value>Колесо не выбрано — нажмите, чтобы найти</value></data>
   <data name="StripWheelAlarm" xml:space="preserve"><value>Тревога колеса</value></data>
+  <data name="StripPwmAlarm" xml:space="preserve"><value>Перегрузка — сбавь скорость</value></data>
+  <data name="StripSpeedExceeded" xml:space="preserve"><value>Превышение скорости</value></data>
   <data name="StripBackAgainToExit" xml:space="preserve"><value>Нажмите «назад» ещё раз, чтобы выйти</value></data>
   <data name="DisconnectTitle" xml:space="preserve"><value>Отключиться от колеса?</value></data>
   <data name="DisconnectMessageMoving" xml:space="preserve"><value>Колесо едет.</value></data>
@@ -274,7 +276,7 @@
   <data name="SettingHideExtrasHint" xml:space="preserve"><value>Выше этой скорости остаётся только скорость. Ноль выключает.</value></data>
   <data name="SettingShowAlertBars" xml:space="preserve"><value>Полосы тревоги</value></data>
   <data name="SettingBlinkHz" xml:space="preserve"><value>Частота моргания</value></data>
-  <data name="SettingBlinkHzHint" xml:space="preserve"><value>Чаще трёх вспышек в секунду не стоит — это граница безопасного моргания.</value></data>
+  <data name="SettingBlinkHzHint" xml:space="preserve"><value>Чаще трёх вспышек в секунду не стоит — это граница безопасного моргания. Ноль — полоса горит ровно, без вспышек.</value></data>
   <data name="SettingPalette" xml:space="preserve"><value>Палитра</value></data>
   <data name="SettingPaletteHint" xml:space="preserve"><value>«Ванг» различима при дальтонизме, «WheelLog» — цвета оригинала.</value></data>
   <data name="SettingTilt" xml:space="preserve"><value>Наклон панели</value></data>
@@ -318,14 +320,24 @@
   <data name="TilesTileOverlay" xml:space="preserve"><value>Число поверх графика</value></data>
   <data name="TilesTileZoom" xml:space="preserve"><value>Обрезать по крайним значениям</value></data>
   <data name="TilesTileLabel" xml:space="preserve"><value>Показывать подпись</value></data>
+  <data name="TilesTileFill" xml:space="preserve"><value>Заливка под линией</value></data>
+  <data name="TilesTileAxis" xml:space="preserve"><value>Шкала слева</value></data>
+  <data name="TilesTileSmoothing" xml:space="preserve"><value>Что показывать за период</value></data>
+  <data name="TilesSmoothMinMax" xml:space="preserve"><value>Минимум и максимум</value></data>
+  <data name="TilesSmoothPeaks" xml:space="preserve"><value>Только пики</value></data>
+  <data name="TilesSmoothDips" xml:space="preserve"><value>Только провалы</value></data>
+  <data name="TilesTileLimits" xml:space="preserve"><value>Пороги плитки</value></data>
+  <data name="TilesTileWarn" xml:space="preserve"><value>Жёлтый порог</value></data>
+  <data name="TilesTileDanger" xml:space="preserve"><value>Красный порог</value></data>
+  <data name="TilesTileFalling" xml:space="preserve"><value>Тревога при падении</value></data>
   <data name="UnitMinutesShort" xml:space="preserve"><value>мин</value></data>
   <data name="UnitHoursShort" xml:space="preserve"><value>ч</value></data>
   <data name="TilesEditSave" xml:space="preserve"><value>Сохранить</value></data>
   <data name="TilesEditCancel" xml:space="preserve"><value>Отменить</value></data>
   <data name="TelemetrySpeed" xml:space="preserve"><value>Скорость</value></data>
-  <data name="TelemetryTopSpeed" xml:space="preserve"><value>Максимальная</value></data>
+  <data name="TelemetryTopSpeed" xml:space="preserve"><value>Максимум</value></data>
   <data name="TelemetryPwm" xml:space="preserve"><value>ШИМ</value></data>
-  <data name="TelemetryMaxPwm" xml:space="preserve"><value>ШИМ, максимум</value></data>
+  <data name="TelemetryMaxPwm" xml:space="preserve"><value>ШИМ макс</value></data>
   <data name="TelemetryAngle" xml:space="preserve"><value>Наклон</value></data>
   <data name="TelemetryVoltage" xml:space="preserve"><value>Напряжение</value></data>
   <data name="TelemetryCurrent" xml:space="preserve"><value>Ток</value></data>
@@ -336,12 +348,12 @@
   <data name="TelemetryBoardTemp" xml:space="preserve"><value>Плата</value></data>
   <data name="TelemetryMotorTemp" xml:space="preserve"><value>Двигатель</value></data>
   <data name="TelemetryTrip" xml:space="preserve"><value>За поездку</value></data>
-  <data name="TelemetryFromStart" xml:space="preserve"><value>С подключения</value></data>
+  <data name="TelemetryFromStart" xml:space="preserve"><value>За сеанс</value></data>
   <data name="TelemetryTotal" xml:space="preserve"><value>Одометр</value></data>
   <data name="TelemetryModel" xml:space="preserve"><value>Модель</value></data>
   <data name="TelemetryFirmware" xml:space="preserve"><value>Прошивка</value></data>
   <data name="TelemetryProtocol" xml:space="preserve"><value>Протокол</value></data>
-  <data name="TelemetrySleep" xml:space="preserve"><value>Автовыключение</value></data>
+  <data name="TelemetrySleep" xml:space="preserve"><value>Автовыкл</value></data>
   <data name="TelemetryAlarm" xml:space="preserve"><value>Тревога колеса</value></data>
   <data name="TelemetryAlert" xml:space="preserve"><value>Сообщение</value></data>
   <data name="TelemetryBmsVoltage" xml:space="preserve"><value>Напряжение</value></data>
@@ -369,7 +381,7 @@
   <data name="MetricRoll" xml:space="preserve"><value>Крен</value></data>
   <data name="MetricImuTemp" xml:space="preserve"><value>Гироскоп</value></data>
   <data name="MetricCpuLoad" xml:space="preserve"><value>Загрузка</value></data>
-  <data name="MetricSpeedLimit" xml:space="preserve"><value>Предел колеса</value></data>
+  <data name="MetricSpeedLimit" xml:space="preserve"><value>Предел</value></data>
   <data name="MetricHardwarePwm" xml:space="preserve"><value>ШИМ колеса</value></data>
   <data name="MetricFanStatus" xml:space="preserve"><value>Вентилятор</value></data>
   <data name="ScreenPanel" xml:space="preserve"><value>Панель</value></data>

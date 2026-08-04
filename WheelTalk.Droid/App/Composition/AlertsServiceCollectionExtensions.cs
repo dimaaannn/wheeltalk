@@ -34,6 +34,11 @@ public static class AlertsServiceCollectionExtensions
         services.Configure<AlertSignalOptions>(configuration.GetSection(AlertSignalOptions.SectionName));
         services.AddSingleton<AlertSignals>();
 
+        // Слова тревоги и полоса поверх любого экрана. Оба синглтона: текст один на приложение, и
+        // наблюдатель за активностями тоже один — MainApplication ставит его на Application.
+        services.AddSingleton<AlertBanner>();
+        services.AddSingleton<AlertOverlay>();
+
         return services;
     }
 }

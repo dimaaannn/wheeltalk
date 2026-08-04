@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using Android.App;
 using Android.Content;
+using Android.Graphics;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
@@ -29,13 +30,16 @@ namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 /// </summary>
 internal static class ChartViewer
 {
-    public static void Show(Context context, DashboardPalette palette, IMetricHistory history,
-        MetricDescriptor metric, string label, string unit, TimeSpan window)
+    public static void Show(Context context, DashboardOptions dashboard, IMetricHistory history,
+        MetricDescriptor metric, string label, string unit, TileChart options, TileLimits? limits)
     {
+        var palette = dashboard.Palette;
         var to = DateTimeOffset.Now;
-        var from = to - window;
+        var from = to - options.Window;
 
-        var title = new TextView(context) { Text = label };
+        // С единицей: без неё «ШИМ» не говорит, проценты это или что-то ещё, а узнаётся
+        // она только тапом по точке.
+        var title = new TextView(context) { Text = unit.Length == 0 ? label : $"{label}, {unit}" };
         title.SetTextSize(ComplexUnitType.Sp, TilesLayout.ViewerTitleSp);
         title.SetTextColor(palette.Ink);
 
@@ -45,7 +49,7 @@ internal static class ChartViewer
         picked.SetTextSize(ComplexUnitType.Sp, TilesLayout.ViewerPickedSp);
         picked.SetTextColor(palette.Dim);
 
-        var chart = BuildChart(context, palette, from);
+        var chart = BuildChart(context, palette, from, options.Window);
         chart.SetOnChartValueSelectedListener(new Selection(entry =>
             picked.Text = $"{from.AddSeconds(entry.GetX()):HH:mm:ss} · "
                 + $"{entry.GetY().ToString("F" + metric.Decimals, CultureInfo.InvariantCulture)} {unit}"));
@@ -62,10 +66,11 @@ internal static class ChartViewer
         dialog.SetContentView(root);
         dialog.Show();
 
-        _ = FillAsync(chart, palette, history, metric.Id, label, from, to);
+        _ = FillAsync(context, chart, dashboard, history, metric, label, from, to, options, limits);
     }
 
-    private static LineChart BuildChart(Context context, DashboardPalette palette, DateTimeOffset from)
+    private static LineChart BuildChart(Context context, DashboardPalette palette, DateTimeOffset from,
+        TimeSpan window)
     {
         var chart = new LineChart(context);
 
@@ -83,23 +88,65 @@ internal static class ChartViewer
         // а миллисекунды суток в него уже не помещаются без потери.
         chart.XAxis.ValueFormatter = new TimeAxis(from);
 
+        // Окно задано временем, а не данными: там, где истории нет, остаётся пустое место, и видно,
+        // что её нет, — вместо растянутого по остаткам графика.
+        chart.XAxis.AxisMinimum = 0f;
+        chart.XAxis.AxisMaximum = (float)window.TotalSeconds;
+
         chart.AxisLeft!.TextColor = palette.Dim;
-        chart.AxisLeft.GridColor = palette.Dim;
+        chart.AxisLeft.GridColor = Color.Argb(
+            TilesLayout.ViewerGridAlpha, palette.Dim.R, palette.Dim.G, palette.Dim.B);
 
         return chart;
     }
 
-    private static async Task FillAsync(LineChart chart, DashboardPalette palette, IMetricHistory history,
-        string metricId, string label, DateTimeOffset from, DateTimeOffset to)
+    private static async Task FillAsync(Context context, LineChart chart, DashboardOptions dashboard,
+        IMetricHistory history, MetricDescriptor metric, string label, DateTimeOffset from, DateTimeOffset to,
+        TileChart options, TileLimits? limits)
     {
-        var points = await history.ReadAsync(metricId, from, to, TilesLayout.ViewerPoints, CancellationToken.None);
-        if (ChartLine.Build(points, palette, label) is not { } data) return;
+        var points = await history.ReadAsync(metric.Id, from, to, TilesLayout.ViewerPoints, CancellationToken.None);
+
+        // Обрезка по крайним значениям — та же, что у плитки: иначе ось уходит ниже нуля, и заливка
+        // рисует полосу под ним во всю ширину экрана.
+        if (options.Zoom) chart.AxisLeft!.ResetAxisMinimum();
+        else chart.AxisLeft!.AxisMinimum = 0f;
+
+        // Пороги чертой поперёк графика: видно, докуда дотянулся пик, не прикладывая палец к точкам.
+        // На плитке их нет намеренно — там две черты заняли бы треть высоты и стали бы шумом.
+        chart.AxisLeft.RemoveAllLimitLines();
+        if (MetricHeat.Limits(metric.Id, dashboard, limits) is { } marks)
+        {
+            chart.AxisLeft.AddLimitLine(Mark(context, (float)marks.Warn, dashboard.Palette.Caution));
+            chart.AxisLeft.AddLimitLine(Mark(context, (float)marks.Danger, dashboard.Palette.Danger));
+        }
+
+        // Пороги и здесь те же, что у плитки: график во весь экран — та же линия, только крупнее.
+        double Heat(double value) => MetricHeat.Of(metric.Id, value, dashboard, limits);
+
+        if (ChartLine.Build(points, dashboard.Palette, label, from, options, Heat) is not { } data) return;
 
         chart.Post(() =>
         {
             chart.Data = data;
             chart.Invalidate();
         });
+    }
+
+    /// <summary>
+    /// Черта порога. Пунктиром и без подписи: подпись повторила бы число, которое и так стоит на
+    /// шкале слева, а сплошная линия спорила бы с самими данными.
+    /// </summary>
+    private static LimitLine Mark(Context context, float at, Color color)
+    {
+        var line = new LimitLine(at)
+        {
+            LineColor = color,
+            LineWidth = TilesLayout.ChartStrokeDp / 2f,
+        };
+
+        line.EnableDashedLine(context.Dp(TilesLayout.LimitDashDp), context.Dp(TilesLayout.LimitDashDp), 0);
+
+        return line;
     }
 
     /// <summary>Тап по точке — значение и время, когда она записана (план 23 §3.2).</summary>

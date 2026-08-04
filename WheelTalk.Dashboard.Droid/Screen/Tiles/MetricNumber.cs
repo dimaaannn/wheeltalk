@@ -20,13 +20,17 @@ internal static class MetricNumber
 {
     public const string NoValue = "—";
 
-    /// <summary>Текст показания без единицы — им сравнивают, менялось ли значение.</summary>
-    public static string Text(MetricDescriptor metric, TelemetrySnapshot? snapshot, string format)
-    {
-        double? value = snapshot is null ? null : metric.Read(snapshot);
+    /// <summary>
+    /// Само значение либо <c>null</c> — «колесо молчит». Отдельно от <see cref="Text"/> потому, что
+    /// по числу плитка не только пишет строку, но и красит подложку (<see cref="MetricHeat"/>), а
+    /// разбирать обратно уже округлённую строку значило бы считать одно и то же дважды.
+    /// </summary>
+    public static double? Value(MetricDescriptor metric, TelemetrySnapshot? snapshot) =>
+        snapshot is null ? null : metric.Read(snapshot);
 
-        return value is { } number ? number.ToString(format) : NoValue;
-    }
+    /// <summary>Текст показания без единицы — им сравнивают, менялось ли значение.</summary>
+    public static string Text(double? value, string format) =>
+        value is { } number ? number.ToString(format) : NoValue;
 
     /// <summary>
     /// Показание с единицей: единица мельче и приглушена, но стоит вплотную. Кегль ей задаётся долей

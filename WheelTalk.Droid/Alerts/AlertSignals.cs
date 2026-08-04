@@ -34,6 +34,9 @@ public sealed class AlertSignals : IDisposable
 
     private readonly AlarmTone _alarmTone = new();
 
+    /// <summary>Замок лампы и состояния тревоги: см. <see cref="SetTorch"/>.</summary>
+    private readonly Lock _torch = new();
+
     private ToneGenerator? _tones;
     private Vibrator? _vibrator;
     private CameraManager? _cameras;
@@ -65,7 +68,11 @@ public sealed class AlertSignals : IDisposable
     public void Apply(AlertState state)
     {
         bool wasTicking = _state.Any;
-        _state = state;
+
+        // Под тем же замком, что и лампа: тик читает состояние из другого потока, и решение
+        // «зажигать ли» должно видеть уже новое, а не то, что застало начало тика.
+        lock (_torch) _state = state;
+
         if (state.Any)
         {
             // Отметки ритма не сбрасываются нарочно: первый тик новой тревоги застаёт «период
@@ -81,8 +88,13 @@ public sealed class AlertSignals : IDisposable
 
     public void Dispose()
     {
+        // Тем же путём, что конец тревоги, а не «стоп-таймер и погасить»: Timer.Dispose не ждёт
+        // callback, уже вышедший из пула, и тот договорил бы после Silence — зажёг бы лампу, гасить
+        // которую больше некому. Apply переводит состояние в тишину под замком, и такой тик
+        // отказывается зажигать сам.
+        Apply(AlertState.Quiet);
+
         _timer.Dispose();
-        Silence();
         _alarmTone.Dispose();
         _tones?.Release();
         _tones?.Dispose();
@@ -179,19 +191,52 @@ public sealed class AlertSignals : IDisposable
         _vibrator?.Vibrate(VibrationEffect.CreateOneShot(milliseconds, VibrationEffect.DefaultAmplitude));
     }
 
+    /// <summary>
+    /// Переключить лампу. Всё, что её касается, идёт под одним замком и в одном порядке, потому что
+    /// <b>оставшаяся гореть лампа — худшая из здешних поломок</b>: тревога кончилась, таймер
+    /// остановлен, гасить её больше некому.
+    /// <para>
+    /// Две причины, по которым она оставалась включённой, и обе закрыты здесь. Первая: тик идёт из
+    /// пула потоков, а конец тревоги приходит из своего, — тик, начавшийся до тишины, договаривал
+    /// уже после неё и зажигал лампу заново. Поэтому <b>зажигаем только при живой тревоге</b>, и
+    /// состояние читается под тем же замком, под которым записано. Вторая: отметка «горит» ставилась
+    /// <b>до</b> вызова платформы, и стоило тому бросить (камеру занял кто-то другой), как отметка
+    /// начинала врать — следующее «погаси» считало лампу уже погашенной и не делало ничего.
+    /// </para>
+    /// <para>
+    /// Третья, найденная разбором 05.08.2026: камера умеет отказывать (<c>CameraAccessException</c> —
+    /// её занял кто-то другой, съёмка запрещена политикой), и отказ на пути «погасить» шёл из
+    /// <see cref="Silence"/>, то есть прямо из <see cref="Apply"/> — а <see cref="Apply"/> вызывается
+    /// подпиской на поток тревог. Исключение оттуда рвало подписку насовсем: до конца жизни процесса
+    /// не звучало бы ничего, и лампа так и осталась бы гореть. Поэтому платформа зовётся под своим
+    /// перехватом, а отметка «горит» ставится <b>только по её успеху</b>.
+    /// </para>
+    /// </summary>
     private void SetTorch(bool on)
     {
         // Switched off mid-blink the lamp would stay lit, so the request is turned into "off"
         // rather than dropped.
         if (!_channels.Torch) on = false;
-        if (_torchOn == on) return;
 
-        _cameras ??= (CameraManager?)Application.Context.GetSystemService(Context.CameraService);
-        _torchCameraId ??= FindTorchCamera();
-        if (_cameras is null || _torchCameraId is null) return;
+        lock (_torch)
+        {
+            if (on && !_state.Any) return;
+            if (_torchOn == on) return;
 
-        _torchOn = on;
-        _cameras.SetTorchMode(_torchCameraId, on);
+            try
+            {
+                _cameras ??= (CameraManager?)Application.Context.GetSystemService(Context.CameraService);
+                _torchCameraId ??= FindTorchCamera();
+                if (_cameras is null || _torchCameraId is null) return;
+
+                _cameras.SetTorchMode(_torchCameraId, on);
+                _torchOn = on;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Alert.TorchFailed On={On}", on);
+            }
+        }
     }
 
     private string? FindTorchCamera()

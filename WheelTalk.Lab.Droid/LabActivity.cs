@@ -1,4 +1,4 @@
-using Android.App;
+﻿using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Graphics;
@@ -10,6 +10,7 @@ using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
+using WheelTalk.Lab.Data;
 using WheelTalk.Lab.Droid.Scenarios;
 using WheelTalk.Lab.Droid.Ui;
 
@@ -88,6 +89,10 @@ public sealed class LabActivity : Activity
     /// <summary>Какой корешок выбран в полосе шторки: плитки или панель.</summary>
     private bool _tilesShown;
 
+    /// <summary>Через сколько мс писать очередной отсчёт: пять герц, как у боевой записи.</summary>
+    private static readonly long TelemetryPeriodMs = (long)(1000 / LabRideHistory.Hz);
+
+    private long _wroteAt;
     private TimeSpan _position;
     private double _rate = 1;
     private long _lastTick;
@@ -352,6 +357,8 @@ public sealed class LabActivity : Activity
             _position += elapsed * _rate;
             // Запись кончилась — начинаем сначала: короткого куска должно хватать надолго.
             if (_position > source.Timeline.Duration) _position = TimeSpan.Zero;
+
+            WriteTelemetry(source, now);
         }
 
         if (_source is not { } current || _dashboard is null) return;
@@ -390,6 +397,24 @@ public sealed class LabActivity : Activity
     /// быть не может — состояние крутит <see cref="_linkCycle"/> кнопкой «⇄», проверяя ровно то же,
     /// что рисует библиотека приложению.
     /// </summary>
+    /// <summary>
+    /// Проигрываемый сценарий пишется в базу стенда — иначе история кончается там, где кончилась
+    /// набивка, и график за пять минут пустеет на глазах: окно едет вперёд, а данных за ним нет.
+    /// <para>
+    /// Пять раз в секунду, а не на кадре: столько же пишет боевое приложение
+    /// (<see cref="LabRideHistory.Hz"/>), а кадров идёт шестьдесят. На паузе не пишем вовсе — в бою
+    /// молчащее колесо тоже не повторяет последний отсчёт.
+    /// </para>
+    /// </summary>
+    private void WriteTelemetry(ReadingSource source, long now)
+    {
+        if (now - _wroteAt < TelemetryPeriodMs || _store is not { } store) return;
+        if (source.SnapshotAt(_position) is not { } snapshot) return;
+
+        _wroteAt = now;
+        store.Write(snapshot);
+    }
+
     private MainScreenFrame BuildFrame()
     {
         var link = _linkCycle.Current;

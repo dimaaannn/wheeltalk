@@ -1,4 +1,4 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
@@ -25,11 +25,12 @@ internal sealed class MetricTileView : TileView
     private string _format = "F0";
     private string _unit = "";
     private string _shown = "";
+    private TileLimits? _limits;
 
-    public MetricTileView(Context context, DashboardPalette palette) : base(context, palette)
+    public MetricTileView(Context context, DashboardOptions options) : base(context, options)
     {
         _value = new TextView(context) { Gravity = GravityFlags.Center };
-        _value.SetTextColor(palette.Ink);
+        _value.SetTextColor(Palette.Ink);
         _value.SetMaxLines(1);
         // Кегль подбирает платформа (API 26+): показание занимает плитку целиком — в узкой
         // однострочной и в широкой двухстрочной оно одно и то же, но разного размера. Своего расчёта
@@ -52,9 +53,11 @@ internal sealed class MetricTileView : TileView
     /// Чью величину показывать. Слова приходят готовыми, а не ключами: библиотека ресурсов
     /// приложения не видит — тот же порядок, что у подписей шторки и плашки связи.
     /// </summary>
-    public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel)
+    public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
+        TileLimits? limits)
     {
         _metric = metric;
+        _limits = limits;
         _format = "F" + metric.Decimals;
         _unit = unit;
 
@@ -71,16 +74,22 @@ internal sealed class MetricTileView : TileView
     /// Очередной снимок. Зовётся на каждом кадре, поэтому текст переставляется только при
     /// изменении: <c>TextView.SetText</c> тянет за собой перекладку строки, а число меняется впятеро
     /// реже, чем идут кадры.
+    /// <para>
+    /// Подложка перекрашивается там же и по тому же условию: цвет плитки — про то число, которое на
+    /// ней написано, и меняться раньше него ему незачем.
+    /// </para>
     /// </summary>
     public override void Render(TelemetrySnapshot? snapshot)
     {
         if (_metric is not { } metric) return;
 
-        string text = MetricNumber.Text(metric, snapshot, _format);
+        double? value = MetricNumber.Value(metric, snapshot);
+        string text = MetricNumber.Text(value, _format);
 
         if (_shown == text) return;
 
         _shown = text;
         _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim);
+        ShowHeat(MetricHeat.Of(metric.Id, value, Options, _limits));
     }
 }

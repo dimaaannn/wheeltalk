@@ -14,9 +14,9 @@ public static class LabMetricWords
     private static readonly Dictionary<string, string> Words = new(StringComparer.Ordinal)
     {
         ["TelemetrySpeed"] = "Скорость",
-        ["TelemetryTopSpeed"] = "Максимальная",
+        ["TelemetryTopSpeed"] = "Максимум",
         ["TelemetryPwm"] = "ШИМ",
-        ["TelemetryMaxPwm"] = "ШИМ, максимум",
+        ["TelemetryMaxPwm"] = "ШИМ макс",
         ["TelemetryAngle"] = "Наклон",
         ["TelemetryVoltage"] = "Напряжение",
         ["TelemetryCurrent"] = "Ток",
@@ -39,15 +39,15 @@ public static class LabMetricWords
 
         // Меню плитки показывает весь каталог, а не только зашитую раскладку, — поэтому здесь
         // лежат все двадцать шесть величин теми же словами, что и в ресурсах приложения.
-        ["TelemetryFromStart"] = "С подключения",
-        ["TelemetrySleep"] = "Автовыключение",
+        ["TelemetryFromStart"] = "За сеанс",
+        ["TelemetrySleep"] = "Автовыкл",
         ["MetricTorque"] = "Момент",
         ["MetricMotorPower"] = "Мощность мотора",
         ["MetricCpuTemp"] = "Контроллер",
         ["MetricCpuLoad"] = "Загрузка",
         ["MetricImuTemp"] = "Гироскоп",
         ["MetricCurrentLimit"] = "Лимит тока",
-        ["MetricSpeedLimit"] = "Предел колеса",
+        ["MetricSpeedLimit"] = "Предел",
         ["MetricHardwarePwm"] = "ШИМ колеса",
         ["MetricFanStatus"] = "Вентилятор",
         ["MetricRoll"] = "Крен",
@@ -66,6 +66,16 @@ public static class LabMetricWords
         ["TilesTileOverlay"] = "Число поверх графика",
         ["TilesTileZoom"] = "Обрезать по крайним значениям",
         ["TilesTileLabel"] = "Показывать подпись",
+        ["TilesTileFill"] = "Заливка под линией",
+        ["TilesTileAxis"] = "Шкала слева",
+        ["TilesTileSmoothing"] = "Что показывать за период",
+        ["TilesSmoothMinMax"] = "Минимум и максимум",
+        ["TilesSmoothPeaks"] = "Только пики",
+        ["TilesSmoothDips"] = "Только провалы",
+        ["TilesTileLimits"] = "Пороги плитки",
+        ["TilesTileWarn"] = "Жёлтый порог",
+        ["TilesTileDanger"] = "Красный порог",
+        ["TilesTileFalling"] = "Тревога при падении",
 
         ["UnitMinutesShort"] = "мин",
         ["UnitHoursShort"] = "ч",
