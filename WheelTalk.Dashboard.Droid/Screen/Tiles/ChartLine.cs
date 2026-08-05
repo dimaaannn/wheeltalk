@@ -1,4 +1,4 @@
-using Com.Github.Mikephil.Charting.Data;
+﻿using Com.Github.Mikephil.Charting.Data;
 using WheelTalk.Core.Metrics;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
@@ -14,13 +14,8 @@ internal static class ChartLine
     /// окно, у которого данные кончились раньше срока, растягивается по ним — правый край липнет к
     /// «сейчас», а левый уползает за экран. Время должно ехать, а не сжиматься под данные.
     /// </param>
-    /// <param name="heat">
-    /// Жар точки по её значению: 0 — спокойно, 1 — тревога. Отсюда цвет каждой точки, и по нему
-    /// пики уходят в красное (решение владельца 05.08.2026). <c>null</c> — порогов нет, вся линия
-    /// одного цвета.
-    /// </param>
     public static LineData? Build(IReadOnlyList<MetricPoint> points, DashboardPalette palette, string label,
-        DateTimeOffset from, TileChart options, Func<double, double>? heat = null)
+        DateTimeOffset from, TileChart options)
     {
         var shown = Smooth(points, options.Smoothing);
         if (shown.Count < 2) return null;
@@ -37,9 +32,13 @@ internal static class ChartLine
             // него уже не помещаются без потери.
             foreach (var point in piece) entries.Add(new Entry((point.AtMs - startMs) / 1000f, (float)point.Value));
 
-            // Линия и заливка — краской спокойной шкалы, а не основной: поверх графика лежит число, и
-            // белое по белому не читается ни при какой густоте. Тот же цвет носят ленты панели, так
-            // что экран говорит её языком, а не заводит свой.
+            // Линия одноцветная — краской спокойной шкалы. Тревожное в ней не красится: «опасно» это
+            // свойство шкалы, а не линии, и рисуется зоной поверх графика (ChartZonesView). Поцветный
+            // список точек, который стоял тут раньше, заставлял библиотеку рисовать линию тысячей
+            // сегментов, и на плитке шириной в палец она пропадала кусками.
+            //
+            // Краска спокойная, а не основная, потому что поверх графика лежит число: белое по белому
+            // не читается ни при какой густоте. Тот же цвет носят ленты панели.
             var set = new LineDataSet(entries, label)
             {
                 Color = palette.Calm,
@@ -52,11 +51,6 @@ internal static class ChartLine
             set.SetDrawCircles(false);
             set.SetDrawValues(false);
             set.SetDrawFilled(options.Fill && TilesLayout.ChartFillAlpha > 0);
-
-            // Цвет задаётся точке, а не всей линии: библиотека берёт его по номеру отсчёта, и
-            // переход получается там, где величина подошла к порогу, — а не размазанным по высоте
-            // плитки, как вышло бы с градиентом по оси.
-            if (heat is not null) set.SetColors([.. piece.Select(point => Tint(point.Value, palette, heat))]);
 
             // Набор добавляется отдельным вызовом: конструктор LineData принимает варарг из
             // интерфейсов, а такие сигнатуры генератор обёрток не переносит.
@@ -109,19 +103,6 @@ internal static class ChartLine
 
         return piece;
     }
-
-    /// <summary>
-    /// Цвет точки линии. Шкала своя, а не подложкина (<see cref="MetricHeat.Tint"/>): у подложки в
-    /// покое серое — она и должна пропадать, — а линия в покое обязана быть <c>Calm</c>. Взяли бы
-    /// ту же шкалу, и спокойный график вышел бы серым карандашом поверх синей заливки, а в
-    /// полноэкранном — одного цвета с сеткой осей.
-    /// </summary>
-    private static int Tint(double value, DashboardPalette palette, Func<double, double> heat) => heat(value) switch
-    {
-        <= 0 => palette.Calm.ToArgb(),
-        < 0.5 and var half => MetricHeat.Mix(palette.Calm, palette.Caution, half * 2).ToArgb(),
-        var hot => MetricHeat.Mix(palette.Caution, palette.Danger, hot * 2 - 1).ToArgb(),
-    };
 
     /// <summary>
     /// Какой стороной периода рисовать. История приходит корзинами, и в каждой лежат минимум и

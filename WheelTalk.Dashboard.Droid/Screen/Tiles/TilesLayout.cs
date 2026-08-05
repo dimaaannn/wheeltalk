@@ -76,12 +76,14 @@ public static class TilesLayout
     /// </summary>
     public static int BackgroundAlpha => 40;
 
+    /// <summary>Толщина рамки тревоги. Идёт по краю плитки внутрь и содержимого не закрывает.</summary>
+    public static int HeatStrokeDp => 3;
+
     /// <summary>
-    /// Густота подложки у величины, дошедшей до тревожного порога (<see cref="MetricHeat"/>). Растёт
-    /// вместе с цветом, потому что одного поворота краски мало: тёплый тон при прежней прозрачности
-    /// отличается от серого слабее, чем нужно, чтобы плитку заметили, не разглядывая.
+    /// Густота рамки у самого порога (0…255). К полной тревоге дорастает до непрозрачной: у порога
+    /// рамка едва проступает, и видно не только «плохо», но и «насколько».
     /// </summary>
-    public static int BackgroundHotAlpha => 96;
+    public static int HeatStrokeMinAlpha => 70;
 
     /// <summary>Кегль подписи величины, sp.</summary>
     public static int LabelSp => 11;
@@ -129,8 +131,17 @@ public static class TilesLayout
     /// </summary>
     public static float DragMoveThreshold => 0.65f;
 
-    /// <summary>Толщина линии графика.</summary>
-    public static int ChartStrokeDp => 2;
+    /// <summary>
+    /// Толщина линии графика. Тонкая нарочно: под ней заливка того же цвета, и толстая линия
+    /// сливается с ней в пятно вместо того, чтобы очерчивать ход величины.
+    /// </summary>
+    public static float ChartStrokeDp => 1f;
+
+    /// <summary>
+    /// Густота тревожной зоны поверх графика (0…255). Заметно, но сквозь неё читается и линия, и
+    /// заливка: зона говорит «выше этого — плохо», а не закрывает собой данные.
+    /// </summary>
+    public static int ChartZoneAlpha => 40;
 
     /// <summary>
     /// Густота заливки под линией (0…255 от основной краски). Ноль — заливки нет, одна линия.

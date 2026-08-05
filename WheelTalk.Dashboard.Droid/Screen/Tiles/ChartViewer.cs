@@ -60,13 +60,25 @@ internal static class ChartViewer
         root.SetPadding(pad, pad, pad, pad);
         root.AddView(title);
         root.AddView(picked);
-        root.AddView(chart, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
+        // Зоны — тем же элементом, что на плитке: одно правило показа порога на обоих экранах.
+        var zones = new ChartZonesView(context, chart, palette)
+        {
+            Limits = MetricHeat.Limits(metric.Id, dashboard, limits),
+        };
+
+        var stack = new FrameLayout(context);
+        stack.AddView(chart, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+        stack.AddView(zones, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+
+        root.AddView(stack, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
 
         var dialog = new Dialog(context, Android.Resource.Style.ThemeBlackNoTitleBarFullScreen);
         dialog.SetContentView(root);
         dialog.Show();
 
-        _ = FillAsync(context, chart, dashboard, history, metric, label, from, to, options, limits);
+        _ = FillAsync(context, chart, zones, dashboard, history, metric, label, from, to, options, limits);
     }
 
     private static LineChart BuildChart(Context context, DashboardPalette palette, DateTimeOffset from,
@@ -100,9 +112,9 @@ internal static class ChartViewer
         return chart;
     }
 
-    private static async Task FillAsync(Context context, LineChart chart, DashboardOptions dashboard,
-        IMetricHistory history, MetricDescriptor metric, string label, DateTimeOffset from, DateTimeOffset to,
-        TileChart options, TileLimits? limits)
+    private static async Task FillAsync(Context context, LineChart chart, ChartZonesView zones,
+        DashboardOptions dashboard, IMetricHistory history, MetricDescriptor metric, string label,
+        DateTimeOffset from, DateTimeOffset to, TileChart options, TileLimits? limits)
     {
         var points = await history.ReadAsync(metric.Id, from, to, TilesLayout.ViewerPoints, CancellationToken.None);
 
@@ -120,15 +132,13 @@ internal static class ChartViewer
             chart.AxisLeft.AddLimitLine(Mark(context, (float)marks.Danger, dashboard.Palette.Danger));
         }
 
-        // Пороги и здесь те же, что у плитки: график во весь экран — та же линия, только крупнее.
-        double Heat(double value) => MetricHeat.Of(metric.Id, value, dashboard, limits);
-
-        if (ChartLine.Build(points, dashboard.Palette, label, from, options, Heat) is not { } data) return;
+        if (ChartLine.Build(points, dashboard.Palette, label, from, options) is not { } data) return;
 
         chart.Post(() =>
         {
             chart.Data = data;
             chart.Invalidate();
+            zones.Invalidate();
         });
     }
 

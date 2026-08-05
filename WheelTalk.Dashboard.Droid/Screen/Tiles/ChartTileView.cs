@@ -30,6 +30,7 @@ internal sealed class ChartTileView : TileView
     private readonly LineChart _chart;
     private readonly TextView _value;
     private readonly TextView _range;
+    private readonly ChartZonesView _zones;
 
     private MetricDescriptor? _metric;
     private string _format = "F0";
@@ -37,8 +38,8 @@ internal sealed class ChartTileView : TileView
     private string _shown = "";
     private readonly Func<string, string> _words;
 
-    private TileChart _options = new(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: false);
     private TileLimits? _limits;
+    private TileChart _options = new(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: false);
 
     /// <param name="words">Ключ ресурса → слово: библиотека ресурсов приложения не видит, слова ей отдаёт экран.</param>
     public ChartTileView(Context context, DashboardOptions options, Func<string, string> words)
@@ -87,8 +88,13 @@ internal sealed class ChartTileView : TileView
         _range.SetTextSize(ComplexUnitType.Sp, TilesLayout.ChartRangeSp);
         _range.SetTextColor(palette.Dim);
 
+        // Зоны — поверх графика, но под числом: они подсказка о шкале, а показание важнее.
+        _zones = new ChartZonesView(context, _chart, palette);
+
         _stack = new FrameLayout(context);
         _stack.AddView(_chart, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+        _stack.AddView(_zones, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         _stack.AddView(_value, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
@@ -113,7 +119,6 @@ internal sealed class ChartTileView : TileView
         _unit = unit;
         _shown = "";
         _options = options;
-        _limits = limits;
 
         // Шкала слева — по выбору плитки: на четвертной она съедает треть ширины, а на широкой без
         // неё линия показывает форму, но не величину.
@@ -121,6 +126,8 @@ internal sealed class ChartTileView : TileView
 
         _chart.Data = null;
         _chart.Invalidate();
+        _limits = limits;
+        _zones.Limits = MetricHeat.Limits(metric.Id, Options, limits);
 
         _value.Visibility = options.ShowValue ? ViewStates.Visible : ViewStates.Gone;
         _range.Text = Describe(options.Window);
@@ -150,37 +157,38 @@ internal sealed class ChartTileView : TileView
         _chart.XAxis!.AxisMinimum = 0f;
         _chart.XAxis.AxisMaximum = (float)(to - from).TotalSeconds;
 
-        _chart.Data = ChartLine.Build(points, Palette, label: "", from, _options, Heat);
+        _chart.Data = ChartLine.Build(points, Palette, label: "", from, _options);
         _chart.Invalidate();
+
+        // Зоны перерисовываются следом: шкала могла сдвинуться вместе с новыми точками.
+        _zones.Invalidate();
     }
 
     protected override void ShowContent(bool visible) =>
         _stack.Visibility = visible ? ViewStates.Visible : ViewStates.Gone;
 
     /// <summary>
-    /// Очередной снимок — только число поверх линии. <b>Подложка тут не греется</b>, в отличие от
-    /// плитки значения (<see cref="MetricHeat"/>): плитка рассказывает про четверть часа, а жар — про
-    /// одно мгновение, и покрашенная им карточка сказала бы про эти пятнадцать минут неправду.
-    /// Проверено глазами 05.08.2026 и вторым доводом: заливка линии, взятая спокойной краской,
-    /// на тёплой подложке даёт грязь, а не подкрас.
+    /// Очередной снимок: число поверх линии и нагрев подложки по нему же (решение владельца
+    /// 05.08.2026). Прежний довод — «плитка рассказывает про четверть часа, а жар про мгновение» —
+    /// снят владельцем: тревога должна быть видна на всякой плитке, где показано текущее значение, и
+    /// молчащая среди греющихся читается как «здесь всё хорошо».
     /// </summary>
     public override void Render(TelemetrySnapshot? snapshot)
     {
-        if (_metric is not { } metric || _value.Visibility != ViewStates.Visible) return;
+        if (_metric is not { } metric) return;
 
-        string text = MetricNumber.Text(MetricNumber.Value(metric, snapshot), _format);
+        double? value = MetricNumber.Value(metric, snapshot);
+        ShowHeat(MetricHeat.Of(metric.Id, value, Options, _limits));
+
+        if (_value.Visibility != ViewStates.Visible) return;
+
+        string text = MetricNumber.Text(value, _format);
 
         if (_shown == text) return;
 
         _shown = text;
         _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim);
     }
-
-    /// <summary>
-    /// Жар точки графика — теми же порогами, какими греется плитка значения: у графика и у числа они
-    /// одни (решение владельца 05.08.2026). Пики уходят в красное там, где величина перешла порог.
-    /// </summary>
-    private double Heat(double value) => MetricHeat.Of(_metric?.Id ?? "", value, Options, _limits);
 
     /// <summary>Окно словами: «15 мин», «3 ч». Слов на это хватает двух, и оба уже переведены.</summary>
     private string Describe(TimeSpan window) => window < TimeSpan.FromHours(1)

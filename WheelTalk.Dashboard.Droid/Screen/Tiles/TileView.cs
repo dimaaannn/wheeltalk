@@ -1,4 +1,4 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.Util;
@@ -34,7 +34,7 @@ internal abstract class TileView : LinearLayout
     private readonly GradientDrawable _filled;
     private readonly float _radius;
 
-    /// <summary>Каким цветом покрашена подложка сейчас — чтобы не перекрашивать её тем же самым.</summary>
+    /// <summary>Какого цвета рамка тревоги сейчас — чтобы не перекрашивать её тем же самым.</summary>
     private Color _fill;
 
     private bool _editing;
@@ -55,9 +55,10 @@ internal abstract class TileView : LinearLayout
         _filled = new GradientDrawable();
         _filled.SetShape(ShapeType.Rectangle);
         _filled.SetCornerRadius(_radius);
-        // Фон плитки — краска палитры, взятая почти прозрачной: так плитки видны при любой палитре, и
-        // второго набора цветов заводить не пришлось. Спокойная величина берёт приглушённую Dim,
-        // подошедшая к тревоге — тёплую и погуще (см. ShowHeat).
+        // Фон плитки — приглушённая краска палитры, взятая почти прозрачной: так плитки видны при
+        // любой палитре, и второго набора цветов заводить не пришлось. Он не меняется никогда;
+        // тревога показывается рамкой поверх него (см. ShowHeat).
+        _filled.SetColor(Color.Argb(TilesLayout.BackgroundAlpha, palette.Dim.R, palette.Dim.G, palette.Dim.B));
         ShowHeat(0);
         Background = _filled;
 
@@ -87,22 +88,29 @@ internal abstract class TileView : LinearLayout
     protected TextView Label { get; }
 
     /// <summary>
-    /// Подкрасить подложку по тому, насколько величина подошла к тревоге (<see cref="MetricHeat"/>).
-    /// Красится подложка, а не число: показание должно читаться одинаково при любом значении.
+    /// Показать, насколько величина подошла к тревоге (<see cref="MetricHeat"/>), — <b>рамкой, а не
+    /// заливкой всей плитки</b> (решение владельца 05.08.2026). Залитая подложка ложилась на график
+    /// и спорила с его линией и заливкой; рамка идёт по краю внутрь и не закрывает содержимого. На
+    /// текст она наезжать может — так лучше, чем красить его самого.
     /// <para>
-    /// Тем же цветом второй раз не красим: <c>SetColor</c> тянет за собой перерисовку, а зовут это
+    /// Красится по-прежнему не число: показание должно читаться одинаково при любом значении.
+    /// </para>
+    /// <para>
+    /// Тем же цветом второй раз не красим: <c>SetStroke</c> тянет за собой перерисовку, а зовут это
     /// с каждым новым показанием.
     /// </para>
     /// </summary>
     protected void ShowHeat(double heat)
     {
         var tint = MetricHeat.Tint(heat, Palette);
-        var fill = Color.Argb(MetricHeat.Alpha(heat), tint.R, tint.G, tint.B);
+        var stroke = heat <= 0
+            ? Color.Transparent
+            : Color.Argb(MetricHeat.Alpha(heat), tint.R, tint.G, tint.B);
 
-        if (_fill == fill) return;
+        if (_fill == stroke) return;
 
-        _fill = fill;
-        _filled.SetColor(fill);
+        _fill = stroke;
+        _filled.SetStroke(Context!.Dp(TilesLayout.HeatStrokeDp), stroke);
     }
 
     /// <summary>
