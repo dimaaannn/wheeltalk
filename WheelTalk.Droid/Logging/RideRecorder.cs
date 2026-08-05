@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Services;
@@ -162,13 +162,11 @@ public sealed partial class RideRecorder : IDisposable
         _store.Write(mac, _session.Protocol?.ToString() ?? "", snapshot, _timeProvider.GetLocalNow());
     }
 
-    /// <summary>Три положения переключателя, план 23 §5.7. Спрашивается на каждом отсчёте: настройка живая.</summary>
-    private bool ShouldWrite() => _options.TelemetryRecording switch
-    {
-        TelemetryRecording.Always => true,
-        TelemetryRecording.RideOnly => _marking,
-        _ => false,
-    };
+    /// <summary>
+    /// Пишем или нет (решение владельца 05.08.2026): поток к поездке не привязан — либо идёт всегда,
+    /// либо не идёт вовсе. Спрашивается на каждом отсчёте: настройка живая.
+    /// </summary>
+    private bool ShouldWrite() => _options.TelemetryRecording == TelemetryRecording.Always;
 
     [LoggerMessage(EventId = 1500, EventName = "Ride.RecordingStarted", Level = LogLevel.Information,
         Message = "Ride.RecordingStarted")]

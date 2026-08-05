@@ -1,4 +1,4 @@
-namespace WheelTalk.Droid.Configuration;
+﻿namespace WheelTalk.Droid.Configuration;
 
 /// <summary>
 /// What gets written to disk. The ride history is a button on the screen; the raw dump is here,
@@ -16,7 +16,7 @@ public sealed class LoggingOptions
     /// «Запись» от этого меняет смысл: в <see cref="TelemetryRecording.Always"/> она только
     /// размечает поток («отсюда покатушка»), в остальных остаётся тем, чем была.
     /// </summary>
-    public TelemetryRecording TelemetryRecording { get; set; } = TelemetryRecording.RideOnly;
+    public TelemetryRecording TelemetryRecording { get; set; } = TelemetryRecording.Always;
 
     /// <summary>
     /// Начинать запись поездки самой, как только колесо на связи. **Включено** по умолчанию, в

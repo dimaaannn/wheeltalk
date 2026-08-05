@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
@@ -46,7 +46,6 @@ public sealed class RecordingActivity : Activity
     private Button _recordButton = null!;
     private RadioGroup _telemetryGroup = null!;
     private RadioButton _telemetryAlways = null!;
-    private RadioButton _telemetryRideOnly = null!;
     private RadioButton _telemetryNever = null!;
     private TextView _telemetryHint = null!;
     private TextView _telemetryRetentionLabel = null!;
@@ -205,20 +204,14 @@ public sealed class RecordingActivity : Activity
     /// </summary>
     private void ShowTelemetryRecording()
     {
-        var current = _options.TelemetryRecording switch
-        {
-            TelemetryRecording.Always => _telemetryAlways,
-            TelemetryRecording.Never => _telemetryNever,
-            _ => _telemetryRideOnly,
-        };
+        var current = _options.TelemetryRecording == TelemetryRecording.Never
+            ? _telemetryNever
+            : _telemetryAlways;
         if (!current.Checked) current.Checked = true;
 
-        _telemetryHint.Text = _options.TelemetryRecording switch
-        {
-            TelemetryRecording.Always => AppStrings.RecordingTelemetryAlwaysHint,
-            TelemetryRecording.Never => AppStrings.RecordingTelemetryNeverHint,
-            _ => AppStrings.RecordingTelemetryRideOnlyHint,
-        };
+        _telemetryHint.Text = _options.TelemetryRecording == TelemetryRecording.Never
+            ? AppStrings.RecordingTelemetryNeverHint
+            : AppStrings.RecordingTelemetryAlwaysHint;
 
         _telemetryRetentionLabel.Text = string.Format(CultureInfo.CurrentCulture,
             AppStrings.RecordingTelemetryRetention, (int)Math.Round(_storage.TelemetryRetention.TotalHours));
@@ -330,17 +323,15 @@ public sealed class RecordingActivity : Activity
         section.AddView(title);
 
         _telemetryAlways = TelemetryOption(AppStrings.RecordingTelemetryAlways);
-        _telemetryRideOnly = TelemetryOption(AppStrings.RecordingTelemetryRideOnly);
         _telemetryNever = TelemetryOption(AppStrings.RecordingTelemetryNever);
 
+        // Два положения, а не три (решение владельца 05.08.2026): поток к поездке не привязан — либо
+        // пишем и удаляем через сутки, либо не пишем.
         _telemetryGroup = new RadioGroup(this) { Orientation = Android.Widget.Orientation.Vertical };
         _telemetryGroup.AddView(_telemetryAlways);
-        _telemetryGroup.AddView(_telemetryRideOnly);
         _telemetryGroup.AddView(_telemetryNever);
         _telemetryGroup.CheckedChange += (_, e) => OnTelemetryRecordingChanged(
-            e.CheckedId == _telemetryAlways.Id ? TelemetryRecording.Always
-            : e.CheckedId == _telemetryNever.Id ? TelemetryRecording.Never
-            : TelemetryRecording.RideOnly);
+            e.CheckedId == _telemetryNever.Id ? TelemetryRecording.Never : TelemetryRecording.Always);
         section.AddView(_telemetryGroup, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent) { TopMargin = this.Dp(4) });
 

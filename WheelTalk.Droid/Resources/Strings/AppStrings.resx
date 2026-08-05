@@ -50,11 +50,9 @@
   <data name="RecordingRideSection" xml:space="preserve"><value>История поездки</value></data>
   <data name="RecordingTelemetryTitle" xml:space="preserve"><value>Что писать в поток</value></data>
   <data name="RecordingTelemetryAlways" xml:space="preserve"><value>Всегда</value></data>
-  <data name="RecordingTelemetryRideOnly" xml:space="preserve"><value>Только в поездке</value></data>
   <data name="RecordingTelemetryNever" xml:space="preserve"><value>Никогда</value></data>
-  <data name="RecordingTelemetryAlwaysHint" xml:space="preserve"><value>Пишется постоянно, поездка лишь размечает его; данные удаляются через сутки</value></data>
-  <data name="RecordingTelemetryRideOnlyHint" xml:space="preserve"><value>Пишется только во время поездки — как было раньше</value></data>
-  <data name="RecordingTelemetryNeverHint" xml:space="preserve"><value>Не пишется вовсе — разметка поездок недоступна</value></data>
+  <data name="RecordingTelemetryAlwaysHint" xml:space="preserve"><value>Пишется постоянно — и на ходу, и на стоянке, и при зарядке. Поездка лишь размечает его. Данные удаляются через сутки</value></data>
+  <data name="RecordingTelemetryNeverHint" xml:space="preserve"><value>Не пишется вовсе. Графиков на экране «Цифры» не будет, разметка поездок недоступна</value></data>
   <data name="RecordingTelemetryRetention" xml:space="preserve"><value>Хранится {0} ч., дальше чистится само</value></data>
   <data name="RecordingStart" xml:space="preserve"><value>Начать запись</value></data>
   <data name="RecordingStop" xml:space="preserve"><value>Остановить запись</value></data>
