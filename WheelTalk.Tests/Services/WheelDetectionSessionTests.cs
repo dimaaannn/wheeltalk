@@ -5,7 +5,6 @@ using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
-using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Services;
 
