@@ -14,6 +14,12 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// <see cref="WheelIdentity"/>: имя колеса перестало быть записью в общий файл и стало слоевой
 /// настройкой этого колеса.
 /// </summary>
+/// <param name="Protocol">
+/// Протокол подключённого колеса — опознанный, а не выбранный, и потому спрашиваемый заново
+/// на каждой отрисовке страницы. Делегатом, а не значением: описания строятся один раз при
+/// запуске, когда колесо ещё молчит, а настройки Begode обязаны появиться, как только оно
+/// назовётся. <c>null</c> — «пока не знаем».
+/// </param>
 public sealed record CatalogueContext(
     AppWheelConfig Wheel,
     AlertOptions Alerts,
@@ -25,10 +31,4 @@ public sealed record CatalogueContext(
     WheelIdentity Identity,
     ScreenOptions Screen,
     PowerOptions Power,
-    /// <summary>
-    /// Протокол подключённого колеса — опознанный, а не выбранный, и потому спрашиваемый заново
-    /// на каждой отрисовке страницы. Делегатом, а не значением: описания строятся один раз при
-    /// запуске, когда колесо ещё молчит, а настройки Begode обязаны появиться, как только оно
-    /// назовётся. <c>null</c> — «пока не знаем».
-    /// </summary>
     Func<WheelProtocol?> Protocol);

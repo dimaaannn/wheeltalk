@@ -111,6 +111,13 @@
   <remove-node path="/api/package[@name='com.github.mikephil.charting.formatter']/interface[@name='IFillFormatter']/method[@name='getFillLinePosition']" />
   <remove-node path="/api/package[@name='com.github.mikephil.charting.formatter']/class[@name='DefaultFillFormatter']/method[@name='getFillLinePosition']" />
 
+  <!-- Побочное следствие починки выше: пока `ILineDataSet` считался негодным, его не генерировали
+       вовсе, и спор об одном методе не всплывал. Теперь интерфейс живой, и `getMode` спорит с
+       вложенным типом `LineDataSet.Mode` — имя свойства совпадает с именем типа, свойство
+       пропускается, а интерфейс его требует (`CS0535`). Приём тот же, что с `IDataSet` выше:
+       убираем метод из интерфейса, у самого `LineDataSet` он остаётся. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.interfaces.datasets']/interface[@name='ILineDataSet']/method[@name='getMode']" />
+
   <!-- Осколки видов графиков, удалённых в разделе 1: вложенные типы переживают своего хозяина,
        потому что в api.xml они записаны отдельно. Следом — то, что осталось без них. -->
   <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='CombinedChart.DrawOrder']" />
@@ -119,5 +126,7 @@
   <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='PieRadarChartBase.2']" />
   <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='ScatterChart.ScatterShape']" />
   <remove-node path="/api/package[@name='com.github.mikephil.charting.data']/class[@name='ScatterDataSet']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.data']/class[@name='ScatterDataSet.1']" />
   <remove-node path="/api/package[@name='com.github.mikephil.charting.listener']/class[@name='PieRadarChartTouchListener']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.listener']/class[@name='PieRadarChartTouchListener.AngularVelocitySample']" />
 </metadata>

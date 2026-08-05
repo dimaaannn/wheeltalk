@@ -94,6 +94,16 @@
 		     «как у системы». Больше ничего из исследования сейчас не берём. -->
 		<PackageReference Include="Xamarin.AndroidX.RecyclerView" Version="1.4.0.6" />
 		<PackageReference Include="Xamarin.Google.Android.Material" Version="1.13.0" />
+
+		<!-- Ничем из этого мы не пользуемся напрямую: три ссылки стоят здесь, чтобы согласовать
+		     версии внутри семейства Lifecycle. Приходят они попутчиками — часть требует
+		     Lifecycle.Common строго `< 2.9.4`, а Core и Material приводят 2.11.0.1, и NuGet берёт
+		     старшую, сообщая об этом четырьмя NU1608. Работало и так, но «требует < 2.9.4, получил
+		     2.11» — это ровно то предупреждение, которым однажды объяснится странный сбой. Версия
+		     та же, что у остального семейства. -->
+		<PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.11.0.1" />
+		<PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
+		<PackageReference Include="Xamarin.AndroidX.Lifecycle.ViewModelSavedState" Version="2.11.0.1" />
 	</ItemGroup>
 
 	<ItemGroup>
