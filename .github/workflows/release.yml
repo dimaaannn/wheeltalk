@@ -4,6 +4,9 @@
 #
 # Ручной запуск (workflow_dispatch) собирает то же самое, но релиз не трогает и кладёт APK в
 # артефакты прогона. Им проверяют саму сборку, не выпуская ничего наружу.
+#
+# Выпуск возможен только из master: тег обязан стоять на коммите, уже влитом туда, — см. шаг
+# «Тег должен быть в master» ниже.
 name: Выпуск
 
 on:
@@ -21,6 +24,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Тег должен быть в master
+        if: github.event_name == 'push'
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "Тег ${GITHUB_REF_NAME} стоит на коммите, которого нет в master."
+            echo "Порядок — docs/release.md, шаг 4: мерж --ff-only в master, затем тег."
+            exit 1
+          fi
 
       # .NET Android требует JDK 17. На раннере JDK несколько, поэтому выбираем явно.
       - uses: actions/setup-java@v4
@@ -35,17 +49,14 @@ jobs:
       - name: Рабочая нагрузка android
         run: dotnet workload install android
 
-      # Android SDK на раннере есть, но набор платформ на нём меняется без предупреждения, а
-      # net10.0-android собирается под API 36. Если нужное уже стоит — шаг пройдёт вхолостую.
       - name: Платформа Android 36
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
-      # Хранилище и пароль живут вне дерева репозитория — так же, как на машине владельца
-      # (docs/release.md, «Подпись»). Пароль пишется в файл ДВАЖДЫ, на двух строках: apksigner
-      # читает его последовательно, --ks-pass берёт первую строку, --key-pass вторую. С одной
-      # строкой сборка падает на «end of file reached» — грабли описаны в signing.props.example.
+      - name: Тесты
+        run: dotnet test WheelTalk.Tests
+
       - name: Разложить ключ подписи
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -60,9 +71,6 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wheeltalk-release.keystore"
           printf '%s\n%s\n' "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > "$RUNNER_TEMP/storepass.txt"
 
-      # signing.props в репозиторий не берётся (машинные пути), поэтому те же свойства задаются
-      # прямо здесь. Всё остальное — архитектура, формат пакета, каталог — берётся из csproj,
-      # руками не задаётся ничего: два пути публикации обязаны давать один и тот же файл.
       - name: Публикация
         run: |
           dotnet publish WheelTalk.Droid -c Release -f net10.0-android \
@@ -72,9 +80,6 @@ jobs:
             -p:AndroidSigningStorePass="file:$RUNNER_TEMP/storepass.txt" \
             -p:AndroidSigningKeyPass="file:$RUNNER_TEMP/storepass.txt"
 
-      # Имя файла — по номеру из csproj, единственного места, где номера живут. На теге заодно
-      # сверяем одно с другим: тег, поставленный не на тот коммит, иначе выпустит APK с чужим
-      # номером, и разбираться с этим придётся уже по следам на телефоне.
       - name: Имя APK и сверка с тегом
         id: apk
         run: |
@@ -113,9 +118,6 @@ jobs:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.path }}
 
-      # Черновик: заготовка содержит только измеримое. Чего в ней нет и что дописывает владелец —
-      # что в этой версии не проверено на живых колёсах и объяснение поведению, которое со стороны
-      # выглядит регрессией (docs/release.md, шаг 3).
       - name: Черновик релиза
         if: github.event_name == 'push'
         env:
