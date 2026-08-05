@@ -1,0 +1,140 @@
+# Выпуск боевого APK. Тот же путь, что описан в docs/release.md, только на чужой машине:
+# владелец пушит тег `v<версия>` — сборка собирает подписанный APK и кладёт его в ЧЕРНОВИК
+# релиза. Черновик, а не готовый релиз: текст релиза пишет человек (docs/release.md, шаг 3),
+# машина заполняет только то, что умеет посчитать — размер, отпечаток файла, имя.
+#
+# Ручной запуск (workflow_dispatch) собирает то же самое, но релиз не трогает и кладёт APK в
+# артефакты прогона. Им проверяют саму сборку, не выпуская ничего наружу.
+name: Выпуск
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # нужно для создания релиза; на ручном запуске не используется
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # .NET Android требует JDK 17. На раннере JDK несколько, поэтому выбираем явно.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Рабочая нагрузка android
+        run: dotnet workload install android
+
+      # Android SDK на раннере есть, но набор платформ на нём меняется без предупреждения, а
+      # net10.0-android собирается под API 36. Если нужное уже стоит — шаг пройдёт вхолостую.
+      - name: Платформа Android 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      # Хранилище и пароль живут вне дерева репозитория — так же, как на машине владельца
+      # (docs/release.md, «Подпись»). Пароль пишется в файл ДВАЖДЫ, на двух строках: apksigner
+      # читает его последовательно, --ks-pass берёт первую строку, --key-pass вторую. С одной
+      # строкой сборка падает на «end of file reached» — грабли описаны в signing.props.example.
+      - name: Разложить ключ подписи
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "Нет секретов ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD."
+            echo "Без них сборка подписалась бы отладочным ключом и поверх установленного"
+            echo "приложения не встала бы — это хуже, чем не собраться вовсе."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wheeltalk-release.keystore"
+          printf '%s\n%s\n' "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > "$RUNNER_TEMP/storepass.txt"
+
+      # signing.props в репозиторий не берётся (машинные пути), поэтому те же свойства задаются
+      # прямо здесь. Всё остальное — архитектура, формат пакета, каталог — берётся из csproj,
+      # руками не задаётся ничего: два пути публикации обязаны давать один и тот же файл.
+      - name: Публикация
+        run: |
+          dotnet publish WheelTalk.Droid -c Release -f net10.0-android \
+            -p:AndroidKeyStore=true \
+            -p:AndroidSigningKeyStore="$RUNNER_TEMP/wheeltalk-release.keystore" \
+            -p:AndroidSigningKeyAlias=wheeltalk \
+            -p:AndroidSigningStorePass="file:$RUNNER_TEMP/storepass.txt" \
+            -p:AndroidSigningKeyPass="file:$RUNNER_TEMP/storepass.txt"
+
+      # Имя файла — по номеру из csproj, единственного места, где номера живут. На теге заодно
+      # сверяем одно с другим: тег, поставленный не на тот коммит, иначе выпустит APK с чужим
+      # номером, и разбираться с этим придётся уже по следам на телефоне.
+      - name: Имя APK и сверка с тегом
+        id: apk
+        run: |
+          VERSION=$(sed -n 's:.*<ApplicationDisplayVersion>\(.*\)</ApplicationDisplayVersion>.*:\1:p' \
+            WheelTalk.Droid/WheelTalk.Droid.csproj)
+          if [ -z "$VERSION" ]; then echo "Не нашёл ApplicationDisplayVersion в csproj"; exit 1; fi
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            # Допустимы «v1.3.0» и «v1.3.0-b10» — вторая и следующие сборки того же номера.
+            case "$TAG" in
+              "v$VERSION"|"v$VERSION-b"*) ;;
+              *) echo "Тег $TAG не соответствует версии $VERSION в csproj"; exit 1 ;;
+            esac
+          fi
+
+          NAME="wheeltalk-$VERSION-arm64.apk"
+          SRC=WheelTalk.Droid/bin/Release/net10.0-android/publish/com.wheeltalk.droid-Signed.apk
+          mv "$SRC" "$RUNNER_TEMP/$NAME"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "path=$RUNNER_TEMP/$NAME" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "$RUNNER_TEMP/$NAME" | cut -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/$NAME" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Проверить подпись
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify -v --print-certs \
+            "${{ steps.apk.outputs.path }}"
+
+      - name: Артефакт прогона
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.path }}
+
+      # Черновик: заготовка содержит только измеримое. Чего в ней нет и что дописывает владелец —
+      # что в этой версии не проверено на живых колёсах и объяснение поведению, которое со стороны
+      # выглядит регрессией (docs/release.md, шаг 3).
+      - name: Черновик релиза
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Полное описание изменений — [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md).
+
+          **Файл.** \`${{ steps.apk.outputs.name }}\`, ${{ steps.apk.outputs.size }}, одна архитектура \`arm64-v8a\`, minSdk 28 (Android 9).
+          Подпись — своим ключом, схема v3, отпечаток сертификата в [docs/release.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/release.md).
+
+          \`\`\`
+          SHA-256 (APK)  ${{ steps.apk.outputs.sha256 }}
+          \`\`\`
+
+          <!-- Дописать перед публикацией: что не проверено на живых колёсах; что выглядит регрессией и почему ею не является. -->
+          EOF
+          gh release create "${{ github.ref_name }}" "${{ steps.apk.outputs.path }}" \
+            --draft \
+            --title "WheelTalk ${{ steps.apk.outputs.version }}" \
+            --notes-file "$RUNNER_TEMP/notes.md"
