@@ -65,4 +65,59 @@
   <remove-node path="/api/package[@name='com.github.mikephil.charting.renderer']" />
   <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/method[@name='calculateOffsets']" />
   <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='calculateOffsets']" />
+
+  <!-- 3. Хвосты вырезанного: члены, чей тип остался за бортом.
+
+       Убрав пакет или класс, мы не убрали тех, кто на него ссылался, и генератор сообщал о каждом
+       таком члене отдельно — сорок семь предупреждений на сборку. Они безвредны (член просто не
+       попадает в обёртки), но в Annotations прогона на GitHub заслоняют собой всё остальное, и
+       новое предупреждение в этой куче никто не заметит. Дешевле убрать причину: то, чей тип
+       вырезан, вырезано следом. -->
+
+  <!-- Рисовальщики: сам пакет удалён выше, здесь — поля и методы, которые их отдают и принимают. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/field[@name='mRenderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/field[@name='mLegendRenderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/method[@name='getRenderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/method[@name='setRenderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/method[@name='getLegendRenderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/field[@name='mAxisRendererLeft']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/field[@name='mAxisRendererRight']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/field[@name='mXAxisRenderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='getRendererXAxis']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='getRendererLeftYAxis']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='getRendererRightYAxis']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='setXAxisRenderer']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='setRendererLeftYAxis']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='BarLineChartBase']/method[@name='setRendererRightYAxis']" />
+
+  <!-- Подсчёт попадания в точку. `Highlight` и `Range` остаются — это результат, с которым мы
+       работаем (план 23 §3.2); уходят сами вычислители: они держат ссылку на
+       `BarLineScatterCandleBubbleDataProvider`, вырезанный выше, и построены на дженерике Java.
+       Считает попадание библиотека сама, из C# эти классы не нужны. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.highlight']/class[@name='ChartHighlighter']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.highlight']/class[@name='BarHighlighter']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.highlight']/class[@name='HorizontalBarHighlighter']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.highlight']/class[@name='CombinedHighlighter']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.highlight']/class[@name='PieRadarHighlighter']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.highlight']/class[@name='PieHighlighter']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.highlight']/class[@name='RadarHighlighter']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='Chart']/method[@name='setHighlighter']" />
+
+  <!-- Заполнение под линией: единственный метод `IFillFormatter` принимает `LineDataProvider`,
+       вырезанный выше, и из-за него негодным считался весь интерфейс, а следом — `ILineDataSet`,
+       который его отдаёт, и всё, что принимает уже `ILineDataSet` (`LineData`, `Transformer`).
+       Один метод тянул за собой шесть предупреждений. Заливку мы задаём цветом и прозрачностью,
+       своей формулы линии заполнения у нас нет. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.formatter']/interface[@name='IFillFormatter']/method[@name='getFillLinePosition']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.formatter']/class[@name='DefaultFillFormatter']/method[@name='getFillLinePosition']" />
+
+  <!-- Осколки видов графиков, удалённых в разделе 1: вложенные типы переживают своего хозяина,
+       потому что в api.xml они записаны отдельно. Следом — то, что осталось без них. -->
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='CombinedChart.DrawOrder']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='HorizontalBarChart.1']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='PieRadarChartBase.1']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='PieRadarChartBase.2']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.charts']/class[@name='ScatterChart.ScatterShape']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.data']/class[@name='ScatterDataSet']" />
+  <remove-node path="/api/package[@name='com.github.mikephil.charting.listener']/class[@name='PieRadarChartTouchListener']" />
 </metadata>
