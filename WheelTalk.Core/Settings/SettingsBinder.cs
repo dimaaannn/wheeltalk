@@ -65,10 +65,16 @@ public sealed class SettingsBinder
         if (descriptor.Transient)
         {
             descriptor.Apply(value);
+            descriptor.AfterEdit?.Invoke();
             return;
         }
 
         _settings.Set(descriptor.Key, value, descriptor.GlobalOnly);
+
+        // После записи, а не вместо неё: крючок вправе опереться на уже применённое значение
+        // (_settings.Set поднимает Changed, а тот прогоняет Apply). И только здесь — это
+        // единственное место, где точно известно, что значение изменил человек.
+        descriptor.AfterEdit?.Invoke();
     }
 
     /// <summary>

@@ -58,6 +58,14 @@ public static class LogEvents
         /// трассировкой на каждый его такт хоронит настоящую причину под собой.</summary>
         public const int ProtocolWriteAbandonedId = 1007;
         public const string ProtocolWriteAbandonedName = "ProtocolWriteAbandoned";
+
+        /// <summary>Опрос колеса не влез в запись (<see cref="Ports.WriteTooLongException"/>).
+        /// Уровнем ниже <see cref="ProtocolWriteFailedId"/> по той же причине, что и
+        /// <see cref="ProtocolWriteAbandonedId"/>: это свойство линка, а не команды, транспорт уже
+        /// сказал о нём один раз громко, и повторять на каждом такте опроса значит хоронить
+        /// сказанное.</summary>
+        public const int ProtocolWriteTooLongId = 1008;
+        public const string ProtocolWriteTooLongName = "ProtocolWriteTooLong";
     }
 
     /// <summary>2xxx — frame unpacking (byte-assembly automatons).</summary>
@@ -178,5 +186,14 @@ public static class LogEvents
 
         public const int ImV2ModelUnknownId = 3022;
         public const string ImV2ModelUnknownName = "ImV2ModelUnknown";
+
+        /// <summary>InMotion V1: пароль ушёл шесть раз, кадры идут, а колесо так и не
+        /// представилось. Единственный след «нас не пустили» в журнале — само молчание в нём не
+        /// видно.</summary>
+        public const int ImPasswordRejectedId = 3023;
+        public const string ImPasswordRejectedName = "ImPasswordRejected";
+
+        public const int ImPasswordRetryId = 3024;
+        public const string ImPasswordRetryName = "ImPasswordRetry";
     }
 }

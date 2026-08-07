@@ -83,6 +83,21 @@ public sealed class SettingDescriptor
     public required Func<string> Current { get; init; }
 
     /// <summary>
+    /// Что сделать <b>после правки человеком</b> — и только после неё. Зовётся из
+    /// <see cref="SettingsBinder.Set"/>, то есть с одного-единственного места: когда значение
+    /// изменил человек.
+    /// <para>
+    /// Отдельно от <see cref="Apply"/>, потому что это разные события, сколько бы ни казалось
+    /// обратное. <see cref="Apply"/> — восстановление: он зовётся на старте приложения, при смене
+    /// слоя, при смене колеса и на любую правку **соседней** настройки. Действие, повешенное туда,
+    /// срабатывает, когда человек ничего не делал, — и утаскивает за собой всё, до чего дотянется:
+    /// пароль InMotion так поднимал <c>WheelSession</c> в момент старта, до того как встанут
+    /// обработчики падений.
+    /// </para>
+    /// </summary>
+    public Action? AfterEdit { get; init; }
+
+    /// <summary>
     /// The wheel reports this and the decoder overwrites it on the first frame — hardware PWM, the
     /// Alexovik firmware flag, the headlight. Shown, never stored: saved as a wheel override it
     /// would come back on its own at the next connection and look like an edit nobody made.

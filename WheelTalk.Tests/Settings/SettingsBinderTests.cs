@@ -21,6 +21,9 @@ public class SettingsBinderTests
         public bool HwPwm { get; set; }
         public bool AlarmsEnabled { get; set; } = true;
         public bool Sound { get; set; } = true;
+
+        /// <summary>Сколько раз сработал крючок «правил человек» — см. <see cref="SettingDescriptor.AfterEdit"/>.</summary>
+        public int Edits { get; set; }
     }
 
     [Fact]
@@ -158,6 +161,53 @@ public class SettingsBinderTests
             d => d.Key == "Alerts:PwmWarning");
     }
 
+    /// <summary>
+    /// Крючок «правил человек» — ровно про правку человеком, и ни про что другое. Заведён под
+    /// пароль InMotion: его смена обязана начать разговор с колесом заново, а вот старт приложения,
+    /// смена слоя, смена колеса и правка соседней строки — не обязаны. Всё это идёт через
+    /// <see cref="SettingsBinder.Apply"/>, и повешенное туда действие срабатывало бы, когда человек
+    /// ничего не делал.
+    /// </summary>
+    [Fact]
+    public void The_after_edit_hook_fires_for_an_edit_and_for_nothing_else()
+    {
+        var options = new LiveOptions();
+        var (binder, settings) = Build(options);
+        var edited = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
+        var neighbour = binder.Descriptors.First(d => d.Key == "AlertSignals:Sound");
+
+        binder.Set(edited, "70");
+        Assert.Equal(1, options.Edits);
+
+        // Восстановление состояния — не правка. Старт приложения зовёт ровно это.
+        binder.Apply();
+        // Правка соседней строки прогоняет Apply по всем описаниям, включая наше.
+        binder.Set(neighbour, "False");
+        // Смена колеса и смена слоя — тоже Apply, только изнутри LayeredSettings.
+        settings.Scope = MTen3;
+        settings.Scope = LayeredSettings.GlobalScope;
+
+        Assert.Equal(1, options.Edits);
+    }
+
+    /// <summary>
+    /// Та же цифра, введённая второй раз, — по-прежнему правка. Для настройки это ничего не
+    /// меняет, а для человека меняет всё: повторить ввод — самый частый жест того, кто не уверен,
+    /// что нажатие засчиталось, и промолчать на него значит оставить его в тупике.
+    /// </summary>
+    [Fact]
+    public void The_same_value_typed_again_is_still_an_edit()
+    {
+        var options = new LiveOptions();
+        var (binder, _) = Build(options);
+        var descriptor = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
+
+        binder.Set(descriptor, "70");
+        binder.Set(descriptor, "70");
+
+        Assert.Equal(2, options.Edits);
+    }
+
     private static (SettingsBinder Binder, LayeredSettings Settings) Build(LiveOptions options)
     {
         var descriptors = Describe(options);
@@ -188,6 +238,7 @@ public class SettingsBinderTests
             IsVisible = () => options.AlarmsEnabled,
             Current = () => options.PwmWarning.ToString(CultureInfo.InvariantCulture),
             Apply = text => options.PwmWarning = int.Parse(text, CultureInfo.InvariantCulture),
+            AfterEdit = () => options.Edits++,
         },
         new SettingDescriptor
         {

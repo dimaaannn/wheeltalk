@@ -46,7 +46,11 @@ public static class SettingsServiceCollectionExtensions
             sp.GetRequiredService<IOptions<PowerOptions>>().Value,
             // Лениво и через делегат: сессия строится позже описаний, а спрашивают её уже во время
             // отрисовки страницы, когда колесо назвалось.
-            () => sp.GetRequiredService<WheelSession>().Protocol)));
+            () => sp.GetRequiredService<WheelSession>().Protocol,
+            // Тем же ленивым способом и по той же причине: пароль правят и с главного экрана, и со
+            // страницы настроек, а разговор с колесом после правки обязан начаться заново в обоих
+            // случаях. До первого подключения зов безвреден — сессии нечего перезапускать.
+            () => sp.GetRequiredService<WheelSession>().RestartAuthentication())));
         services.AddSingleton(sp => new LayeredSettings(
             sp.GetRequiredService<ISettingsStore>(),
             SettingsBinder.FactoryDefaults(sp.GetRequiredService<IReadOnlyList<SettingDescriptor>>()))

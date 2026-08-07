@@ -674,6 +674,16 @@ public sealed class MainActivity : Activity
         // начале.
         return LinkStatus.Evaluate(_session.CurrentState, StaleFor, _problem) switch
         {
+            // «Данных нет» — правда, но не вся: когда колесо не пустило, молчание объяснимо, и
+            // человек иначе смотрит в жёлтую плашку без единой подсказки. Окна ввода нет намеренно
+            // (решение владельца 08.08.2026) — вместо него причина и путь к настройке, где пароль
+            // задаётся. Фазу по-прежнему выбирает ядро: здесь только текст внутри уже решённой им
+            // ветки, иначе «нужен пароль» однажды легло бы поверх «переподключение».
+            // Реплей исключён: писать в запись некуда, ответа не будет никогда, и дамп, где
+            // slow-info не пришёл в первые секунды (обрезанный, снятый с середины поездки),
+            // объявил бы виноватым пароль. Плеер работал до всей этой затеи — врать в нём нельзя.
+            WheelLink.NoData when _session.AwaitingPassword && !_transport.IsReplay =>
+                (LinkPhase.Connecting, AppStrings.StatePasswordNeeded),
             WheelLink.NoData => (LinkPhase.Connecting, AppStrings.StateNoData),
             WheelLink.Connected => (LinkPhase.JustConnected, AppStrings.StateConnected),
             WheelLink.Connecting => (LinkPhase.Connecting, AppStrings.StateConnecting),

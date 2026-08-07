@@ -24,7 +24,7 @@
 		     ApplicationVersion — versionCode, целое, растёт на единицу на каждую выпущенную
 		     сборку и никогда не убывает: по нему Android решает, обновление это или откат.
 		     ApplicationDisplayVersion — versionName, то, что видит человек. -->
-		<ApplicationVersion>9</ApplicationVersion>
+		<ApplicationVersion>10</ApplicationVersion>
 		<ApplicationDisplayVersion>1.3.0</ApplicationDisplayVersion>
 
 		<!-- То же обоснование, что в WheelTalk.App: 23 хватило бы транспорту, но проверка включённых

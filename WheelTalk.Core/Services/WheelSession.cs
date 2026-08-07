@@ -37,6 +37,10 @@ public sealed partial class WheelSession : IDisposable
     private WheelService? _service;
     private IDisposable? _serviceTelemetry;
 
+    // Тот же декодер, что внутри _service, — но под своим именем: сервис о пароле ничего не знает,
+    // а лезть за декодером через него значило бы открыть его наружу ради одного вызова.
+    private IPasswordProtected? _passwordProtected;
+
     /// <summary>
     /// Состояние текущего подключения — сессия держит его ради одного: точки отсчёта «от старта»,
     /// которую наследует состояние следующей попытки (<see cref="BuildService"/>). Живёт до
@@ -177,6 +181,23 @@ public sealed partial class WheelSession : IDisposable
     /// <summary>«Сброс максимумов» — see <see cref="WheelService.ResetPeaks"/>. No-op with nothing connected.</summary>
     public void ResetPeaks() => _service?.ResetPeaks();
 
+    /// <summary>
+    /// Колесо не пустило: пароля нет либо он не подошёл (<see cref="Decoding.IPasswordProtected"/>).
+    /// Связь при этом исправна — кадры идут, линк живой, — поэтому это не состояние связи, а
+    /// отдельный ответ на отдельный вопрос: экран показывает по нему причину и путь к настройке.
+    /// </summary>
+    public bool AwaitingPassword => _passwordProtected?.AwaitingPassword ?? false;
+
+    /// <summary>
+    /// Пароль сменили в настройках — просим декодер начать разговор заново. Переподключение здесь
+    /// было бы лишним: линк живой, а протоколу нужен всего лишь новый кадр пароля.
+    /// <para>
+    /// Тихо ничего не делает, когда протокол пароля не спрашивает или сервиса нет вовсе, — вызвать
+    /// это по кнопке «сохранить» из настроек безопасно в любой момент.
+    /// </para>
+    /// </summary>
+    public void RestartAuthentication() => _passwordProtected?.RestartAuthentication();
+
     public void Dispose()
     {
         _transport.ConnectionLost -= OnConnectionLost;
@@ -259,7 +280,13 @@ public sealed partial class WheelSession : IDisposable
         state.SetStartTotalDistance(_wheelState?.StartTotalDistance ?? 0);
         _wheelState = state;
 
-        var decoder = new Decoder(state, BuildProtocolDecoder(family, state), _eventSink, _loggerFactory.CreateLogger<Decoder>());
+        var protocolDecoder = BuildProtocolDecoder(family, state);
+
+        // Живёт ровно столько же, сколько сервис: TearDownService снимает ссылку вместе с ним,
+        // иначе декодер прошлого подключения отвечал бы про пароль за новое.
+        _passwordProtected = protocolDecoder as IPasswordProtected;
+
+        var decoder = new Decoder(state, protocolDecoder, _eventSink, _loggerFactory.CreateLogger<Decoder>());
         return new WheelService(_transport, decoder, _loggerFactory.CreateLogger<WheelService>());
     }
 
@@ -455,6 +482,9 @@ public sealed partial class WheelSession : IDisposable
         StopWatchdog();
         _serviceTelemetry?.Dispose();
         _serviceTelemetry = null;
+
+        _passwordProtected = null;
+
         _service?.Dispose();
         _service = null;
     }

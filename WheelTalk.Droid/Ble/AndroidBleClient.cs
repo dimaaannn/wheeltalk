@@ -47,6 +47,29 @@ public sealed class AndroidBleClient : ITransport
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(12);
 
     /// <summary>
+    /// Сколько ждём <c>OnMtuChanged</c>, прежде чем идти дальше на умолчании. Согласование MTU —
+    /// не то, ради чего стоит держать человека у экрана: не ответили — подключаемся как есть, а
+    /// команда, которой не хватит места, честно провалится в <see cref="BeginWrite"/>.
+    /// </summary>
+    private static readonly TimeSpan MtuTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>ATT-заголовок записи: три байта из MTU уходят на opcode и handle.</summary>
+    private const int AttWriteOverhead = 3;
+
+    /// <summary>MTU по умолчанию: 23 байта, то есть 20 байт полезной нагрузки на запись.</summary>
+    private const int DefaultAttMtu = 23;
+
+    /// <summary>
+    /// Просим столько же, сколько оригинал (<c>BluetoothService.kt:178</c>). Не роскошь: команды
+    /// InMotion V1 — 22 байта (16 байт тела, обязательный escape <c>A5</c> перед <c>0x55</c> в id,
+    /// заголовок, контрольная и хвост), и на умолчании стек резал их до 20 молча — кадр оставался
+    /// без контрольной и без <c>55 55</c>, колесо его не закрывало и не отвечало ничем, кроме
+    /// «привета» BLE-модуля (разбор дампа vivo I2407 от 07.08.2026). Заодно снимает вопрос с
+    /// расширенных кадров KingSong <c>0xD0</c>/<c>0xD1</c> (план 21 §6).
+    /// </summary>
+    private const int WantedAttMtu = 517;
+
+    /// <summary>
     /// Pause before re-attempting a write the GATT stack refused outright ("busy" — one GATT
     /// operation runs at a time, and the wheel notifies about twenty times a second). Short: this
     /// is the failure roadmap "Пункт 9" traces the silent Beep to, and the fix is to keep the
@@ -79,6 +102,16 @@ public sealed class AndroidBleClient : ITransport
     private BluetoothGattCharacteristic? _notifyCharacteristic;
     private BluetoothGattCharacteristic? _writeCharacteristic;
     private bool _disconnecting;
+
+    // Согласованный MTU держится здесь, а не спрашивается у стека: getter'а на него в API нет,
+    // OnMtuChanged — единственный способ узнать значение. volatile, потому что пишет binder-поток
+    // колбэка, а читает поток очереди записи.
+    private volatile int _attMtu = DefaultAttMtu;
+
+    // «Команда не влезает» — свойство линка, а не команды: оно не изменится до переподключения.
+    // Громко жалуемся один раз за линк, дальше только Debug из WheelService, иначе десять
+    // строк ошибки в секунду похоронят настоящую причину.
+    private int _tooLongReported;
 
     public event Action<byte[]>? DataReceived;
     public event Action? ConnectionLost;
@@ -231,6 +264,10 @@ public sealed class AndroidBleClient : ITransport
         _gatt = null;
         _notifyCharacteristic = null;
         _writeCharacteristic = null;
+        // Следующий линк начнёт переговоры о MTU заново — унаследованное значение соврало бы о
+        // размере записи ровно в том случае, когда переговоры не состоятся.
+        _attMtu = DefaultAttMtu;
+        Interlocked.Exchange(ref _tooLongReported, 0);
 
         // Порядок важен: сначала характеристики обнулены, и только потом очередь узнаёт об обрыве —
         // тогда команда, которую насос успел вынуть, гарантированно упирается в пустой линк, а не
@@ -289,6 +326,21 @@ public sealed class AndroidBleClient : ITransport
         {
             // Not "busy" — the link is gone, and it staying gone would otherwise retry forever.
             throw new WriteLinkLostException();
+        }
+
+        // Стек не отказывает в записи длиннее MTU — он молча отправляет первые MTU-3 байт. Кадр
+        // приходит колесу без хвоста, колесо молчит, а в журнале стоит «Cmd.Sent». Проверка здесь
+        // и нигде больше: только транспорт знает согласованный размер.
+        int limit = _attMtu - AttWriteOverhead;
+        if (cmd.Length > limit)
+        {
+            if (Interlocked.Exchange(ref _tooLongReported, 1) == 0)
+            {
+                _logger.LogError("Ble.WriteTooLong — команда {Length} Б не влезает в запись {Limit} Б (MTU {Mtu})",
+                    cmd.Length, limit, _attMtu);
+            }
+
+            throw new WriteTooLongException(cmd.Length, limit);
         }
 
         if (OperatingSystem.IsAndroidVersionAtLeast(33))
@@ -367,9 +419,19 @@ public sealed class AndroidBleClient : ITransport
     private sealed class GattCallbackAdapter(AndroidBleClient client, TaskCompletionSource ready, ILogger logger)
         : BluetoothGattCallback
     {
+        // Спрашивали ли MTU мы сами. Часть стеков и часть колёс затевают переговоры первыми, и
+        // непрошеный OnMtuChanged посреди подключения завершил бы `ready` раньше подписки — то
+        // есть до того, как кадры вообще могут прийти. Ставится и читается только в колбэках,
+        // а они приходят по одному в binder-потоке.
+        private bool _mtuAsked;
+
         public override void OnConnectionStateChange(BluetoothGatt? gatt, GattStatus status, ProfileState newState)
         {
-            logger.LogInformation("Ble.ConnectionStateChanged {Status} {State}", status, newState);
+            // Число рядом с именем не для красоты: здесь Android отдаёт коды HCI, а не ATT, и
+            // привязка зовёт их именами ATT. Так `8` — таймаут супервизии линка (колесо уехало,
+            // выключилось, модуль перезагрузился) — читается как `InsufficientAuthorization`, и
+            // разбор дампа от 07.08.2026 ушёл искать несуществующий отказ в правах.
+            logger.LogInformation("Ble.ConnectionStateChanged {Status} ({Code}) {State}", status, (int)status, newState);
 
             if (newState == ProfileState.Connected)
             {
@@ -446,12 +508,70 @@ public sealed class AndroidBleClient : ITransport
                 bool granted = gatt?.RequestConnectionPriority(GattConnectionPriority.High) ?? false;
                 logger.LogInformation("Ble.HighPriorityRequested {Granted}", granted);
 
-                ready.TrySetResult();
+                RequestMtu(gatt);
             }
             else
             {
                 ready.TrySetException(new InvalidOperationException($"Enabling notifications failed (status {status})"));
             }
+        }
+
+        /// <summary>
+        /// Последний шаг бутстрапа: без него запись остаётся 20-байтовой, а команды InMotion V1 —
+        /// 22-байтовыми (см. <see cref="WantedAttMtu"/>). Стоит здесь, а не раньше: стек ведёт одну
+        /// GATT-операцию за раз, и запрос до подтверждения CCCD столкнулся бы с ним.
+        /// <para>
+        /// Отказ и молчание не срывают подключение — <c>ready</c> завершается в любом случае. Это
+        /// шаг бутстрапа, а он не должен становиться местом, где бутстрап встаёт: колесо с кадрами
+        /// ≤ 20 байт (KingSong, Gotway) прекрасно живёт и на умолчании.
+        /// </para>
+        /// </summary>
+        private void RequestMtu(BluetoothGatt? gatt)
+        {
+            if (gatt?.RequestMtu(WantedAttMtu) != true)
+            {
+                // Число берётся из живого поля, а не из умолчания: непрошеный OnMtuChanged мог уже
+                // поднять размер, и тогда «остаёмся на 23» разошлось бы с тем, что уходит в эфир.
+                logger.LogWarning("Ble.MtuRequestRefused — остаёмся на {Mtu} Б", client._attMtu);
+                ready.TrySetResult();
+                return;
+            }
+
+            _mtuAsked = true;
+
+            // TrySetResult идемпотентен: кто придёт первым — ответ стека или этот срок, — тот и
+            // завершит подключение. Отдельного состояния для гонки не нужно.
+            _ = Task.Delay(MtuTimeout).ContinueWith(_ =>
+            {
+                if (ready.TrySetResult()) logger.LogWarning("Ble.MtuTimeout — ответа нет, идём на {Mtu} Б", DefaultAttMtu);
+            }, TaskScheduler.Default);
+        }
+
+        public override void OnMtuChanged(BluetoothGatt? gatt, int mtu, GattStatus status)
+        {
+            logger.LogInformation("Ble.MtuChanged {Mtu} {Status}", mtu, status);
+
+            // Ответ прошлого линка не смеет говорить за нынешний: Close() уже поставленные в
+            // очередь колбэки не отменяет. Порядок «линк оборвался → подняли новый → на нём MTU не
+            // дали → прилетел чужой 517» вернул бы ровно ту поломку, против которой всё это
+            // написано: 22 байта прошли бы проверку и ушли обрезанными.
+            if (!ReferenceEquals(gatt, client._gatt)) return;
+
+            // Успех может прийти и с меньшим размером, чем просили, — верим стеку, но не ниже
+            // гарантированного минимума.
+            if (status == GattStatus.Success && mtu > DefaultAttMtu)
+            {
+                client._attMtu = mtu;
+                // Размер записи вырос — прежняя жалоба про «не влезает» больше не о нём. Без
+                // сброса опоздавший на MtuTimeout ответ оставлял бы защёлку взведённой: первый
+                // промах в переходном окне съедал единственный громкий разбор, и настоящая
+                // нехватка на этом линке потом шла бы только в Debug.
+                Interlocked.Exchange(ref client._tooLongReported, 0);
+            }
+
+            // Размер записи верен в любом случае, а вот завершать подключение вправе только ответ
+            // на наш собственный запрос — см. _mtuAsked.
+            if (_mtuAsked) ready.TrySetResult();
         }
 
         /// <summary>

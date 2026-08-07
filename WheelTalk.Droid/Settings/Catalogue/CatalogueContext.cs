@@ -31,4 +31,5 @@ public sealed record CatalogueContext(
     WheelIdentity Identity,
     ScreenOptions Screen,
     PowerOptions Power,
-    Func<WheelProtocol?> Protocol);
+    Func<WheelProtocol?> Protocol,
+    Action RestartAuthentication);

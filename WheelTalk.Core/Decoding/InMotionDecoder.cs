@@ -53,13 +53,23 @@ namespace WheelTalk.Core.Decoding;
 ///     <c>setMode(int)</c> — dead code in the original (declared, never called).
 /// </para>
 /// </summary>
-public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
+public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected, IDisposable
 {
     private static readonly Dictionary<int, InMotionCanMessage.IdValue> IdByValue =
         Enum.GetValues<InMotionCanMessage.IdValue>().ToDictionary(v => (int)v);
 
+    /// <summary>
+    /// Сколько ждать ответа после того, как пароль ушёл все шесть раз. Мера взята с эталонного
+    /// дампа оригинала (`RAW_inmotion_V8S.csv`): там от последнего кадра пароля до slow-info
+    /// проходит ~150 мс, а весь разговор от подключения до телеметрии укладывается в секунду.
+    /// Три секунды — с запасом на порядок, и всё ещё быстрее, чем человек успеет удивиться пустому
+    /// экрану.
+    /// </summary>
+    private static readonly TimeSpan PasswordGrace = TimeSpan.FromSeconds(3);
+
     private readonly WheelState _state;
     private readonly IWheelConfig _config;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<InMotionDecoder> _logger;
     private readonly InMotionUnpacker _unpacker;
     private readonly ITimer _keepAliveTimer;
@@ -68,6 +78,21 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
     private int _passwordSent;
     private bool _needSlowData = true;
     private int _updateStep;
+
+    // Ждём ли ответа на пароль и с какого мгновения. Оба поля принадлежат такту опроса и только
+    // ему — потому и без барьеров: заявка снаружи приходит через _restartRequested.
+    private bool _answerPending;
+    private long _answerDueSince;
+
+    // Пишет поток кадров, читает такт.
+    private volatile bool _framesSeen;
+
+    // Пишет такт, читает поток экрана (AwaitingPassword).
+    private volatile bool _rejectionReported;
+
+    // Заявка «пароль сменился» от потока экрана. Исполняет её такт: у состояния пароля один
+    // хозяин, и это дешевле и понятнее любого замка.
+    private int _restartRequested;
 
     // Parsed from the slow-info frame but not persisted anywhere else yet — no IWheelConfig slot
     // exists for any of these (see class doc). A future wheel-settings-import stage (plan 21 §7
@@ -86,6 +111,7 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
     {
         _state = state;
         _config = config;
+        _timeProvider = timeProvider;
         _logger = logger;
         _state.WheelType = WheelType.Inmotion;
         // Not independently DI-resolved (always `new`'d here) — shares this decoder's typed logger
@@ -100,6 +126,12 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
 
     public bool IsReady => _model != InMotionModel.Unknown && _state.Serial.Length > 0;
 
+    /// <inheritdoc />
+    /// <remarks>Заявка на новый пароль снимает признак сразу, не дожидаясь такта: пароль уже
+    /// сменили, и держать причину до ближайшего такта значило бы мигать ею на экране.</remarks>
+    public bool AwaitingPassword =>
+        _rejectionReported && Volatile.Read(ref _restartRequested) == 0 && _model == InMotionModel.Unknown;
+
     public int GetCellsForWheel() => 20;
 
     /// <summary>Port of InMotionAdapter.decode(byte[]).</summary>
@@ -112,6 +144,11 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
         foreach (byte c in data)
         {
             if (!_unpacker.AddChar(c)) continue;
+
+            // Кадр собрался — значит связь живая и молчание колеса именно наше, а не «колеса нет».
+            // Без этой отметки выключенное колесо просило бы пароль вместо того, чтобы честно
+            // отвалиться по сторожу данных.
+            _framesSeen = true;
 
             // Port of the unpacker's own `updateStep = 0` side effect on frame completion
             // (InMotionAdapter.java:1303) — moved here because our unpacker doesn't know about the
@@ -383,12 +420,25 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
     /// the write-failure fast-retry (<c>updateStep = 5</c>) — see class doc.</summary>
     private void OnKeepAliveTick()
     {
+        if (Interlocked.Exchange(ref _restartRequested, 0) == 1) ApplyRestart();
+
         if (_updateStep == 0)
         {
             if (_passwordSent < 6)
             {
                 RequestWrite(InMotionCanMessage.GetPassword(_config.InMotionPassword).WriteBuffer());
                 _passwordSent++;
+
+                // Ждать начинаем с ПЕРВОЙ отправки, а не с шестой. Шестой может не случиться
+                // вовсе: колесо отвечает на пароль кадром PinCode, а тот обнуляет счётчик
+                // смыслом (_passwordSent = int.MaxValue в Decode) — и ветка, в которой стоял
+                // прежний взвод срока, больше не берётся ни разу. То есть на колесе, которое
+                // отвечает, вопрос о пароле не поднялся бы никогда — ровно там, где он и нужен.
+                if (!_answerPending)
+                {
+                    _answerPending = true;
+                    _answerDueSince = _timeProvider.GetTimestamp();
+                }
             }
             else if (_model == InMotionModel.Unknown || _needSlowData)
             {
@@ -400,6 +450,55 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
             }
         }
         _updateStep = (_updateStep + 1) % 10;
+
+        CheckPasswordAnswer();
+    }
+
+    /// <summary>
+    /// Пустило ли колесо. Признак допуска один — разобранный slow-info: пока модель неизвестна,
+    /// колесо с нами не разговаривает. Ответ на сам кадр пароля (<c>PinCode</c>) признаком не
+    /// считается: он приходит и до того, как колесо решит, и оригинал по нему всего лишь
+    /// перестаёт слать пароль.
+    /// </summary>
+    private void CheckPasswordAnswer()
+    {
+        if (!_answerPending) return;
+
+        // Заявка подана, но исполнится со следующего такта: этот успел пройти Interlocked.Exchange
+        // раньше нажатия. Отказ отсюда был бы отказом по СТАРОМУ паролю, поднятым ровно в тот миг,
+        // когда человек ввёл новый, — и настоящий отказ через три секунды он бы уже не отличил.
+        if (Volatile.Read(ref _restartRequested) == 1) return;
+
+        if (_model != InMotionModel.Unknown)
+        {
+            _answerPending = false; // пустило — больше не спрашиваем
+            return;
+        }
+
+        if (_rejectionReported || !_framesSeen) return;
+        if (_timeProvider.GetElapsedTime(_answerDueSince) < PasswordGrace) return;
+
+        _rejectionReported = true;
+        LogPasswordRejected();
+    }
+
+    /// <summary>
+    /// <see cref="IPasswordProtected.RestartAuthentication"/> — своё, у оригинала такого пути нет
+    /// (см. интерфейс). Зовётся из потока экрана и потому <b>только оставляет заявку</b>: само
+    /// состояние правит такт, единственный его хозяин.
+    /// </summary>
+    public void RestartAuthentication() => Interlocked.Exchange(ref _restartRequested, 1);
+
+    /// <summary>Исполнение заявки — уже в такте.</summary>
+    private void ApplyRestart()
+    {
+        _passwordSent = 0;
+        _answerPending = false;
+        _rejectionReported = false;
+        _needSlowData = true;
+        // Такт шлёт только при _updateStep == 0, а он сбрасывается любым входящим кадром — новый
+        // пароль уйдёт в ближайшие ~100 мс сам.
+        LogPasswordRetry();
     }
 
     private void RequestWrite(byte[] bytes) => WriteRequested?.Invoke(bytes);
@@ -459,4 +558,14 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IDisposable
     [LoggerMessage(EventId = LogEvents.Decoding.ImAlertId, EventName = LogEvents.Decoding.ImAlertName,
         Level = LogLevel.Warning, Message = "InMotion alert: {Alert}")]
     private partial void LogAlert(string alert);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.ImPasswordRejectedId, EventName = LogEvents.Decoding.ImPasswordRejectedName,
+        // Без числа отправок: колесо, ответившее на пароль кадром PinCode, обнуляет счётчик
+        // смыслом, и «шесть раз» врало бы ровно в том случае, ради которого строка и заведена.
+        Level = LogLevel.Warning, Message = "Im.PasswordRejected — пароль отправлен, кадры идут, колесо не представилось")]
+    private partial void LogPasswordRejected();
+
+    [LoggerMessage(EventId = LogEvents.Decoding.ImPasswordRetryId, EventName = LogEvents.Decoding.ImPasswordRetryName,
+        Level = LogLevel.Information, Message = "Im.PasswordRetry — пробуем новый пароль без переподключения")]
+    private partial void LogPasswordRetry();
 }

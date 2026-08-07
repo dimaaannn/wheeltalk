@@ -96,9 +96,10 @@ TFM `net10.0-android36.0` и `net9.0-android35.0`, владельцы — Micros
 
 Наша модель: [`LayeredSettings`](../WheelTalk.Core/Settings/LayeredSettings.cs) (заводское →
 общее → колесо, плюс `ClearOverride`/`ClearGlobal`/`PromoteToGlobal`),
-[`SettingDescriptor`](../WheelTalk.Core/Settings/SettingDescriptor.cs) (46 описаний — на момент
-исследования было 45, позже добавился `Wheel:Name`; каждое со
-своим `Apply`/`Current`, `IsVisible`, `GlobalOnly`, `ReportedByWheel`) и вариант B редизайна
+[`SettingDescriptor`](../WheelTalk.Core/Settings/SettingDescriptor.cs) (**50 описаний**, сверено
+08.08.2026; на момент исследования было 45, потом добавился `Wheel:Name` и далее по мелочи; каждое
+со своим `Apply`/`Current`, `IsVisible`, `GlobalOnly`, `ReportedByWheel`, у одного —
+`AfterEdit`) и вариант B редизайна
 (сегментный переключатель слоя, сводки, подпись слоя под значением).
 
 | Часть нашей модели | Ложится на Preference? | Подробно |

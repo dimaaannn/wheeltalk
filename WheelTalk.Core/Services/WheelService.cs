@@ -84,6 +84,13 @@ public sealed partial class WheelService : IDisposable
             LogProtocolWriteAbandoned(Convert.ToHexString(bytes));
             return;
         }
+        catch (WriteTooLongException ex)
+        {
+            // Тоже свойство линка, а не команды: до переподключения не изменится, и транспорт уже
+            // сказал о нём один раз в полный голос.
+            LogProtocolWriteTooLong(Convert.ToHexString(bytes), ex.Length, ex.Limit);
+            return;
+        }
         catch (Exception ex)
         {
             LogProtocolWriteFailed(ex, Convert.ToHexString(bytes));
@@ -155,6 +162,10 @@ public sealed partial class WheelService : IDisposable
     [LoggerMessage(EventId = LogEvents.Service.ProtocolWriteAbandonedId, EventName = LogEvents.Service.ProtocolWriteAbandonedName,
         Level = LogLevel.Debug, Message = "Protocol-initiated write abandoned — link gone {Hex}")]
     private partial void LogProtocolWriteAbandoned(string hex);
+
+    [LoggerMessage(EventId = LogEvents.Service.ProtocolWriteTooLongId, EventName = LogEvents.Service.ProtocolWriteTooLongName,
+        Level = LogLevel.Debug, Message = "Protocol-initiated write does not fit ({Length} B > {Limit} B) {Hex}")]
+    private partial void LogProtocolWriteTooLong(string hex, int length, int limit);
 
     [LoggerMessage(EventId = LogEvents.Service.CmdSkippedId, EventName = LogEvents.Service.CmdSkippedName,
         Level = LogLevel.Warning, Message = "Cmd.Skipped {Command} (no-op for the active protocol)")]

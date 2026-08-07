@@ -33,6 +33,7 @@
   <data name="StateDisconnected" xml:space="preserve"><value>Отключено</value></data>
   <data name="StateConnected" xml:space="preserve"><value>Подключено</value></data>
   <data name="StateNoData" xml:space="preserve"><value>Нет данных</value></data>
+  <data name="StatePasswordNeeded" xml:space="preserve"><value>Не задан пароль: Настройки → Колесо</value></data>
   <data name="StateConnecting" xml:space="preserve"><value>Подключение…</value></data>
   <data name="StateReconnecting" xml:space="preserve"><value>Переподключение…</value></data>
   <data name="StateNoWheelSelected" xml:space="preserve"><value>Колесо не выбрано — нажмите, чтобы найти</value></data>
