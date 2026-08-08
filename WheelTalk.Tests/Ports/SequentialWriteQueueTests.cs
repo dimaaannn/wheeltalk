@@ -194,6 +194,30 @@ public class SequentialWriteQueueTests
         Assert.Single(started);
     }
 
+    /// <summary>
+    /// Договор, записанный в <see cref="SequentialWriteQueue"/>'s constructor doc: <c>beginWrite</c>
+    /// must throw for a dead link, not answer "busy". <see cref="SequentialWriteQueue.Abandon"/>
+    /// relies on exactly this — it wakes only the in-flight command and leaves everything still
+    /// queued to <c>beginWrite</c> itself. A <c>beginWrite</c> that instead returns <c>false</c>
+    /// makes those commands retry until <c>busyDeadline</c> and land in <see cref="WriteRefusedException"/>
+    /// — the wrong exception in the log, not a hang, but still the contract's whole reason to exist.
+    /// </summary>
+    [Fact]
+    public async Task A_beginWrite_that_answers_busy_instead_of_throwing_for_a_dead_link_reports_the_wrong_failure()
+    {
+        var time = new FakeTimeProvider();
+        int attempts = 0;
+        var queue = new SequentialWriteQueue(_ => { attempts++; return false; },
+            time, BusyRetryDelay, BusyDeadline, ConfirmationTimeout);
+
+        var delivery = queue.Enqueue([1]);
+
+        await WaitUntil(() => attempts >= 1);
+        time.Advance(BusyDeadline);
+
+        await Assert.ThrowsAsync<WriteRefusedException>(() => delivery);
+    }
+
     [Fact]
     public async Task An_immediate_permanent_failure_faults_that_command_without_retrying_forever()
     {

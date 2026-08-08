@@ -85,29 +85,18 @@ public sealed class SequentialWriteQueue
     }
 
     /// <summary>
-    /// Линк исчез — доставлять больше некуда. Всё, что ждёт подтверждения и стоит в очереди,
-    /// проваливается сразу и с понятной причиной.
+    /// Линк исчез — будит команду, что уже ждёт подтверждения, вместо того чтобы дать ей отсидеть
+    /// полный <c>confirmationTimeout</c> после уже случившегося обрыва.
     /// <para>
-    /// Нужно потому, что <paramref name="confirmationTimeout"/> — предохранитель, а не способ
-    /// узнать об обрыве: без этого вызова каждая команда в очереди отсиживала полный тайм-аут
-    /// после уже случившегося обрыва и попадала в журнал ошибкой записи.
-    /// </para>
-    /// <para>
-    /// Гонка с насосом безопасна в обе стороны: команду, которую он успел вынуть из очереди до
-    /// этого вызова, завалит сам <c>beginWrite</c> — линка у него уже нет, и по договору из
-    /// <see cref="SequentialWriteQueue(Func{byte[], bool}, TimeProvider, TimeSpan, TimeSpan, TimeSpan)"/>
-    /// он бросает, а не отвечает «занято».
+    /// Всё остальное, что стоит в очереди, слить отсюда нарочно не пытаемся: канал объявлен с
+    /// <c>SingleReader = true</c>, а читатель у него один — насос в <see cref="PumpAsync"/>. Он
+    /// доберётся до каждой команды сам и провалит её тем же путём, каким проваливает любую другую:
+    /// вызовом <c>beginWrite</c>, который по контракту (см. конструктор) при мёртвом линке бросает,
+    /// а не отвечает «занято». Исход тот же <see cref="WriteLinkLostException"/>, без второго
+    /// читателя канала и без гонки, которую он бы туда принёс.
     /// </para>
     /// </summary>
-    public void Abandon()
-    {
-        Complete(success: false, new WriteLinkLostException());
-
-        while (_pending.Reader.TryRead(out var pending))
-        {
-            pending.Completion.TrySetException(new WriteLinkLostException());
-        }
-    }
+    public void Abandon() => Complete(success: false, new WriteLinkLostException());
 
     /// <summary>
     /// The platform learned the outcome of the write it previously accepted — advances the queue
