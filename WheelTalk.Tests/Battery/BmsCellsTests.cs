@@ -74,6 +74,31 @@ public class BmsCellsTests
         Assert.Equal(3.7, BmsCells.Average(Pack(3.6, 3.6), Pack(3.8, 3.8)), 3);
     }
 
+    /// <summary>
+    /// Молчащий пакет не отменяет ответа говорящего и не утягивает среднее к нулю: банок в нём не
+    /// ноль, их попросту нет. Случай не редкий и не внештатный — <b>два BMS отвечают не
+    /// одновременно</b>, и при каждом подключении есть секунда, когда кадры пришли только от
+    /// одного.
+    /// </summary>
+    [Fact]
+    public void A_silent_pack_does_not_spoil_the_answer_of_the_speaking_one()
+    {
+        Assert.Equal(3.6, BmsCells.Average(Pack(3.6, 3.6), new SmartBms()), 3);
+        Assert.Equal(3.8, BmsCells.Average(new SmartBms(), Pack(3.8, 3.8)), 3);
+    }
+
+    /// <summary>
+    /// Последовательно пакеты стоят или в параллель — среднему всё равно, и это не везение:
+    /// усредняются напряжения банок, а не складываются. При последовательном включении каждый пакет
+    /// держит половину напряжения, но банка в нём — та же банка. Складывать здесь нельзя, сколько бы
+    /// ни казалось, что «пакет ведь суммируется».
+    /// </summary>
+    [Fact]
+    public void Wiring_of_the_two_packs_does_not_change_the_average()
+    {
+        Assert.Equal(3.7, BmsCells.Average(Pack(3.7, 3.7), Pack(3.7, 3.7)), 3);
+    }
+
     [Fact]
     public void No_cells_at_all_means_no_answer_rather_than_zero_volts()
     {
