@@ -106,9 +106,14 @@ internal static class WheelPage
                 // the original stores them, and a stored value we renumber is a wheel that comes
                 // back configured differently.
                 Choices = ["0", "1", "2", "3", "4", "5", "6"],
+                // Третья подпись — 116,8 В, а не 117,6: столько даёт множитель настройки
+                // (67,2 × 1,7380952…), и столько же называет оригинал в своём описании —
+                // «67V/84V/100V/116V/134V/168V». Прежние 117,6 были нашей выдумкой из 28 × 4,2, и
+                // ряд оттуда не следует: 28-баночного колеса не существует, а ячеек эта настройка
+                // берёт 32. Расхождение множителя с ячейками — унаследованное, разбор в плане 27.
                 ChoiceLabelKeys =
                 [
-                    "SettingVoltage672", "SettingVoltage840", "SettingVoltage1008", "SettingVoltage1176",
+                    "SettingVoltage672", "SettingVoltage840", "SettingVoltage1008", "SettingVoltage1168",
                     "SettingVoltage1344", "SettingVoltage1680", "SettingVoltage1512",
                 ],
                 Current = () => wheel.GotwayVoltage,
