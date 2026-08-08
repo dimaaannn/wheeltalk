@@ -82,6 +82,10 @@ public static class SettingsServiceCollectionExtensions
             sp.GetRequiredService<ILogger<RideStore>>()));
         services.AddSingleton<RideExporter>();
 
+        // Колёса, к которым подключались (план 24 §А). Отметку ставит подписка на состояние сессии
+        // в CrashGuard, читает её экран поиска.
+        services.AddSingleton<KnownWheels>();
+
         // История для плиток-графиков (план 23 §5.6). Колесо делегатом, а не строкой: адрес меняется
         // в живом приложении, а читатель один.
         services.AddSingleton<IMetricHistory>(sp => new MetricHistoryReader(

@@ -74,6 +74,11 @@ public class SchemaMigrationTests
         Assert.Equal(1, temp.Count("pragma_table_info('telemetry')", "name = 'torque'"));
         Assert.Equal(1, temp.Count("pragma_table_info('wheel_state')", "name = 'wheel_id'"));
 
+        // v7: колонка отметки появилась, и у колеса из старого файла она пуста — привязанным его
+        // делает подключение, а не поездки, которые оно успело записать раньше (план 24 §А1).
+        Assert.Equal(1, temp.Count("pragma_table_info('wheel')", "name = 'last_connected_at'"));
+        Assert.Null(temp.Scalar("SELECT last_connected_at FROM wheel WHERE id = 1;"));
+
         var rides = new RideExporter(database).Rides();
 
         // Закрытая поездка отдаёт свои девять чисел — они пережили переезд, а её кадры нет.

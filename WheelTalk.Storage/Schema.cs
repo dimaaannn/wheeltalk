@@ -14,7 +14,7 @@ namespace WheelTalk.Storage;
 internal static class Schema
 {
     /// <summary>What this build understands. A file claiming more than this is not written to.</summary>
-    public const int Version = 6;
+    public const int Version = 7;
 
     public static readonly string[] Migrations =
     [
@@ -258,6 +258,26 @@ internal static class Schema
         CREATE INDEX telemetry_by_wheel   ON telemetry(wheel_id, at);
         CREATE INDEX wheel_state_by_wheel ON wheel_state(wheel_id, at);
         CREATE INDEX pack_state_by_wheel  ON pack_state(wheel_id, at);
+        """,
+
+        // v7 — когда к этому колесу в последний раз подключились (план 24 §А). Списка привязанных
+        // колёс в приложении не было вовсе: `WheelOptions.Address` хранит одно, текущее.
+        //
+        // Отметка живёт здесь, а не в настройках, потому что «привязано» значит «успешно
+        // подключались», а не «что-то настраивали»: в слой настроек колеса пишет только правка
+        // руками, и колесо, к которому подключились и ничего не трогали, там не появляется. Строка
+        // же `wheel` до сих пор заводилась лишь первой записью потока — подключился и не поехал,
+        // строки нет.
+        //
+        // NULL — «подключений не помним»: так выглядят колёса из файла до этой версии и те, что
+        // забыли руками (план 24 §А3). Строку при забывании не сносим — на `wheel(id)` висят
+        // поездки и весь поток, и удаление унесло бы их с собой.
+        //
+        // Unix ms, как всё время в базе с v6. Имени тут нет и не будет: оно живёт в настройках
+        // (`Wheel:Alias`), колонку `wheel.name` убрали в v5 ровно затем, чтобы второй правды об
+        // имени не существовало.
+        """
+        ALTER TABLE wheel ADD COLUMN last_connected_at INTEGER;
         """,
     ];
 }

@@ -11,6 +11,7 @@ using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
 using WheelTalk.Droid.Logging;
+using WheelTalk.Storage;
 
 namespace WheelTalk.Droid.App;
 
@@ -25,6 +26,7 @@ public static class CrashGuard
     private static IDisposable? _alertSubscription;
     private static IDisposable? _autoRecordSubscription;
     private static IDisposable? _serviceSubscription;
+    private static IDisposable? _knownWheelSubscription;
 
     /// <summary>
     /// План 11 §1.1, P0: перехват — это запись и честное падение, не попытка продолжить работу.
@@ -126,6 +128,18 @@ public static class CrashGuard
         _serviceSubscription = session.State
             .Where(state => state == ConnectionState.Disconnected)
             .Subscribe(_ => WheelForegroundService.Stop());
+
+        // «Привязано» — это «успешно подключались» (план 24 §А), поэтому отметка ставится ровно
+        // здесь, на приходе Connected, и живёт рядом с сессией по той же причине, что и сервис:
+        // подключение случается и без единого живого экрана. Протокол на этот момент известен не
+        // всегда — Veteran и Begode назовутся первым кадром, — и пустая строка тут значит «ещё не
+        // опознан»: строке колеса имя протокола проставит поток телеметрии.
+        var knownWheels = MainApplication.Services.GetRequiredService<KnownWheels>();
+        var timeProvider = MainApplication.Services.GetRequiredService<TimeProvider>();
+        _knownWheelSubscription = session.State
+            .Where(state => state == ConnectionState.Connected)
+            .Subscribe(_ => knownWheels.Remember(
+                session.Address ?? "", session.Protocol?.ToString() ?? "", timeProvider.GetUtcNow()));
 
         // Auto-start is off unless asked for. Start() is idempotent, so a reconnect — which reports
         // Connected again — resumes into the same recording instead of splitting it.
