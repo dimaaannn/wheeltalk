@@ -41,6 +41,11 @@ public sealed partial class WheelSession : IDisposable
     // а лезть за декодером через него значило бы открыть его наружу ради одного вызова.
     private IPasswordProtected? _passwordProtected;
 
+    /// <summary>Обёртка текущего подключения — держим её лишь затем, чтобы снять
+    /// <see cref="OnFrameRecognized"/> в <see cref="TearDownService"/>. Живёт ровно столько же,
+    /// сколько <see cref="_service"/>.</summary>
+    private Decoder? _decoder;
+
     /// <summary>
     /// Состояние текущего подключения — сессия держит его ради одного: точки отсчёта «от старта»,
     /// которую наследует состояние следующей попытки (<see cref="BuildService"/>). Живёт до
@@ -52,14 +57,21 @@ public sealed partial class WheelSession : IDisposable
     private static readonly TimeSpan NoticeableGap = TimeSpan.FromSeconds(4);
 
     /// <summary>
-    /// Когда колесо в последний раз что-то сказало — байты с транспорта, а не разобранный снимок.
-    /// Ноль — не говорило ещё вовсе.
+    /// Когда декодер в последний раз узнал кадр этого протокола — не байты с транспорта и не
+    /// разобранный снимок. Ноль — кадра не было ещё вовсе.
     /// <para>
-    /// Раньше здесь стояло время снимка, и это была ошибка в самом корне: снимок — вывод декодера,
-    /// а сторож судит о <b>связи</b>. Колесо, которое мы слышим, но не понимаем, снимков не даёт —
-    /// и получало приговор ровно через <see cref="ConnectionOptions.DataTimeout"/>. На InMotion P6
-    /// 02.08.2026 это дало вечный цикл переподключений при исправной связи: кадры шли до последней
-    /// секунды перед «кадров нет 15 с».
+    /// Раньше здесь стояло время снимка: снимок — вывод декодера, а сторож судит о <b>связи</b>.
+    /// Колесо, которое мы слышим, но не понимаем, снимков не даёт — и получало приговор ровно через
+    /// <see cref="ConnectionOptions.DataTimeout"/>. На InMotion P6 02.08.2026 это дало вечный цикл
+    /// переподключений при исправной связи.
+    /// </para>
+    /// <para>
+    /// Байты с транспорта чинили этот случай, но ловили и то, что нашим протоколом не является
+    /// вовсе: KS-S22 08.08.2026 после третьего переподключения отвечал только девятью байтами
+    /// «AT+ULKTE» раз в 2,4 с — не кадр ни по заголовку, ни по длине, — а сторож считал связь
+    /// живой сколько угодно. Узнанный кадр (заголовок, длина, контрольная сумма сошлись —
+    /// <see cref="Decoding.IWheelDecoder.FrameRecognized"/>) ловит оба случая правильно, не заходя
+    /// внутрь смысла кадра.
     /// </para>
     /// </summary>
     private long _lastDataAt;
@@ -90,7 +102,6 @@ public sealed partial class WheelSession : IDisposable
         _replayProtocolOverride = replayProtocolOverride;
 
         transport.ConnectionLost += OnConnectionLost;
-        transport.DataReceived += OnDataFromWheel;
     }
 
     /// <summary>Telemetry of the current wheel. Survives reconnects — subscribers never resubscribe.</summary>
@@ -201,7 +212,6 @@ public sealed partial class WheelSession : IDisposable
     public void Dispose()
     {
         _transport.ConnectionLost -= OnConnectionLost;
-        _transport.DataReceived -= OnDataFromWheel;
         _keepConnected?.Cancel();
         _keepConnected?.Dispose();
         TearDownService();
@@ -287,6 +297,8 @@ public sealed partial class WheelSession : IDisposable
         _passwordProtected = protocolDecoder as IPasswordProtected;
 
         var decoder = new Decoder(state, protocolDecoder, _eventSink, _loggerFactory.CreateLogger<Decoder>());
+        _decoder = decoder;
+        decoder.FrameRecognized += OnFrameRecognized;
         return new WheelService(_transport, decoder, _loggerFactory.CreateLogger<WheelService>());
     }
 
@@ -341,10 +353,11 @@ public sealed partial class WheelSession : IDisposable
     }
 
     /// <summary>
-    /// Кормит сторожа — и только его: разбор байт остаётся делом <see cref="WheelService"/>, у
-    /// которого своя подписка на тот же транспорт. Сессии довольно самого факта «колесо говорит».
+    /// Кормит сторожа — и только его: сам разбор кадра уже сделан декодером, у которого своя
+    /// подписка на транспорт (<see cref="WheelService"/>). Сессии довольно факта «декодер узнал
+    /// кадр», не важно, байты какого содержания в нём были.
     /// </summary>
-    private void OnDataFromWheel(byte[] bytes)
+    private void OnFrameRecognized(byte[] bytes)
     {
         long previous = Interlocked.Exchange(ref _lastDataAt, _timeProvider.GetTimestamp());
 
@@ -480,6 +493,8 @@ public sealed partial class WheelSession : IDisposable
     private void TearDownService()
     {
         StopWatchdog();
+        if (_decoder is not null) _decoder.FrameRecognized -= OnFrameRecognized;
+        _decoder = null;
         _serviceTelemetry?.Dispose();
         _serviceTelemetry = null;
 

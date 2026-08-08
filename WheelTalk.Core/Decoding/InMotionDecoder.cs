@@ -107,6 +107,7 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected,
     private int _pedalHardness = 100;
 
     public event Action<byte[]>? WriteRequested;
+    public event Action<byte[]>? FrameRecognized;
 
     public InMotionDecoder(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<InMotionDecoder> logger)
     {
@@ -173,8 +174,13 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected,
             // decoder's polling cadence (see InMotionUnpacker's class doc).
             _updateStep = 0;
 
-            var message = InMotionCanMessage.Verify(_unpacker.GetBuffer(), _logger);
+            byte[] buffer = _unpacker.GetBuffer();
+            var message = InMotionCanMessage.Verify(buffer, _logger);
             if (message is null) continue;
+
+            // Header, footer and checksum all verified — a live wheel, whatever the id below turns
+            // out to be.
+            FrameRecognized?.Invoke(buffer);
 
             var idValue = IdByValue.GetValueOrDefault(message.Id, InMotionCanMessage.IdValue.NoOp);
 

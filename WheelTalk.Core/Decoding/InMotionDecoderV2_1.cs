@@ -72,6 +72,14 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
 
     public event Action<byte[]>? WriteRequested;
 
+    /// <summary>
+    /// Raised straight off this decoder's own checksum check (<see cref="ChecksumOk"/>) — not
+    /// forwarded from <see cref="_v2"/>. A recognised frame here is decided once, on the same bytes
+    /// <see cref="_v2"/> would re-verify anyway, so forwarding both would double-count every frame
+    /// this wrapper hands to it (the <see cref="Layout.Original"/> and <c>carType</c> paths).
+    /// </summary>
+    public event Action<byte[]>? FrameRecognized;
+
     public InMotionDecoderV2_1(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILoggerFactory loggerFactory)
     {
         _state = state;
@@ -138,6 +146,11 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
         // вторая такая же строка в журнале ничего не добавит. По той же причине заголовок читается
         // здесь по индексам, а не через InMotionV2Message.Verify — тот пишет ту самую строку.
         if (!ChecksumOk(buffer)) return _v2.Decode(wireFrame);
+
+        // Header, length and checksum all check out here — recognised, whatever the model or the
+        // command turn out to be. InMotion P6's carType frame (series 13/type 1, not in the
+        // original's table) and its RealTimeInfo both pass this line; that is the point of it.
+        FrameRecognized?.Invoke(buffer);
 
         int flags = buffer[2];
         int len = buffer[3];

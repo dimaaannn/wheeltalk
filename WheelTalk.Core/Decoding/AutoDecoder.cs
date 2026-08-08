@@ -54,6 +54,7 @@ public sealed partial class AutoDecoder : IWheelDecoder
     public bool IsReady => _inner?.IsReady ?? false;
 
     public event Action<byte[]>? WriteRequested;
+    public event Action<byte[]>? FrameRecognized;
 
     public bool Decode(byte[] data)
     {
@@ -65,8 +66,10 @@ public sealed partial class AutoDecoder : IWheelDecoder
             _inner = WheelDecoderFactory.Create(protocol, _state, _config, _timeProvider, _loggerFactory);
 
             // Подписка переносится на настоящий декодер: двухступенчатые команды Gotway и его же
-            // опрос «V»/«N» идут именно оттуда, и без этого они бы молча пропали.
+            // опрос «V»/«N» идут именно оттуда, и без этого они бы молча пропали. То же для
+            // FrameRecognized — до опознания заголовка решать «наш ли это кадр» попросту не из чего.
             _inner.WriteRequested += OnInnerWriteRequested;
+            _inner.FrameRecognized += OnInnerFrameRecognized;
 
             LogDetected(protocol);
             Detected?.Invoke(protocol);
@@ -90,6 +93,7 @@ public sealed partial class AutoDecoder : IWheelDecoder
     }
 
     private void OnInnerWriteRequested(byte[] bytes) => WriteRequested?.Invoke(bytes);
+    private void OnInnerFrameRecognized(byte[] bytes) => FrameRecognized?.Invoke(bytes);
 
     private IWheelDecoder Ready => _inner ?? throw new ProtocolNotDetectedException();
 

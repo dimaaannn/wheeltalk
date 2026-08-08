@@ -90,6 +90,7 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     private int _wheelMaxSpeed;
 
     public event Action<byte[]>? WriteRequested;
+    public event Action<byte[]>? FrameRecognized;
 
     public KingsongDecoder(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<KingsongDecoder> logger)
     {
@@ -115,7 +116,9 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
         LogDecodeInvoked();
         _state.ResetRideTime();
 
-        bool newDataFound = IsWheelFrame(data) && DecodeFrame(data);
+        bool isWheelFrame = IsWheelFrame(data);
+        if (isWheelFrame) FrameRecognized?.Invoke(data);
+        bool newDataFound = isWheelFrame && DecodeFrame(data);
 
         // BluetoothService.kt:282-286's post-notification bootstrap, relocated into the decoder
         // (see class doc). Стоит после разбора и вне проверок кадра — ровно как в оригинале, где

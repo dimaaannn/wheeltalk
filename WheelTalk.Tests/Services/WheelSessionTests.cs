@@ -27,6 +27,42 @@ public class WheelSessionTests
 
     private const string Mac = "88:25:83:F5:75:4A";
 
+    /// <summary>Отпечаток дерева GATT InMotion V2 (см. WheelDetectorTests) — заставляет сессию
+    /// выбрать <c>InMotionDecoderV2_1</c> напрямую, а не гадать протокол по кадру: заголовок
+    /// <c>AA AA</c> у V1 и V2 общий, и по кадру их не различить.</summary>
+    private static readonly DiscoveredService[] InMotionV2Tree =
+    [
+        new("00001800-0000-1000-8000-00805f9b34fb",
+            ["00002a00-0000-1000-8000-00805f9b34fb", "00002a01-0000-1000-8000-00805f9b34fb",
+                "00002a04-0000-1000-8000-00805f9b34fb", "00002aa6-0000-1000-8000-00805f9b34fb"]),
+        new("00001801-0000-1000-8000-00805f9b34fb", []),
+        new("6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+            ["6e400002-b5a3-f393-e0a9-e50e24dcca9e", "6e400003-b5a3-f393-e0a9-e50e24dcca9e"]),
+    ];
+
+    /// <summary>Отпечаток дерева GATT KingSong (см. WheelDetectorTests) — сессия выбирает
+    /// <c>KingsongDecoder</c> напрямую: колесо молчит, пока его не спросят, и по кадру протокол не
+    /// выбрать (§21 порядка работ).</summary>
+    private static readonly DiscoveredService[] KingSongTree =
+    [
+        new("00001800-0000-1000-8000-00805f9b34fb",
+            ["00002a00-0000-1000-8000-00805f9b34fb", "00002a01-0000-1000-8000-00805f9b34fb",
+                "00002a02-0000-1000-8000-00805f9b34fb", "00002a03-0000-1000-8000-00805f9b34fb",
+                "00002a04-0000-1000-8000-00805f9b34fb"]),
+        new("00001801-0000-1000-8000-00805f9b34fb", ["00002a05-0000-1000-8000-00805f9b34fb"]),
+        new("0000180a-0000-1000-8000-00805f9b34fb",
+            ["00002a23-0000-1000-8000-00805f9b34fb", "00002a24-0000-1000-8000-00805f9b34fb",
+                "00002a25-0000-1000-8000-00805f9b34fb", "00002a26-0000-1000-8000-00805f9b34fb",
+                "00002a27-0000-1000-8000-00805f9b34fb", "00002a28-0000-1000-8000-00805f9b34fb",
+                "00002a29-0000-1000-8000-00805f9b34fb", "00002a2a-0000-1000-8000-00805f9b34fb",
+                "00002a50-0000-1000-8000-00805f9b34fb"]),
+        new("0000fff0-0000-1000-8000-00805f9b34fb",
+            ["0000fff1-0000-1000-8000-00805f9b34fb", "0000fff2-0000-1000-8000-00805f9b34fb",
+                "0000fff3-0000-1000-8000-00805f9b34fb", "0000fff4-0000-1000-8000-00805f9b34fb",
+                "0000fff5-0000-1000-8000-00805f9b34fb"]),
+        new("0000ffe0-0000-1000-8000-00805f9b34fb", ["0000ffe1-0000-1000-8000-00805f9b34fb"]),
+    ];
+
     [Fact]
     public async Task Connecting_starts_a_session_and_publishes_telemetry()
     {
@@ -254,27 +290,56 @@ public class WheelSessionTests
     }
 
     /// <summary>
-    /// Колесо, которое мы слышим, но не понимаем, — тоже на связи. Сторож кормится байтами с
-    /// транспорта, а не разобранными снимками, потому что снимок это вывод декодера, а сторож судит
-    /// о связи. Пока он кормился снимками, InMotion P6 (модели нет в таблице <c>carType</c>,
-    /// телеметрия не разбирается) получал приговор ровно через <c>DataTimeout</c> и уходил в вечный
-    /// цикл переподключений при исправной связи — журнал 02.08.2026.
+    /// Колесо, которое мы слышим, но телеметрии от него ещё не сложилось, — тоже на связи. Сторож
+    /// кормится узнанным кадром декодера, а не разобранным снимком: снимок — вывод декодера, а
+    /// сторож судит о разговоре. Кадр ниже — настоящий carType-ответ InMotion P6 из
+    /// <c>replay/inmotion-p6-first-contact.csv</c> (раскладка в docs/inmotion-p6-protocol.md):
+    /// заголовок, длина и контрольная сумма сошлись, он называет колесо (series 13 / type 1 → P6),
+    /// но телеметрии не несёт — <c>Decode</c> возвращает <c>false</c>, и <c>LastSnapshot</c>
+    /// остаётся пуст. Раньше такой кадр сторожа не кормил вовсе, и P6 02.08.2026 уходил в вечный
+    /// цикл переподключений при исправной связи.
     /// </summary>
     [Fact]
-    public async Task Frames_nobody_can_decode_still_count_as_a_live_link()
+    public async Task A_recognised_frame_with_no_telemetry_still_counts_as_a_live_link()
     {
         var (session, transport, time) = Build(new ConnectionOptions { DataTimeout = TimeSpan.FromSeconds(15) });
+        transport.Services = InMotionV2Tree;
 
         await session.ConnectAsync(Mac);
 
         for (int i = 0; i < 10; i++)
         {
-            transport.Deliver("00112233445566778899aabbccddeeff");
+            transport.Deliver("aaaa11088201020d0101010094");
             time.Advance(TimeSpan.FromSeconds(10));
         }
 
         Assert.Null(session.LastSnapshot);
         Assert.Equal(ConnectionState.Connected, session.CurrentState);
+        await session.DisconnectAsync();
+    }
+
+    /// <summary>
+    /// 08.08.2026: KS-S22 после третьего переподключения отвечал только девятью байтами
+    /// «AT+ULKTE» раз в 2,4 с — не кадр ни по заголовку (<c>AA 55</c>), ни по длине
+    /// (<c>KingsongDecoder.IsWheelFrame</c>). Раньше это всё равно кормило сторожа байтами с
+    /// транспорта, и зависание не лечилось само; узнанный кадр отличает эту немоту от разговора.
+    /// </summary>
+    [Fact]
+    public async Task A_module_that_only_echoes_noise_is_treated_as_a_drop()
+    {
+        var (session, transport, time) = Build(new ConnectionOptions { DataTimeout = TimeSpan.FromSeconds(15) });
+        transport.Services = KingSongTree;
+
+        await session.ConnectAsync(Mac);
+
+        for (int i = 0; i < 7; i++)
+        {
+            transport.Deliver("41542b554c4b544500");
+            time.Advance(TimeSpan.FromSeconds(2.4));
+        }
+
+        await WaitForState(session, ConnectionState.Reconnecting, time);
+
         await session.DisconnectAsync();
     }
 

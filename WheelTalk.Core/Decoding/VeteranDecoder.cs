@@ -29,6 +29,8 @@ public sealed partial class VeteranDecoder : IWheelDecoder
     public event Action<byte[]>? WriteRequested;
 #pragma warning restore CS0067
 
+    public event Action<byte[]>? FrameRecognized;
+
     public VeteranDecoder(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<VeteranDecoder> logger)
     {
         _state = state;
@@ -76,6 +78,9 @@ public sealed partial class VeteranDecoder : IWheelDecoder
             if (!_unpacker.AddChar(c)) continue;
 
             byte[] buff = _unpacker.GetBuffer();
+            // AddChar only returns true past a passed CRC (where the frame carries one) — a live
+            // wheel, whether or not the fields below turn out to make sense.
+            FrameRecognized?.Invoke(buff);
             bool useBetterPercents = _config.UseBetterPercents;
 
             int voltage = MathsUtil.ShortFromBytesBE(buff, 4);

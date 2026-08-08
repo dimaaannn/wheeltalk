@@ -56,6 +56,7 @@ public sealed partial class GotwayDecoder : IWheelDecoder
     private string? _lastLoggedAlert;
 
     public event Action<byte[]>? WriteRequested;
+    public event Action<byte[]>? FrameRecognized;
 
     public GotwayDecoder(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<GotwayDecoder> logger)
     {
@@ -103,6 +104,9 @@ public sealed partial class GotwayDecoder : IWheelDecoder
             if (!_unpacker.AddChar(c)) continue;
 
             byte[] buff = _unpacker.GetBuffer();
+            // The unpacker only returns true once header, fixed length and footer all line up —
+            // a live wheel, whether or not this particular frame type is decoded below.
+            FrameRecognized?.Invoke(buff);
             if (buff.Length <= 19) continue; // frame type always lives at buff[18]; 24-byte frames only
 
             bool isAlexovikFw = _config.IsAlexovikFW;

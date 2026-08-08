@@ -78,6 +78,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
     private int? _wheelPercent;
 
     public event Action<byte[]>? WriteRequested;
+    public event Action<byte[]>? FrameRecognized;
 
     public InMotionDecoderV2(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<InMotionDecoderV2> logger)
     {
@@ -152,8 +153,12 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
             if (!_unpacker.AddChar(c)) continue;
             _updateStep = 0;
 
-            var message = InMotionV2Message.Verify(_unpacker.GetBuffer(), _logger);
+            byte[] buffer = _unpacker.GetBuffer();
+            var message = InMotionV2Message.Verify(buffer, _logger);
             if (message is null) continue;
+
+            // Checksum verified — a live wheel, whatever this frame's command turns out to be.
+            FrameRecognized?.Invoke(buffer);
 
             if (message.Flags == (int)InMotionV2Message.Flag.Initial)
             {

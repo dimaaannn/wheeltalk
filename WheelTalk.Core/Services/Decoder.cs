@@ -30,12 +30,21 @@ public sealed partial class Decoder
 
     public IWheelDecoder ProtocolDecoder { get; }
 
+    /// <summary>
+    /// Forwards <see cref="IWheelDecoder.FrameRecognized"/> from whichever protocol decoder this
+    /// instance wraps — <see cref="Services.WheelSession"/>'s connection watchdog subscribes here
+    /// rather than reaching into <see cref="ProtocolDecoder"/> directly, so a reconnect's fresh
+    /// <see cref="Decoder"/> is the one seam it needs to know about (bugfix-1-reconnect.md §1.1).
+    /// </summary>
+    public event Action<byte[]>? FrameRecognized;
+
     public Decoder(WheelState state, IWheelDecoder protocolDecoder, IEventSink eventSink, ILogger<Decoder> logger)
     {
         _state = state;
         ProtocolDecoder = protocolDecoder;
         _eventSink = eventSink;
         _logger = logger;
+        ProtocolDecoder.FrameRecognized += bytes => FrameRecognized?.Invoke(bytes);
     }
 
     /// <summary>See <see cref="WheelState.ResetPeaks"/> — the only reset the "сброс максимумов" button needs.</summary>
