@@ -7,6 +7,7 @@ using Android.Widget;
 using AndroidX.RecyclerView.Widget;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Metrics;
+using WheelTalk.Dashboard.Droid.Widgets;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -41,6 +42,13 @@ public sealed class TilesScreen : IMainScreen
     private readonly FrameLayout _root;
     private readonly RecyclerView _list;
     private readonly View _buttons;
+
+    /// <summary>
+    /// Подсказка про шторку — тот же знак, что у панели (план 25 §0.2). Раньше её рисовал хром
+    /// панели, и на плитках шторку было не найти вовсе: сама шторка общая на оба экрана, а вход в
+    /// неё показывал только один из них.
+    /// </summary>
+    private readonly SheetHintDrawable _hint = new();
     private readonly TileAdapter _adapter;
     private readonly int _padding;
 
@@ -87,7 +95,7 @@ public sealed class TilesScreen : IMainScreen
 
         _buttons = EditButtons(context, options.Palette);
 
-        _root = new FrameLayout(context);
+        _root = new TilesRoot(context, _hint, options.Palette.Ink, () => OnIntent?.Invoke(MainScreenIntent.ShowSheet));
         _root.AddView(_list, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         _root.AddView(_buttons, new FrameLayout.LayoutParams(
@@ -97,12 +105,20 @@ public sealed class TilesScreen : IMainScreen
 
     public View View => _root;
 
-    /// <summary>Плитки намерений не подают: правка раскладки не выходит за пределы экрана.</summary>
+    /// <summary>
+    /// Одно намерение плитки всё же подают — <see cref="MainScreenIntent.ShowSheet"/> по тапу в
+    /// галочку (план 25 §0.2). Правка раскладки за пределы экрана по-прежнему не выходит.
+    /// </summary>
     public Action<MainScreenIntent>? OnIntent { get; set; }
 
     public void Show(MainScreenFrame frame)
     {
         ApplyInset((int)frame.TopInset);
+
+        // В правке галочки нет: низ экрана занят «сохранить/отменить», и подсказка про шторку там
+        // спорила бы с ними и за место, и за касание.
+        _hint.Visible = frame.ShowSheetHint && !_editing;
+
         _adapter.Render(frame.Snapshot);
         PollCharts();
     }
@@ -172,7 +188,25 @@ public sealed class TilesScreen : IMainScreen
         if (_topInset == top) return;
 
         _topInset = top;
-        _list.SetPadding(_padding, top + _padding, _padding, _padding);
+        ApplyPadding();
+    }
+
+    /// <summary>
+    /// Отступы списка. Нижний в правке даёт **запас прокрутки** (план 25 §0.3): без него последний
+    /// ряд плиток упирается в «сохранить/отменить» и в зону вызова шторки, и до него не добраться
+    /// ни пальцем, ни глазом.
+    /// <para>
+    /// Запас считается, а не выбирается: высота ряда кнопок плюс зона жеста шторки. Магическое
+    /// число разошлось бы с обоими при первой же правке — а 128 dp зоны подобраны 04.08.2026 и
+    /// живут своей жизнью (<c>quick-commands-design.md</c> §2).
+    /// </para>
+    /// </summary>
+    private void ApplyPadding()
+    {
+        int bottom = _padding;
+        if (_editing) bottom += _buttons.Height + _context.Dp(SheetGestureZoneDp);
+
+        _list.SetPadding(_padding, _topInset + _padding, _padding, bottom);
     }
 
     /// <summary>
@@ -268,6 +302,54 @@ public sealed class TilesScreen : IMainScreen
         _editing = editing;
         _adapter.Editing = editing;
         _buttons.Visibility = editing ? ViewStates.Visible : ViewStates.Gone;
+
+        // Высота ряда кнопок известна только после того, как он измерен, — на первом включении
+        // правки её ещё нет. Отсюда Post, а не прямой вызов: отступ ставится, когда есть что
+        // прибавлять.
+        _root.Post(ApplyPadding);
+    }
+
+    /// <summary>
+    /// Зона вызова шторки снизу, точки экрана — <c>quick-commands-design.md</c> §2, подобрана
+    /// 04.08.2026. Здесь она нужна только как слагаемое запаса прокрутки в правке: сама зона живёт
+    /// в приложении, и трогать её отсюда нельзя.
+    /// </summary>
+    private const int SheetGestureZoneDp = 128;
+
+    /// <summary>
+    /// Корень экрана, умеющий подсказку про шторку. Отдельным типом, потому что рисовать её надо
+    /// **поверх** списка и ловить по ней тап раньше, чем его возьмёт список: галочка стоит у самого
+    /// низа, где под ней всегда какая-нибудь плитка.
+    /// </summary>
+    private sealed class TilesRoot(Context context, SheetHintDrawable hint, Color ink, Action onHintTapped)
+        : FrameLayout(context)
+    {
+        private readonly RectF _bounds = new();
+
+        public override bool OnInterceptTouchEvent(MotionEvent? e)
+        {
+            if (e?.Action == MotionEventActions.Down && HitsHint(e.GetX(), e.GetY()))
+            {
+                onHintTapped();
+                return true;
+            }
+
+            return base.OnInterceptTouchEvent(e);
+        }
+
+        protected override void DispatchDraw(Canvas canvas)
+        {
+            base.DispatchDraw(canvas);
+
+            _bounds.Set(0, 0, Width, Height);
+            hint.Draw(canvas, _bounds, Resources!.DisplayMetrics!.Density, ink);
+        }
+
+        private bool HitsHint(float x, float y)
+        {
+            _bounds.Set(0, 0, Width, Height);
+            return hint.Hits(_bounds, Resources!.DisplayMetrics!.Density, x, y);
+        }
     }
 
     /// <summary>

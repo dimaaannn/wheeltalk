@@ -40,24 +40,6 @@ public sealed class PanelChromeDrawable
     /// <summary>Радиус цели касания вокруг точки записи — половина минимальной цели в 48 dp.</summary>
     private const float TouchRadius = 24f;
 
-    /// <summary>Ширина, высота и отступ галочки от нижнего края — в точках экрана.</summary>
-    private const float HintWidth = 26f;
-
-    private const float HintHeight = 7f;
-    private const float HintBottom = 12f;
-
-    /// <summary>Непрозрачность галочки: подсказку видно, но за сигнал её не примешь.</summary>
-    private const float HintAlpha = 0.35f;
-
-    /// <summary>
-    /// Цель касания вокруг галочки, точки экрана: чуть больше самого знака (26×7), но много меньше
-    /// зоны свайпа шторки (нижние 128 dp, <c>SwipeUpFromEdgeListener</c>) — прицельная точка, а не
-    /// вторая полоса поверх первой (владелец, план 23).
-    /// </summary>
-    private const float HintTouchWidth = 48f;
-
-    private const float HintTouchHeight = 32f;
-
     /// <summary>
     /// Непрозрачность точки записи, когда запись не идёт: место известно, тревоги нет. Было 0,3 —
     /// на выезде 31.07.2026 точку не нашли вовсе; полупрозрачная она всё ещё не спорит с приборами,
@@ -67,6 +49,7 @@ public sealed class PanelChromeDrawable
 
     private readonly Paint _fill = new() { AntiAlias = true };
     private readonly Paint _stroke = new() { AntiAlias = true };
+    private readonly SheetHintDrawable _hint = new();
 
     public PanelChromeDrawable() => _stroke.SetStyle(Paint.Style.Stroke);
 
@@ -78,8 +61,18 @@ public sealed class PanelChromeDrawable
     /// <summary>Рисовать ли точку записи. Метку включает тот, кто её показывает, — см. DashboardView.</summary>
     public bool ShowRecordDot { get; set; }
 
-    /// <summary>Рисовать ли подсказку про шторку. Пока шторка открыта, подсказывать нечего.</summary>
-    public bool ShowSheetHint { get; set; }
+    /// <summary>
+    /// Рисовать ли подсказку про шторку. Пока шторка открыта, подсказывать нечего.
+    /// <para>
+    /// Сам знак живёт в <see cref="SheetHintDrawable"/> — он нужен и экрану плиток (план 25 §0.2), а
+    /// геометрия у него должна быть одна на оба. Здесь остаётся только проводка.
+    /// </para>
+    /// </summary>
+    public bool ShowSheetHint
+    {
+        get => _hint.Visible;
+        set => _hint.Visible = value;
+    }
 
     /// <summary>
     /// Попало ли касание в точку записи. Проверка живёт рядом с рисованием, потому что координаты
@@ -106,17 +99,8 @@ public sealed class PanelChromeDrawable
     /// при первой же правке отступа. Область не пересекается с целью точки записи — та стоит у
     /// верхнего края (<see cref="DotTop"/>), эта — у нижнего.
     /// </summary>
-    public bool HitsSheetHint(RectF rect, float density, float x, float y)
-    {
-        if (!ShowSheetHint) return false;
-
-        float centreX = rect.CenterX();
-        float centreY = rect.Bottom - (HintBottom + HintHeight / 2) * density;
-        float halfWidth = HintTouchWidth / 2 * density;
-        float halfHeight = HintTouchHeight / 2 * density;
-        return x >= centreX - halfWidth && x <= centreX + halfWidth
-            && y >= centreY - halfHeight && y <= centreY + halfHeight;
-    }
+    public bool HitsSheetHint(RectF rect, float density, float x, float y) =>
+        _hint.Hits(rect, density, x, y);
 
     public void Draw(Canvas canvas, RectF rect, float density)
     {
@@ -131,22 +115,6 @@ public sealed class PanelChromeDrawable
                 DotRadius * density, _fill);
         }
 
-        if (!ShowSheetHint) return;
-
-        // Галочка смотрит вверх — туда, откуда придёт шторка.
-        float width = HintWidth * density;
-        float height = HintHeight * density;
-        float centre = rect.CenterX();
-        float bottom = rect.Bottom - HintBottom * density;
-
-        _stroke.Color = Color.Argb((int)Math.Round(HintAlpha * 255), palette.Ink.R, palette.Ink.G, palette.Ink.B);
-        _stroke.StrokeWidth = 2 * density;
-        _stroke.StrokeCap = Paint.Cap.Round;
-
-        var path = new Android.Graphics.Path();
-        path.MoveTo(centre - width / 2, bottom);
-        path.LineTo(centre, bottom - height);
-        path.LineTo(centre + width / 2, bottom);
-        canvas.DrawPath(path, _stroke);
+        _hint.Draw(canvas, rect, density, palette.Ink);
     }
 }

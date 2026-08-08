@@ -29,7 +29,17 @@ namespace WheelTalk.Dashboard.Droid.Screen;
 /// </summary>
 public sealed class QuickSheet : FrameLayout
 {
-    private static readonly TimeSpan InactivityTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// Сколько шторка ждёт, прежде чем закрыться сама. Было 5 с; 15 — решение владельца 08.08.2026
+    /// (план 25 §0.1) по жалобам: пять секунд уходят на «что тут вообще есть», и шторка закрывалась
+    /// раньше, чем человек успевал выбрать.
+    /// <para>
+    /// Довод против — «пятнадцать секунд закрытой панели на ходу это долго» — владельцем **снят**:
+    /// шторка закрывается тапом по пустому месту, а для бесконечного случая есть «Не закрывать»
+    /// (<c>_pinned</c>). Проверяется на выезде.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan InactivityTimeout = TimeSpan.FromSeconds(15);
 
     /// <summary>"Задержка на долю секунды" — design doc §5's honesty window: long enough to read the highlight, short enough not to feel stuck (§ "на ходу длинные анимации раздражают").</summary>
     private static readonly TimeSpan PostCommandHideDelay = TimeSpan.FromMilliseconds(450);
