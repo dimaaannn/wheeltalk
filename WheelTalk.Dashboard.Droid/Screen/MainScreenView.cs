@@ -7,9 +7,10 @@ using WheelTalk.Dashboard.Droid.Widgets;
 namespace WheelTalk.Dashboard.Droid.Screen;
 
 /// <summary>
-/// Рамка хозяина главного экрана: полоса тревоги колеса сверху, сам экран (<see cref="Current"/> —
-/// панель <see cref="TwinTapesDashboard"/> либо плитки, см. <see cref="Show"/>), полосы тревоги
-/// поверх него (<see cref="Bars"/>) и шторка быстрых команд поверх всего. Живёт в
+/// Рамка хозяина главного экрана: сам экран (<see cref="Current"/> — панель
+/// <see cref="TwinTapesDashboard"/> либо плитки, см. <see cref="Show"/>), поверх него полосы тревоги
+/// (<see cref="Bars"/>) и строка слов тревоги сверху (<see cref="Alert"/>), а поверх всего — шторка
+/// быстрых команд. Всё, что поверх, — накладки: показ ни одной из них не меняет меру экрана. Живёт в
 /// библиотеке, а не в приложении, чтобы стенд показывал ровно то, что видит райдер, — тем же
 /// классом, а не похожей копией (тот же ход, которым плашка связи и точка записи раньше переехали
 /// внутрь панели). Приложению остаётся проводка: данные, команды шторки, инсеты и жесты.
@@ -27,7 +28,6 @@ namespace WheelTalk.Dashboard.Droid.Screen;
 /// </summary>
 public sealed class MainScreenView : FrameLayout
 {
-    private readonly LinearLayout _content;
     private readonly FrameLayout _stage;
 
     public MainScreenView(Context context, DashboardOptions options) : base(context)
@@ -38,26 +38,29 @@ public sealed class MainScreenView : FrameLayout
         Sheet = new QuickSheet(context);
         Bars = new AlertBarsView(context, options);
 
-        // Сцена: сменный экран и полосы тревоги поверх него. Полосы принадлежат рамке, а не экрану
-        // (слово владельца 05.08.2026 — «полосы не принадлежат экрану и не дублируются на каждом»):
-        // панель и плитки сменяются под ними, а полосы стоят. Границы сцены — это границы бывших
-        // панельных полос: ниже строки слов (она над ними, как была), выше шторки (Sheet добавлен
-        // позже и остаётся сверху) — вид панели не изменился ни мерой, ни слоем.
+        // Сцена: сменный экран, полосы тревоги и строка слов поверх него. Всё это принадлежит рамке,
+        // а не экрану (слово владельца 05.08.2026 — «полосы не принадлежат экрану и не дублируются
+        // на каждом»): панель и плитки сменяются под ними, а полосы стоят.
+        //
+        // Полоса тревоги — накладка, а не строка вертикальной разметки: членом разметки она отбирала
+        // у сцены свою высоту, и появление служебного «ещё раз — выход» сжимало панель и сдвигало её
+        // вниз на глазах у райдера. Тот же долг, что план 23 закрыл для полос тревоги; здесь он
+        // закрыт до конца. Ценой этого полоса ложится на верх сцены — от системных часов её отводит
+        // собственный отступ (<see cref="AlertStrip.TopInset"/>), который ставит хозяин рамки.
         _stage = new FrameLayout(context);
+        _stage.SetBackgroundColor(options.Palette.Background);
         _stage.AddView(Current.View, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         _stage.AddView(Bars, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
-
-        var content = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
-        content.SetBackgroundColor(options.Palette.Background);
-        content.AddView(Alert, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
-        content.AddView(_stage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f));
+        _stage.AddView(Alert, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
+            Gravity = GravityFlags.Top,
+        });
 
         SetBackgroundColor(options.Palette.Background);
-        _content = content;
-        AddView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)
+        AddView(_stage, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)
         {
             Gravity = GravityFlags.CenterHorizontal,
         });
@@ -125,10 +128,10 @@ public sealed class MainScreenView : FrameLayout
         int maxWidthPx = Context!.Dp(480);
         int wanted = available > maxWidthPx ? maxWidthPx : ViewGroup.LayoutParams.MatchParent;
 
-        if (_content.LayoutParameters is { } layout && layout.Width != wanted)
+        if (_stage.LayoutParameters is { } layout && layout.Width != wanted)
         {
             layout.Width = wanted;
-            _content.LayoutParameters = layout;
+            _stage.LayoutParameters = layout;
         }
 
         base.OnMeasure(widthMeasureSpec, heightMeasureSpec);

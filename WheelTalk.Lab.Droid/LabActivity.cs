@@ -202,7 +202,8 @@ public sealed class LabActivity : Activity
     /// <summary>
     /// Командный вход стенда — тот же приём, которым гоняют реплей боевого приложения (план 22 §2):
     /// <c>am start -n com.wheeltalk.lab.droid/.LabActivity --es rebuild screen</c>,
-    /// <c>--es screen panel|tiles</c>, <c>--es history new</c>, <c>--es layout reset</c>.
+    /// <c>--es screen panel|tiles</c>, <c>--es history new</c>, <c>--es layout reset</c>,
+    /// <c>--es alarm on|off</c> (полоса тревоги — тот же тумблер, что на странице ручек).
     /// <para>
     /// Заведён затем, что <c>input tap</c> по координатам промахивается хронически, а каждый промах —
     /// потерянный прогон. Своей логики здесь нет: команда зовёт ровно то же, что кнопка.
@@ -216,6 +217,11 @@ public sealed class LabActivity : Activity
         if (intent.GetStringExtra("rebuild") is not null) Rebuild();
         if (intent.GetStringExtra("screen") is { } screen) ShowTiles(screen == "tiles");
         if (intent.GetStringExtra("history") is not null) _ = RefillStore();
+        if (intent.GetStringExtra("alarm") is { } alarm)
+        {
+            _settings.WheelAlarm = alarm != "off";
+            _settings.Notify();
+        }
 
         // Переставленная руками раскладка лежит в файле и закрывает собой зашитую: правку
         // TilesLayout.Fixed без сброса на экране не увидеть.
