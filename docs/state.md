@@ -248,7 +248,7 @@ Gotway/Begode (MTen3) проверены на живых колёсах; KingSon
 | 23 | Экран наглядной телеметрии и раздельное хранение потока | Закрыт 05.08.2026, семь шагов из семи | [android-plan-23-telemetry-screen-and-store.md](android-plan-23-telemetry-screen-and-store.md) |
 | 24 | Привязанные колёса в поиске и отключение, которое держится | **Обе части сделаны 08.08.2026**, ждёт выезда: гейты 4–5 части Б и оба выездных без живого колеса не закрыть | [android-plan-24-known-wheels-and-disconnect.md](android-plan-24-known-wheels-and-disconnect.md) |
 | 25 | Шторка: различимость команд и три долга по мелочи | Написан 08.08.2026, не начат. §0 — три вечера, §1 — настоящая работа | [android-plan-25-quick-sheet-legibility.md](android-plan-25-quick-sheet-legibility.md) |
-| 26 | Звук тревоги: чтобы его слышали | Написан 08.08.2026, не начат. Исследовательский: опыты на стенде, гейт — улица | [android-plan-26-alarm-sound.md](android-plan-26-alarm-sound.md) |
+| 26 | Звук тревоги: чтобы его слышали | Ресерч и **страница стенда сделаны 08.08.2026** (`c83a9bd`, восемь вариантов). Выбор сигнала ждёт выезда: гейт — «на какой скорости вариант пропадает» | [android-plan-26-alarm-sound.md](android-plan-26-alarm-sound.md) |
 | — | Плеер записанных поездок (вне серии) | §0–§2, §6 сделаны; §3–§5 не начинались | [playback-plan.md](playback-plan.md) |
 
 ---
