@@ -79,7 +79,7 @@ public sealed class SettingDescriptor
     public required SettingKind Kind { get; init; }
 
     /// <summary>
-    /// Which of the four pages this belongs on. Not derived from the key: the wheel page carries
+    /// Which of the five pages this belongs on. Not derived from the key: the wheel page carries
     /// both <c>WheelConfig:*</c> and the address, and a page is an editorial decision anyway.
     /// </summary>
     public required SettingsPage Page { get; init; }

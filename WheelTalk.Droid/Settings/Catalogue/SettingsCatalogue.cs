@@ -5,7 +5,7 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 
 /// <summary>
 /// Every setting the app has, described once. This is the only place that knows a key belongs to a
-/// particular property of a particular live object, which is what lets four pages be one page.
+/// particular property of a particular live object, which is what lets five pages be one page.
 /// <para>
 /// Numbers are described and stored in the units they are <em>shown</em> in, not the ones the
 /// original packs them into: 50.0 km/h rather than 500, 3.30 V rather than 330. The conversion sits
@@ -20,7 +20,7 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// <para>
 /// Портировано из <c>WheelTalk.App/Configuration/SettingsCatalogue.cs</c> без изменений логики —
 /// только пространство имён и ссылка на <c>WheelTalk.Dashboard</c> → <c>WheelTalk.Dashboard.Droid</c>.
-/// Дескрипторы четырёх страниц разложены по <see cref="WheelPage"/>, <see cref="AppPage"/>,
+/// Дескрипторы пяти страниц разложены по <see cref="WheelPage"/>, <see cref="AppPage"/>,
 /// <see cref="AlertsPage"/>, <see cref="DisplayPage"/> (план 14, А2.1) — этот файл лишь собирает их
 /// в один список и держит форматтеры, общие для нескольких страниц.
 /// </para>
