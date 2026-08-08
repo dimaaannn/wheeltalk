@@ -1,4 +1,5 @@
 ﻿using Android.App;
+using Android.Content;
 using Android.Graphics;
 using Android.OS;
 using Android.Util;
@@ -69,6 +70,10 @@ public sealed class LabSettingsActivity : Activity
         SetContentView(scroller);
 
         var options = _settings.Options;
+
+        Group("Звук тревоги");
+        Note("Отдельная страница: восемь вариантов сигнала, слушать подряд, запомнить выбранный (план 26). Выбирают на улице — за столом этот выбор не делается.");
+        Page("Открыть страницу звука", typeof(LabSoundActivity));
 
         Group("Шкала ШИМ");
         Note("Лента справа. Шкала бесконечна в обе стороны: концы — не границы, а запас.");
@@ -148,6 +153,15 @@ public sealed class LabSettingsActivity : Activity
             v => _settings.Tweaks = _settings.Tweaks with { SpeedGain = v }, applyOnRelease: true);
         Slider("Время ×", 0.25, 4, _settings.Tweaks.TimeScale, "F2",
             v => _settings.Tweaks = _settings.Tweaks with { TimeScale = v }, applyOnRelease: true);
+    }
+
+    /// <summary>Строка-переход на отдельный экран стенда: ручкой такое не сделать.</summary>
+    private void Page(string title, Type activity)
+    {
+        var button = new Button(this) { Text = title };
+        button.SetAllCaps(false);
+        button.Click += (_, _) => StartActivity(new Intent(this, activity));
+        Add(button);
     }
 
     private void Group(string title)
