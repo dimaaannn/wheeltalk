@@ -81,7 +81,8 @@ internal static class SettingsFormat
         int overridden = descriptors.Count(d => !d.ReportedByWheel && binder.Read(d).IsOverridden);
         string tail = overridden > 0
             ? string.Format(CultureInfo.CurrentCulture, AppStrings.SettingsSummaryOverrides, overridden)
-            : string.Format(CultureInfo.CurrentCulture, AppStrings.SettingsSummaryCount, descriptors.Count);
+            : Plural.Of(descriptors.Count,
+                AppStrings.SettingsSummaryCount1, AppStrings.SettingsSummaryCount2, AppStrings.SettingsSummaryCount5);
 
         return head.Length > 0 ? $"{head} · {tail}" : tail;
     }

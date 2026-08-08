@@ -66,7 +66,9 @@
   <data name="RecordingFolderSection" xml:space="preserve"><value>Где лежат файлы</value></data>
   <data name="RecordingIdle" xml:space="preserve"><value>Не пишется</value></data>
   <data name="RecordingWaiting" xml:space="preserve"><value>Ждём данных с колеса</value></data>
-  <data name="RecordingActive" xml:space="preserve"><value>Пишется · {0} строк</value></data>
+  <data name="RecordingActive1" xml:space="preserve"><value>Пишется · {0} строка</value></data>
+  <data name="RecordingActive2" xml:space="preserve"><value>Пишется · {0} строки</value></data>
+  <data name="RecordingActive5" xml:space="preserve"><value>Пишется · {0} строк</value></data>
   <data name="SettingsTitle" xml:space="preserve"><value>Настройки</value></data>
   <data name="ReplayStart" xml:space="preserve"><value>Пуск</value></data>
   <data name="ReplayStop" xml:space="preserve"><value>Стоп</value></data>
@@ -97,7 +99,9 @@
   <data name="SettingsLayerWheel" xml:space="preserve"><value>Колесо {0}</value></data>
   <data name="SettingsLayerFactory" xml:space="preserve"><value>Заводское</value></data>
   <data name="SettingsSummaryOverrides" xml:space="preserve"><value>{0} для этого колеса</value></data>
-  <data name="SettingsSummaryCount" xml:space="preserve"><value>{0} настроек</value></data>
+  <data name="SettingsSummaryCount1" xml:space="preserve"><value>{0} настройка</value></data>
+  <data name="SettingsSummaryCount2" xml:space="preserve"><value>{0} настройки</value></data>
+  <data name="SettingsSummaryCount5" xml:space="preserve"><value>{0} настроек</value></data>
   <data name="SettingsSectionsHint" xml:space="preserve"><value>Разделы</value></data>
   <data name="SectionCurrent" xml:space="preserve"><value>Ток и напряжение</value></data>
   <data name="SectionBattery" xml:space="preserve"><value>Батарея</value></data>

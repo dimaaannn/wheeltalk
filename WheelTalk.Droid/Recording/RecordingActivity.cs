@@ -136,7 +136,8 @@ public sealed class RecordingActivity : Activity
 
         _rideStateLabel.SetText(_recorder.RideId == 0
             ? AppStrings.RecordingWaiting
-            : string.Format(AppStrings.RecordingActive, _recorder.RowsWritten));
+            : Plural.Of(_recorder.RowsWritten,
+                AppStrings.RecordingActive1, AppStrings.RecordingActive2, AppStrings.RecordingActive5));
         _rideFileLabel.SetText(_recorder.RideId == 0 ? "" : $"#{_recorder.RideId}");
     }
 
