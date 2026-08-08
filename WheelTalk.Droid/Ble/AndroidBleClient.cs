@@ -584,9 +584,12 @@ public sealed class AndroidBleClient : ITransport
 
             // TrySetResult идемпотентен: кто придёт первым — ответ стека или этот срок, — тот и
             // завершит подключение. Отдельного состояния для гонки не нужно.
+            //
+            // Число берётся из живого поля по той же причине, что и в MtuRequestRefused: непрошеный
+            // OnMtuChanged мог поднять размер до срабатывания таймера.
             _ = Task.Delay(MtuTimeout).ContinueWith(_ =>
             {
-                if (ready.TrySetResult()) logger.LogWarning("Ble.MtuTimeout — ответа нет, идём на {Mtu} Б", DefaultAttMtu);
+                if (ready.TrySetResult()) logger.LogWarning("Ble.MtuTimeout — ответа нет, идём на {Mtu} Б", client._attMtu);
             }, TaskScheduler.Default);
         }
 

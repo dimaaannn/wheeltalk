@@ -1,3 +1,4 @@
+using WheelTalk.Core.Battery;
 using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Decoding;
@@ -122,6 +123,25 @@ public class InMotionDecoderV2_1Tests
         Assert.Equal(0, snapshot.Torque);
         Assert.Equal(0, snapshot.CpuTemp);
         Assert.Equal(0, snapshot.CurrentLimit);
+    }
+
+    /// <summary>
+    /// Ряд, заданный человеком, бьёт знание протокола и у P6 — как у остальных четырёх (см.
+    /// <c>CellCountThroughDecodersTests.A_series_set_by_hand_beats_every_lower_step</c>). Без этого
+    /// <c>PackCells.Source</c> у P6 не бывает <see cref="CellCountSource.UserSetting"/> никогда, и
+    /// шкала на банку не включается даже при заданном ряде.
+    /// </summary>
+    [Fact]
+    public void P6_lets_a_series_set_by_hand_beat_the_protocol()
+    {
+        var harness = DecoderHarness.ForInMotionV2_1(config => config.CellsInSeries = 32);
+        var decoder = harness.Decoder.ProtocolDecoder;
+
+        decoder.Decode(Convert.FromHexString(CarTypeP6));
+        decoder.Decode(Convert.FromHexString(P6RealTimeMoving));
+
+        var snapshot = harness.Snapshot();
+        Assert.Equal(new CellCount(32, CellCountSource.UserSetting), snapshot.PackCells);
     }
 
     [Fact]

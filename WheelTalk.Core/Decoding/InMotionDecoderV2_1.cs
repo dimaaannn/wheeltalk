@@ -60,6 +60,7 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     private readonly InMotionDecoderV2 _v2;
     private readonly InMotionV2Unpacker _unpacker;
     private readonly WheelState _state;
+    private readonly IWheelConfig _config;
     private readonly ILogger<InMotionDecoderV2_1> _logger;
 
     /// <summary>Кадр как он пришёл с провода, со всеми экранирующими <c>0xA5</c>: в V2 отдаётся
@@ -83,6 +84,7 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     public InMotionDecoderV2_1(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILoggerFactory loggerFactory)
     {
         _state = state;
+        _config = config;
         _logger = loggerFactory.CreateLogger<InMotionDecoderV2_1>();
         _unpacker = new InMotionV2Unpacker(loggerFactory.CreateLogger<InMotionDecoderV2>());
         _v2 = new InMotionDecoderV2(state, config, timeProvider, loggerFactory.CreateLogger<InMotionDecoderV2>());
@@ -179,7 +181,7 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
 
             // Данные кадра — buffer[5..len+4]: распаковщик добирает ровно len + 5 байт (AA AA,
             // флаги, длина, len байт тела, контрольная сумма), поэтому срез всегда в границах.
-            Layout.P6 => InMotionP6RealTime.Apply(buffer[5..(len + 4)], _state),
+            Layout.P6 => InMotionP6RealTime.Apply(buffer[5..(len + 4)], _state, _config),
 
             _ => false,
         };

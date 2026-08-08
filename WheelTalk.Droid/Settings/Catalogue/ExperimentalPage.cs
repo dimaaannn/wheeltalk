@@ -239,6 +239,7 @@ internal static class ExperimentalPage
                 Page = SettingsPage.Experimental,
                 SectionKey = "SectionCellVoltage",
                 LabelKey = "SettingDangerCellVolts",
+                HintKey = "SettingDangerCellVoltsHint",
                 UnitKey = "UnitVolts",
                 IsVisible = () => dashboard.VoltageScale != VoltageScaleMode.Pack,
                 Maximum = 4.25,

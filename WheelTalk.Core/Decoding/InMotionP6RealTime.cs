@@ -1,4 +1,5 @@
 using WheelTalk.Core.Battery;
+using WheelTalk.Core.Ports;
 
 namespace WheelTalk.Core.Decoding;
 
@@ -34,9 +35,9 @@ internal static class InMotionP6RealTime
     /// Пишет в состояние доказанные поля кадра. <c>false</c> — кадр не той длины, состояние не
     /// тронуто: показать половину телеметрии хуже, чем не показать ничего.
     /// </summary>
-    public static bool Apply(byte[] data, WheelState state)
+    public static bool Apply(byte[] data, WheelState state, IWheelConfig config)
     {
-        if (data.Length < DataLength) return false;
+        if (data.Length != DataLength) return false;
 
         // Напряжение, ток и мощность связаны тождеством: смещение 16 во всех шестидесяти кадрах
         // дампа равно произведению первых двух до ватта. Три поля подтверждают друг друга, и это
@@ -64,11 +65,15 @@ internal static class InMotionP6RealTime
         state.SetSpeed(speed);
         state.SetTopSpeed(speed);
         state.SetPower(batPower * 100);
-        // Число человека сюда не доезжает: настроек этот разбор не видит, на руках у него одно
-        // состояние. Ряд подаётся знанием протокола — числом, посчитанным по двум замерам
-        // напряжения с процентом, а не догадкой.
-        state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0),
-            new CellCountInputs { ProtocolCells = Cells });
+        // Ряд подаётся протоколом — числом, посчитанным по двум замерам напряжения с процентом, а
+        // не догадкой. Но каскад слышит и человека: заданный вручную ряд (ConfiguredCells) бьёт
+        // это знание, как и у остальных четырёх протоколов.
+        state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), new CellCountInputs
+        {
+            ConfiguredCells = config.CellsInSeries,
+            ProtocolCells = Cells,
+            PackVolts = voltage / 100.0,
+        });
         state.SetTemperature(mosTemp * 100);
         state.SetTemperature2(motTemp * 100);
         return true;

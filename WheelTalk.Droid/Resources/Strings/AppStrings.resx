@@ -299,6 +299,7 @@
   <data name="SettingWarnCellVolts" xml:space="preserve"><value>Жёлтая ниже, на ячейку</value></data>
   <data name="SettingWarnCellVoltsHint" xml:space="preserve"><value>Напряжение ячейки, ниже которого шкала желтеет. Ноль — зона выключена.</value></data>
   <data name="SettingDangerCellVolts" xml:space="preserve"><value>Красная ниже, на ячейку</value></data>
+  <data name="SettingDangerCellVoltsHint" xml:space="preserve"><value>Напряжение ячейки, ниже которого шкала краснеет. Ноль — зона выключена.</value></data>
   <data name="SettingEmptyCellVolts" xml:space="preserve"><value>Ячейка пуста ниже</value></data>
   <data name="SettingEmptyCellVoltsHint" xml:space="preserve"><value>Ниже этого шкала красная до конца поездки. Ноль выключает.</value></data>
   <data name="SettingWarnVolts" xml:space="preserve"><value>Жёлтая ниже</value></data>

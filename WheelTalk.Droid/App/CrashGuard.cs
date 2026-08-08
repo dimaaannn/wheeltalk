@@ -134,10 +134,14 @@ public static class CrashGuard
         // подключение случается и без единого живого экрана. Протокол на этот момент известен не
         // всегда — Veteran и Begode назовутся первым кадром, — и пустая строка тут значит «ещё не
         // опознан»: строке колеса имя протокола проставит поток телеметрии.
+        //
+        // Реплей подключается адресом сохранённого колеса, но это прогон дампа, а не езда — не
+        // Remember, иначе непривязанное колесо становится «привязанным» по чужому подключению.
         var knownWheels = MainApplication.Services.GetRequiredService<KnownWheels>();
         var timeProvider = MainApplication.Services.GetRequiredService<TimeProvider>();
+        var transport = MainApplication.Services.GetRequiredService<ITransport>();
         _knownWheelSubscription = session.State
-            .Where(state => state == ConnectionState.Connected)
+            .Where(state => state == ConnectionState.Connected && !transport.IsReplay)
             .Subscribe(_ => knownWheels.Remember(
                 session.Address ?? "", session.Protocol?.ToString() ?? "", timeProvider.GetUtcNow()));
 
