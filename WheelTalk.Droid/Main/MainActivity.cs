@@ -445,8 +445,15 @@ public sealed class MainActivity : Activity
     /// 02.08.2026, план 22 §2) — открывать шторку ради единственной кнопки незачем.
     /// </para>
     /// <para>
-    /// Подключены — тап не делает ничего: обрывать связь случайным касанием посреди поездки нельзя,
-    /// а отключение живёт в шторке, где спрашивает подтверждение на ходу.
+    /// Подключены и данные свежи — тап не делает ничего: обрывать связь случайным касанием посреди
+    /// поездки нельзя, а отключение живёт в шторке, где спрашивает подтверждение на ходу.
+    /// </para>
+    /// <para>
+    /// Решает не сырой <c>ConnectionState</c>, а фаза, которую показывает сама плашка
+    /// (<see cref="LinkBadgeTap"/> поверх <see cref="LinkStatus.Evaluate"/>): <c>NoData</c> — это
+    /// тоже <c>Connected</c> по состоянию сессии (колесо подключено, но кадры замолчали дольше
+    /// 1,5 с), и тап там обязан вести в поиск, а не бездействовать (bugfix 2 §2.1, решение владельца
+    /// 09.08.2026). Ждём пароль — ведём в настройки, а не в поиск: связи и так не будет.
     /// </para>
     /// <para>
     /// Всё остальное — «оставь это колесо» (план 24 §Б3): гасим сессию, ставим признак и ведём в
@@ -458,18 +465,26 @@ public sealed class MainActivity : Activity
     {
         try
         {
-            if (_session.CurrentState == ConnectionState.Connected) return;
-
-            if (_transport.IsReplay && _session.CurrentState == ConnectionState.Disconnected)
+            var link = LinkStatus.Evaluate(_session.CurrentState, StaleFor, _problem);
+            switch (LinkBadgeTap.Decide(link, _session.AwaitingPassword, _transport.IsReplay))
             {
-                OnStateTapped();
-                return;
+                case LinkBadgeTapAction.None:
+                    return;
+
+                case LinkBadgeTapAction.GoToSettings:
+                    OpenScreen(typeof(SettingsActivity));
+                    return;
+
+                case LinkBadgeTapAction.ToggleReplay:
+                    OnStateTapped();
+                    return;
+
+                case LinkBadgeTapAction.GoToScan:
+                    await Disconnect();
+                    _userSettings.SaveStoppedByRider();
+                    OpenScreen(typeof(ScanActivity));
+                    return;
             }
-
-            await Disconnect();
-            _userSettings.SaveStoppedByRider();
-
-            OpenScreen(typeof(ScanActivity));
         }
         catch (Exception ex)
         {
