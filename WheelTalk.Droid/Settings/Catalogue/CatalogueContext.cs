@@ -25,6 +25,18 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// же причине, что протокол и пароль: описания строятся при запуске, а звук нужен только тому, кто
 /// открыл страницу «Предупреждения».
 /// </param>
+/// <param name="LastFrame">
+/// Последний кадр телеметрии — то, по чему кнопка «рассчитать» считает ряд, а строка ряда решает,
+/// предупреждать ли о неправдоподобном числе. <c>null</c> — колесо ещё ничего не сказало.
+/// </param>
+/// <param name="SaveCells">
+/// Записать ряд в настройку — через <c>SettingsBinder</c>, а не мимо: слой, крючок правки и
+/// признаки у кнопки те же, что у правки руками.
+/// </param>
+/// <param name="WheelScopeChosen">
+/// Выбрана ли область «это колесо». Строки, у которых общего значения не бывает, в общей области не
+/// показываются: писать их там некуда (план 27 §27.4).
+/// </param>
 public sealed record CatalogueContext(
     AppWheelConfig Wheel,
     AlertOptions Alerts,
@@ -38,4 +50,7 @@ public sealed record CatalogueContext(
     PowerOptions Power,
     Func<WheelProtocol?> Protocol,
     Action RestartAuthentication,
-    Action<double> PreviewAlarm);
+    Action<double> PreviewAlarm,
+    Func<TelemetrySnapshot?> LastFrame,
+    Action<int> SaveCells,
+    Func<bool> WheelScopeChosen);

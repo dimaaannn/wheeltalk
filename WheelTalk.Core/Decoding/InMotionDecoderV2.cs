@@ -93,8 +93,11 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
     /// измерение, а не догадка: единственную тесную пару рядов внутри марки — V13 (30) против
     /// V14 (32) — разбирает именно она (§27.1а).
     /// </summary>
-    public int GetCellsForWheel() =>
-        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = _model.CellsForWheel() }).Cells;
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    {
+        ConfiguredCells = _config.CellsInSeries,
+        ProtocolCells = _model.CellsForWheel(),
+    });
 
     /// <summary>Port of setModel(Model) (InmotionAdapterV2.java:180-182) — production code calls
     /// this from the wheel-type handshake (<see cref="DecodeMainInfo"/>); the original also uses it

@@ -14,6 +14,7 @@ public sealed class AppWheelConfig : IWheelConfig
     public bool UseBetterPercents { get; set; }
     public bool HwPwm { get; set; }
     public bool CustomPercents { get; set; }
+    public int CellsInSeries { get; set; }
     public int CellVoltageTiltback { get; set; } = 330;
     public int RotationSpeed { get; set; } = 500;
     public int RotationVoltage { get; set; } = 840;

@@ -52,7 +52,7 @@ public sealed class SettingsBinder
             // бы, что кнопка нажимается сама при каждом запуске.
             if (descriptor.Kind == SettingKind.Action) continue;
 
-            if (_settings.Get(descriptor.Key).Value is { } value) descriptor.Apply(value);
+            if (_settings.Get(descriptor.Key, descriptor.Layer).Value is { } value) descriptor.Apply(value);
         }
     }
 
@@ -69,12 +69,25 @@ public sealed class SettingsBinder
             return;
         }
 
-        _settings.Set(descriptor.Key, value, descriptor.GlobalOnly);
+        _settings.Set(descriptor.Key, value, descriptor.Layer);
 
         // После записи, а не вместо неё: крючок вправе опереться на уже применённое значение
         // (_settings.Set поднимает Changed, а тот прогоняет Apply). И только здесь — это
         // единственное место, где точно известно, что значение изменил человек.
         descriptor.AfterEdit?.Invoke();
+    }
+
+    /// <summary>
+    /// Правка соседней строки — по ключу: кнопка «рассчитать» подставляет число в настройку ряда
+    /// (план 27 §27.4), а описания той строки у неё на руках нет. Через это же место, а не мимо:
+    /// слой, крючок правки и признаки — всё то же самое, что у правки руками.
+    /// </summary>
+    public void Set(string key, string value)
+    {
+        var descriptor = _descriptors.FirstOrDefault(d => string.Equals(d.Key, key, StringComparison.Ordinal))
+            ?? throw new ArgumentException($"Настройки с ключом «{key}» нет в каталоге.", nameof(key));
+
+        Set(descriptor, value);
     }
 
     /// <summary>
@@ -86,13 +99,14 @@ public sealed class SettingsBinder
 
     public void ClearGlobal(SettingDescriptor descriptor) => _settings.ClearGlobal(descriptor.Key);
 
-    public void PromoteToGlobal(SettingDescriptor descriptor) => _settings.PromoteToGlobal(descriptor.Key);
+    public void PromoteToGlobal(SettingDescriptor descriptor) =>
+        _settings.PromoteToGlobal(descriptor.Key, descriptor.Layer);
 
     public ResolvedSetting Read(SettingDescriptor descriptor) =>
         descriptor.ReportedByWheel
             // Whatever the wheel last said, not whatever a layer remembers.
             ? new ResolvedSetting(descriptor.Current(), SettingOrigin.Factory)
-            : _settings.Get(descriptor.Key);
+            : _settings.Get(descriptor.Key, descriptor.Layer);
 
     /// <summary>
     /// The rows of one page, grouped, minus the ones their own condition hides. Conditions are

@@ -36,6 +36,13 @@ public sealed record TelemetrySnapshot
     /// <summary>Battery level, percent (0..100).</summary>
     public int Battery { get; init; }
 
+    /// <summary>
+    /// Ряд ячеек, которым декодер считал заряд этого кадра, — вместе с источником (план 27).
+    /// Источник едет с числом до самого экрана: по слову человека и по догадке показывать одно и
+    /// то же число нельзя.
+    /// </summary>
+    public Battery.CellCount PackCells { get; init; }
+
     /// <summary>Temperature raw value as stored by WheelData.mTemperature (Veteran writes it unscaled).</summary>
     public int TemperatureRaw { get; init; }
     /// <summary>Degrees Celsius — mirrors WheelData.getTemperature() (integer division by 100).</summary>

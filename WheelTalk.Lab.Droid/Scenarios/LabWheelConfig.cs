@@ -16,6 +16,10 @@ public sealed class LabWheelConfig : IWheelConfig
     public bool UseBetterPercents { get; set; }
     public bool HwPwm { get; set; }
     public bool CustomPercents { get; set; }
+
+    /// <summary>Ряд, заданный человеком. У стенда его задаёт ручка — см. <c>LabSettings.CellsInSeries</c>.</summary>
+    public int CellsInSeries { get; set; }
+
     public int CellVoltageTiltback { get; set; } = 330;
     public int RotationSpeed { get; set; } = 500;
     public int RotationVoltage { get; set; } = 840;

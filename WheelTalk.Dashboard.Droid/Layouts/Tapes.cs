@@ -1,4 +1,5 @@
 using Android.Graphics;
+using WheelTalk.Core.Battery;
 using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Dashboard.Droid.Widgets.Tape;
 
@@ -55,6 +56,23 @@ public static class Tapes
         Options = options,
         Side = side,
         Caption = "В",
+    };
+
+    /// <summary>
+    /// Вторая лента напряжения — в вольтах на ячейку (план 27 §27.4). Отдельный элемент, а не режим
+    /// первой: пороги пакета и пороги банки не должны лежать в одних полях, и лента, меняющая смысл
+    /// своих чисел, — это ошибка привязки, ждущая своего часа.
+    /// <para>
+    /// <b>Копия рядом стоящей <see cref="Voltage"/>, и правки между ними сами не переносятся.</b>
+    /// Так задумано: шкала на ячейку вправе разойтись с пакетной и в разметке, и в окне, и общего
+    /// помощника, обещающего их одинаковость, никто не обещал.
+    /// </para>
+    /// </summary>
+    public static TapeDrawable CellVoltage(DashboardOptions options, TapeSide side = TapeSide.Left) => new()
+    {
+        Options = options,
+        Side = side,
+        Caption = "В/яч",
     };
 
     /// <summary>
@@ -132,6 +150,10 @@ public static class Tapes
     /// Лента напряжения — зеркало ленты ШИМ, но читается наоборот: у ШИМ плохо наверху, у
     /// напряжения — внизу. Поэтому и след поездки здесь минимум, а не максимум, и стрелка идёт не
     /// вперёд во времени, а от холостого напряжения к текущему: её длина — просадка прямо сейчас.
+    /// <para>
+    /// Рядом живёт <see cref="ApplyCellVoltage"/> — та же лента в вольтах на ячейку. <b>Правки
+    /// отсюда туда сами не переносятся</b>, и это осознанно (план 27 §27.4).
+    /// </para>
     /// </summary>
     public static void ApplyVoltage(TapeDrawable tape, DashboardReading reading, DashboardOptions options)
     {
@@ -244,5 +266,114 @@ public static class Tapes
         // же просадки — её уже рисует стрелка и показывает центральный индикатор, — и рисовалась
         // кеглем 10 угловых минут с руля: место занимала, взгляд тянула, прочитаться не могла.
         tape.Caption = "В";
+    }
+
+    /// <summary>
+    /// Есть ли сейчас чем считать вольт на ячейку. Нет — показывается пакетная лента: не выбран
+    /// режим, молчит BMS, не задан ряд. Это не ошибка, а обычный день у колеса без BMS.
+    /// </summary>
+    public static bool ShowsCellVoltage(DashboardReading reading, DashboardOptions options) =>
+        CellDivisor(reading, options) > 1;
+
+    private static double CellDivisor(DashboardReading reading, DashboardOptions options) =>
+        VoltageScale.Divisor(options.VoltageScale, reading.VoltageV, reading.BmsCellVolts, reading.PackCells);
+
+    /// <summary>
+    /// Та же лента в вольтах на ячейку — <b>полная копия <see cref="ApplyVoltage"/></b> со своими
+    /// порогами, своим окном и своим форматом окна. Копия нарочно: общий помощник был бы обещанием,
+    /// что две шкалы останутся одинаковыми, а такого обещания никто не давал — ячейковая вправе
+    /// разойтись с пакетной и в разметке, и в рисках (план 27 §27.4).
+    /// <para>
+    /// <b>Правки отсюда в <see cref="ApplyVoltage"/> сами не переносятся.</b> Чиня здесь просадку,
+    /// загляни туда — и наоборот.
+    /// </para>
+    /// </summary>
+    public static void ApplyCellVoltage(TapeDrawable tape, DashboardReading reading, DashboardOptions options)
+    {
+        tape.Ticks.LabelFrom = 0;
+
+        // Делитель нужен и до развилки: без него «данных нет» — это и молчащее колесо, и молчащий
+        // BMS. Показывается в обоих случаях одно и то же, но лента к этому моменту уже выбрана.
+        double divisor = CellDivisor(reading, options);
+
+        if (reading.VoltageV <= 0 || divisor <= 1)
+        {
+            // То же, что у пакетной: не пустая шкала, а серая, и ноль в окне. Пустая читается не
+            // как «данных нет», а как поломка панели.
+            tape.Value = 0;
+            tape.Scale.Bands = [new TapeBand(Endless.Low, Endless.High, options.Palette.Dim)];
+            tape.Mark.Value = null;
+            tape.Peak.Value = null;
+            tape.Trend.From = null;
+            tape.Trend.To = null;
+            return;
+        }
+
+        var palette = options.Palette;
+
+        // Пороги на ячейку предзаполнены — в отличие от пакетных, у которых умолчание ноль: 3,5 В
+        // на банке значат одно и то же и на 20S, и на 60S, и угадывать тут нечего. Ноль по-прежнему
+        // выключает зону.
+        double warn = options.WarnCellVolts;
+        double danger = options.DangerCellVolts;
+        double empty = options.EmptyCellVolts;
+
+        // Своё окно, а не пересчитанное из пакетного: у банки размах свой — доли вольта.
+        double span = options.SagWindowCellVolts;
+        if (options.SagAutoScale)
+        {
+            span = Math.Max(span, (reading.MaxVoltageV - reading.MinVoltageV) / divisor * SwingMargin);
+        }
+        tape.SpanPerHeight = span;
+        tape.SmoothSeconds = options.TapeSmoothSeconds;
+
+        // Своя лестница подписей: на банке весь видимый кусок — около половины вольта, и шаг в
+        // целый вольт оставил бы шкалу без разметки вовсе.
+        double labelStep = span <= 0.3 ? 0.05 : span <= 0.6 ? 0.1 : span <= 1.5 ? 0.25 : 0.5;
+        tape.Ticks.LabelStep = labelStep;
+        tape.Ticks.Step = labelStep / 2;
+        tape.Ticks.LabelFormat = labelStep >= 0.5 ? "F1" : "F2";
+
+        double cellVolts = reading.VoltageV / divisor;
+        tape.Value = cellVolts;
+
+        // Слоями снизу вверх, как у пакетной: спокойная заливка на всю шкалу, поверх жёлтая, поверх
+        // красная, последним пол. Выключенный порог свой слой не кладёт.
+        var bands = new List<TapeBand> { new(Endless.Low, Endless.High, palette.Calm) };
+        if (warn > 0) bands.Add(new TapeBand(Endless.Low, warn, palette.Caution));
+        if (danger > 0) bands.Add(new TapeBand(Endless.Low, danger, palette.Danger));
+        if (empty > 0) bands.Add(new TapeBand(Endless.Low, empty, palette.Danger));
+        tape.Scale.Bands = bands;
+
+        tape.Hatch.From = null;
+
+        // Следы поездки — те же два, поделённые тем же делителем: они про тот же пакет, только в
+        // других единицах.
+        tape.Mark.Value = options.ShowBug && reading.MinVoltageV > 0 ? reading.MinVoltageV / divisor : null;
+        tape.Mark.Color = palette.Accent;
+        tape.Peak.Value = options.ShowBug && reading.MaxVoltageV > 0 ? reading.MaxVoltageV / divisor : null;
+        tape.Peak.Color = palette.Good;
+
+        // Порог стрелки — в вольтах пакета, как и у пакетной ленты: просадка одна и та же, и
+        // рисоваться стрелка обязана в тех же случаях, а не раньше или позже.
+        double sag = reading.NoLoadVoltageV - reading.VoltageV;
+        bool sagging = options.ShowTrend && reading.NoLoadVoltageV > 0 && sag > SagArrowMinV;
+        tape.Trend.From = sagging ? reading.NoLoadVoltageV / divisor : null;
+        tape.Trend.To = sagging ? cellVolts : null;
+        tape.Trend.Color = palette.Accent;
+
+        // Три значащие цифры: у банки старших разрядов нет вовсе, прятать нечего, а сотые — это как
+        // раз та точность, на которой видно просадку.
+        tape.Window.Text = volts => volts.ToString("F2");
+
+        bool low = cellVolts <= warn;
+        bool sunk = cellVolts <= danger;
+
+        tape.Window.Fill = sunk ? palette.Danger : Color.Black;
+        tape.Window.Critical = empty > 0 && cellVolts <= empty;
+        tape.Window.Ink = sunk ? Color.White : low ? palette.Accent : palette.Ink;
+        tape.Window.Border = tape.Window.Ink;
+
+        tape.Caption = "В/яч";
     }
 }

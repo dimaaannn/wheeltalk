@@ -1,3 +1,4 @@
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Ports;
 
@@ -43,6 +44,14 @@ public sealed class WheelState
     public int Current { get; private set; } // 1/100 A
     public int Power { get; private set; } // 1/100 W
     public int Battery { get; private set; }
+
+    /// <summary>
+    /// Сколько ячеек в ряду и откуда это известно — то, чем декодер считал заряд в последний раз
+    /// (план 27 §27.4). Своего счёта тут нет: число приходит готовым, вместе с источником, и едет
+    /// в снимок, чтобы шкала напряжения могла делить на него, а не гадать заново.
+    /// </summary>
+    public CellCount PackCells { get; private set; } = CellCount.Unknown;
+
     public int ChargingStatus { get; private set; }
     public int SleepTimer { get; private set; }
     public double Angle { get; private set; }
@@ -220,9 +229,19 @@ public sealed class WheelState
 
     private double GetVoltageTiltbackForWheel(int cellsForWheel) => _config.CellVoltageTiltback / 100d * cellsForWheel;
 
-    /// <summary>Port of WheelData.setBatteryLevel(int) including the custom-percents branch.</summary>
-    public void SetBatteryLevel(int battery, int cellsForWheel)
+    /// <summary>
+    /// Port of WheelData.setBatteryLevel(int) including the custom-percents branch.
+    /// <para>
+    /// Ряд принимается целиком, вместе с источником (<see cref="CellCount"/>): считает по нему
+    /// по-прежнему одно только число, но дальше — в снимок и на шкалу — источник обязан доехать
+    /// живым. «24 ячейки по слову человека» и «24 по догадке» на экране расходятся (§27.4).
+    /// </para>
+    /// </summary>
+    public void SetBatteryLevel(int battery, CellCount cells)
     {
+        PackCells = cells;
+        int cellsForWheel = cells.Cells;
+
         if (_config.CustomPercents)
         {
             double maxVoltage = GetMaxVoltageForWheel(cellsForWheel);
@@ -248,6 +267,7 @@ public sealed class WheelState
         Pwm = CalculatedPwm * 100.0,
         MaxPwm = MaxPwm * 100.0,
         Battery = Battery,
+        PackCells = PackCells,
         TemperatureRaw = Temperature,
         Temperature2Raw = Temperature2,
         TopSpeedRaw = TopSpeed,

@@ -134,6 +134,14 @@
   <data name="SettingCellVoltageTiltbackHint" xml:space="preserve"><value>Напряжение на ячейке, при котором колесо поднимает педали. Отсюда считается ноль заряда.</value></data>
   <data name="SettingRotationVoltageHint" xml:space="preserve"><value>Напряжение, при котором измерялась скорость раскрута.</value></data>
   <data name="SettingCellVoltageTiltback" xml:space="preserve"><value>Напряжение пустой ячейки</value></data>
+  <data name="SettingCellsInSeries" xml:space="preserve"><value>Ячеек в ряду</value></data>
+  <data name="SettingCellsInSeriesHint" xml:space="preserve"><value>Сколько ячеек соединено последовательно. Ноль — не задано, тогда число берётся у BMS или у протокола.</value></data>
+  <data name="SettingCellsCalculate" xml:space="preserve"><value>Определить ряд</value></data>
+  <data name="SettingCellsCalculateHint" xml:space="preserve"><value>Подставит в строку выше то, что приложение думает сейчас. Число останется вашим — правьте.</value></data>
+  <data name="SettingCellsCalculateAction" xml:space="preserve"><value>Рассчитать</value></data>
+  <data name="SettingCellsNoData" xml:space="preserve"><value>Считать не по чему: колесо ещё не назвало ни ряда, ни напряжения. Число можно задать и вручную.</value></data>
+  <data name="SettingCellsImplausible" xml:space="preserve"><value>При {0} ячейках выходит {1:F1} В на ячейку — столько не бывает.</value></data>
+  <data name="UnitCells" xml:space="preserve"><value>ячеек</value></data>
   <data name="SettingHwPwm" xml:space="preserve"><value>Аппаратный ШИМ</value></data>
   <data name="SettingAlexovikFw" xml:space="preserve"><value>Прошивка Alexovik</value></data>
   <data name="SettingLightEnabled" xml:space="preserve"><value>Фара</value></data>
@@ -265,6 +273,18 @@
   <data name="SettingPwmDpPerUnitHint" xml:space="preserve"><value>Сколько экрана приходится на процент ШИМ. Больше — крупнее деления, но уже диапазон: при 12 видно около ±26 %.</value></data>
   <data name="SettingSagWindow" xml:space="preserve"><value>Размах шкалы</value></data>
   <data name="SettingSagWindowHint" xml:space="preserve"><value>Сколько вольт укладывается в высоту экрана. Меньше — просадка виднее, но шкала уезжает чаще.</value></data>
+  <data name="SettingVoltageScale" xml:space="preserve"><value>Чем меряет шкала</value></data>
+  <data name="SettingVoltageScaleHint" xml:space="preserve"><value>На ячейку пороги одинаковы для любого пакета. Считать нечем — шкала вернётся к напряжению пакета.</value></data>
+  <data name="SettingVoltageScalePack" xml:space="preserve"><value>Напряжение пакета</value></data>
+  <data name="SettingVoltageScaleBms" xml:space="preserve"><value>На ячейку, по BMS</value></data>
+  <data name="SettingVoltageScaleCells" xml:space="preserve"><value>На ячейку, по числу ячеек</value></data>
+  <data name="SettingSagWindowCell" xml:space="preserve"><value>Размах шкалы на ячейку</value></data>
+  <data name="SettingSagWindowCellHint" xml:space="preserve"><value>Сколько вольт на банке укладывается в высоту экрана. Своё число, к пакетному не привязано.</value></data>
+  <data name="SettingWarnCellVolts" xml:space="preserve"><value>Жёлтая ниже, на ячейку</value></data>
+  <data name="SettingWarnCellVoltsHint" xml:space="preserve"><value>Напряжение ячейки, ниже которого шкала желтеет. Ноль — зона выключена.</value></data>
+  <data name="SettingDangerCellVolts" xml:space="preserve"><value>Красная ниже, на ячейку</value></data>
+  <data name="SettingEmptyCellVolts" xml:space="preserve"><value>Ячейка пуста ниже</value></data>
+  <data name="SettingEmptyCellVoltsHint" xml:space="preserve"><value>Ниже этого шкала красная до конца поездки. Ноль выключает.</value></data>
   <data name="SettingWarnVolts" xml:space="preserve"><value>Жёлтая ниже</value></data>
   <data name="SettingWarnVoltsHint" xml:space="preserve"><value>Напряжение пакета, ниже которого шкала желтеет. Ноль — зона выключена.</value></data>
   <data name="SettingDangerVolts" xml:space="preserve"><value>Красная ниже</value></data>

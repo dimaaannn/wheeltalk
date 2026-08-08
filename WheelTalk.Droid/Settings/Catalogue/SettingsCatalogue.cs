@@ -32,7 +32,7 @@ public static class SettingsCatalogue
         return
         [
             .. WheelPage.Build(context.Wheel, context.Selected, context.Identity, context.Protocol,
-                context.RestartAuthentication),
+                context.RestartAuthentication, context.LastFrame, context.SaveCells, context.WheelScopeChosen),
             .. AppPage.Build(context.Connection, context.Power, context.Share),
             .. AlertsPage.Build(context.Alerts, context.Channels, context.PreviewAlarm),
             .. DisplayPage.Build(context.Dashboard, context.Screen),

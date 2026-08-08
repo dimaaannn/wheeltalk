@@ -164,7 +164,7 @@ public class LayeredSettingsTests
         var settings = Build();
         settings.Scope = Sherman;
 
-        settings.Set("AlertSound", "False", globalOnly: true);
+        settings.Set("AlertSound", "False", SettingLayer.GlobalOnly);
 
         Assert.Equal(new ResolvedSetting("False", SettingOrigin.Global), settings.Get("AlertSound"));
 
@@ -183,7 +183,7 @@ public class LayeredSettingsTests
         settings.Scope = Sherman;
         settings.Set("AlertSound", "True");
 
-        settings.Set("AlertSound", "False", globalOnly: true);
+        settings.Set("AlertSound", "False", SettingLayer.GlobalOnly);
 
         Assert.Equal(new ResolvedSetting("False", SettingOrigin.Global), settings.Get("AlertSound"));
     }
@@ -222,6 +222,62 @@ public class LayeredSettingsTests
 
         settings.Scope = MTen3;
         Assert.Equal(new ResolvedSetting("85", SettingOrigin.Wheel), settings.Get("PwmWarning"));
+    }
+
+    /// <summary>
+    /// Обратный край: у ряда ячеек не бывает общего значения — 20S у одного колеса и 16S у другого.
+    /// В общей области писать некуда, и правка не делается вовсе; молчаливая запись в общий слой
+    /// раздала бы чужой ряд каждому колесу, у которого своего числа нет.
+    /// </summary>
+    [Fact]
+    public void A_setting_that_belongs_to_a_wheel_is_not_written_when_no_wheel_is_chosen()
+    {
+        var settings = Build();
+
+        settings.Set("CellsInSeries", "20", SettingLayer.WheelOnly);
+
+        Assert.Null(settings.Get("CellsInSeries", SettingLayer.WheelOnly).Value);
+
+        settings.Scope = Sherman;
+        Assert.Null(settings.Get("CellsInSeries", SettingLayer.WheelOnly).Value);
+    }
+
+    /// <summary>
+    /// «Сделать значением по умолчанию» — вторая дверь в общий слой, и для настройки колеса она
+    /// заперта той же щеколдой: 20S иначе уехали бы на все колёса разом.
+    /// </summary>
+    [Fact]
+    public void A_setting_that_belongs_to_a_wheel_is_never_promoted_to_the_global_layer()
+    {
+        var settings = Build();
+        settings.Scope = Sherman;
+        settings.Set("CellsInSeries", "20", SettingLayer.WheelOnly);
+
+        settings.PromoteToGlobal("CellsInSeries", SettingLayer.WheelOnly);
+
+        Assert.Equal(new ResolvedSetting("20", SettingOrigin.Wheel), settings.Get("CellsInSeries", SettingLayer.WheelOnly));
+
+        settings.Scope = MTen3;
+        Assert.Null(settings.Get("CellsInSeries", SettingLayer.WheelOnly).Value);
+    }
+
+    /// <summary>
+    /// Беда тихая и потому опаснее двух дверей: значение в общем слое могло оказаться там и не
+    /// нашей правкой. Колесо без своего числа обязано увидеть заводское, а не чужой ряд.
+    /// </summary>
+    [Fact]
+    public void A_setting_that_belongs_to_a_wheel_never_reads_the_global_layer()
+    {
+        var settings = Build();
+        settings.Set("CellsInSeries", "20");   // как если бы туда написали мимо признака
+
+        settings.Scope = MTen3;
+
+        Assert.Null(settings.Get("CellsInSeries", SettingLayer.WheelOnly).Value);
+
+        // И своё число колеса не теряется оттого, что в общем слое лежит такое же.
+        settings.Set("CellsInSeries", "20", SettingLayer.WheelOnly);
+        Assert.Equal(new ResolvedSetting("20", SettingOrigin.Wheel), settings.Get("CellsInSeries", SettingLayer.WheelOnly));
     }
 
     /// <summary>

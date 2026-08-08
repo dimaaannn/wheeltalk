@@ -360,10 +360,13 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
 
     /// <summary>
     /// Ответ идёт через общий каскад (план 27 §27.3): декодер подаёт наверх ряд, узнанный по имени
-    /// модели, а число выдаёт резолвер.
+    /// модели, и число, заданное человеком (§27.4), а ответ выдаёт резолвер.
     /// </summary>
-    public int GetCellsForWheel() =>
-        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = CellsFromModel() }).Cells;
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    {
+        ConfiguredCells = _config.CellsInSeries,
+        ProtocolCells = CellsFromModel(),
+    });
 
     /// <summary>Port of KingsongAdapter.getCellsForWheel() (KingsongAdapter.java:494-503).</summary>
     private int CellsFromModel()

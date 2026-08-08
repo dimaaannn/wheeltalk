@@ -1,3 +1,5 @@
+using WheelTalk.Core.Battery;
+
 namespace WheelTalk.Core.Decoding;
 
 /// <summary>
@@ -62,7 +64,11 @@ internal static class InMotionP6RealTime
         state.SetSpeed(speed);
         state.SetTopSpeed(speed);
         state.SetPower(batPower * 100);
-        state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), Cells);
+        // Ряд идёт мимо каскада, потому что мимо него идёт и весь P6: настроек этот разбор не видит
+        // (у него на руках только состояние), а число здесь не догадка — оно посчитано по двум
+        // замерам напряжения с процентом. Источник — знание протокола, каким оно и является.
+        state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0),
+            new CellCount(Cells, CellCountSource.Protocol));
         state.SetTemperature(mosTemp * 100);
         state.SetTemperature2(motTemp * 100);
         return true;

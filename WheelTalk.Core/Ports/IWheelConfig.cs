@@ -16,6 +16,14 @@ public interface IWheelConfig
 
     // derived-calculation parameters (WheelState.SetBatteryLevel / CalculatePwm)
     bool CustomPercents { get; }
+
+    /// <summary>
+    /// Ряд, заданный человеком (план 27 §27.4): верхняя ступень каскада
+    /// <c>CellCountResolver</c>, бьющая и BMS, и протокол. Ноль — «не задано», как принято у нас и
+    /// в оригинале. Своего в оригинале нет: там числа ячеек в настройках не было вовсе.
+    /// </summary>
+    int CellsInSeries { get; }
+
     /// <summary>Cell voltage tiltback, 1/100 V (e.g. 330 = 3.30 V).</summary>
     int CellVoltageTiltback { get; }
     /// <summary>Rotation speed reference, 1/10 km/h.</summary>

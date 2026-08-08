@@ -5,6 +5,7 @@ using Android.OS;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
+using WheelTalk.Core.Battery;
 using WheelTalk.Dashboard.Droid;
 
 namespace WheelTalk.Lab.Droid;
@@ -91,11 +92,23 @@ public sealed class LabSettingsActivity : Activity
 
         Group("Шкала напряжения");
         Note("Лента слева. Пороги абсолютные: зона стоит на шкале неподвижно. Ноль выключает зону.");
-        Slider("Видно на ленте, В", 4, 40, options.SagWindowVolts, "F0", v => options.SagWindowVolts = v);
+        Slider("Видно на ленте, В пакета", 4, 40, options.SagWindowVolts, "F0", v => options.SagWindowVolts = v);
         Toggle("Растягивать под размах поездки", options.SagAutoScale, v => options.SagAutoScale = v);
         Slider("Жёлтая ниже, В", 0, 250, options.WarnVolts, "F1", v => options.WarnVolts = v);
         Slider("Красная ниже, В", 0, 250, options.DangerVolts, "F1", v => options.DangerVolts = v);
         Slider("Пак пуст ниже, В (0 — выкл.)", 0, 250, options.EmptyVolts, "F0", v => options.EmptyVolts = v);
+
+        Group("Шкала на ячейку");
+        Note("Чем меряет левая лента. Считать нечем — вернётся к вольтам пакета: ряд не задан или BMS молчит. Записи стенда банок не несут, поэтому BMS здесь подделывается.");
+        VoltageScale();
+        Slider("Ячеек в ряду (0 — не задано)", 0, 60, _settings.CellsInSeries, "F0",
+            v => _settings.CellsInSeries = (int)Math.Round(v));
+        Toggle("Подделать банки BMS", _settings.FakeBms, v => _settings.FakeBms = v);
+        Slider("Видно на ленте, В на ячейку", 0.1, 2, options.SagWindowCellVolts, "F2",
+            v => options.SagWindowCellVolts = v);
+        Slider("Жёлтая ниже, В на ячейку", 0, 4.25, options.WarnCellVolts, "F2", v => options.WarnCellVolts = v);
+        Slider("Красная ниже, В на ячейку", 0, 4.25, options.DangerCellVolts, "F2", v => options.DangerCellVolts = v);
+        Slider("Ячейка пуста ниже, В", 0, 4.25, options.EmptyCellVolts, "F2", v => options.EmptyCellVolts = v);
 
         Group("Приёмы");
         Note("Что рисуется поверх шкал. Выключается по одному, чтобы было видно, что даёт каждое.");
@@ -240,6 +253,27 @@ public sealed class LabSettingsActivity : Activity
         row.AddView(toggle);
 
         Add(row);
+    }
+
+    /// <summary>Три пункта левой шкалы: вольты пакета, на ячейку по BMS, на ячейку по заданному ряду.</summary>
+    private void VoltageScale()
+    {
+        string[] labels = ["Напряжение пакета", "На ячейку, по BMS", "На ячейку, по числу ячеек"];
+        var modes = new[] { VoltageScaleMode.Pack, VoltageScaleMode.Bms, VoltageScaleMode.Cells };
+
+        var spinner = new Spinner(this);
+        var adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerItem, labels);
+        adapter.SetDropDownViewResource(Android.Resource.Layout.SimpleSpinnerDropDownItem);
+        spinner.Adapter = adapter;
+        spinner.SetSelection(Array.IndexOf(modes, _settings.Options.VoltageScale));
+        spinner.ItemSelected += (_, e) =>
+        {
+            if (modes[e.Position] == _settings.Options.VoltageScale) return;
+            _settings.Options.VoltageScale = modes[e.Position];
+            _settings.Notify();
+        };
+
+        Add(spinner);
     }
 
     private void Palette()

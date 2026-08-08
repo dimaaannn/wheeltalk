@@ -1,4 +1,5 @@
-﻿using WheelTalk.Core.Settings;
+﻿using WheelTalk.Core.Battery;
+using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid.Configuration;
 
@@ -73,10 +74,101 @@ internal static class DisplayPage
                 Apply = text => dashboard.PwmDpPerUnit = SettingsCatalogue.ParseNumber(text),
             },
 
-            // Всё на этой шкале — в вольтах пакета, тех самых, что видны на её делениях, и всё
-            // задаётся на колесо. На банку было бы одним числом на оба колеса, но за это пришлось
-            // бы знать число банок, а колесо его не сообщает; в приложении у каждого колеса свой
-            // слой, и угадывать незачем.
+            // Чем меряет левая шкала. Заводское — вольты пакета, и сама она на ячейку не
+            // переключается никогда: пункт выбирает человек (план 27 §27.4). Два способа поделить не
+            // равны — BMS банки измеряет, а расчёт делит вольтаж пакета на введённое руками число, —
+            // поэтому три пункта, а не выключатель. Режим, которому нечем считать, мягко
+            // возвращается к пакету.
+            //
+            // Откуда BMS берёт число банок, не спрашиваем: у Gotway его шлёт сам BMS, у Ветерана
+            // оно приходит от версии протокола. Есть число — считаем по нему (решение владельца).
+            new()
+            {
+                Key = "Display:VoltageScale",
+                Kind = SettingKind.Choice,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionVoltageTape",
+                LabelKey = "SettingVoltageScale",
+                HintKey = "SettingVoltageScaleHint",
+                Choices = [nameof(VoltageScaleMode.Pack), nameof(VoltageScaleMode.Bms), nameof(VoltageScaleMode.Cells)],
+                ChoiceLabelKeys = ["SettingVoltageScalePack", "SettingVoltageScaleBms", "SettingVoltageScaleCells"],
+                Current = () => dashboard.VoltageScale.ToString(),
+                Apply = text => dashboard.VoltageScale = Enum.TryParse(text, out VoltageScaleMode mode)
+                    ? mode
+                    : VoltageScaleMode.Pack,
+            },
+
+            // Пороги на ячейку. В отличие от пакетных, предзаполнены: 3,5 В — это 3,5 В и на 20S, и
+            // на 60S, и угадывать тут нечего (план 27 §27.4). Пакетные ниже не выброшены — у кого
+            // заданы, работают в пакетном режиме; два набора живут при разных режимах и не спорят.
+            new()
+            {
+                Key = "Display:SagWindowCellVolts",
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionVoltageTape",
+                LabelKey = "SettingSagWindowCell",
+                HintKey = "SettingSagWindowCellHint",
+                UnitKey = "UnitVolts",
+                IsVisible = () => dashboard.VoltageScale != VoltageScaleMode.Pack,
+                Minimum = 0.1,
+                Maximum = 2,
+                Step = 0.05,
+                Decimals = 2,
+                Current = () => SettingsCatalogue.Fixed(dashboard.SagWindowCellVolts, 2),
+                Apply = text => dashboard.SagWindowCellVolts = SettingsCatalogue.ParseNumber(text),
+            },
+            new()
+            {
+                Key = "Display:WarnCellVolts",
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionVoltageTape",
+                LabelKey = "SettingWarnCellVolts",
+                HintKey = "SettingWarnCellVoltsHint",
+                UnitKey = "UnitVolts",
+                IsVisible = () => dashboard.VoltageScale != VoltageScaleMode.Pack,
+                Maximum = 4.25,
+                Step = 0.05,
+                Decimals = 2,
+                Current = () => SettingsCatalogue.Fixed(dashboard.WarnCellVolts, 2),
+                Apply = text => dashboard.WarnCellVolts = SettingsCatalogue.ParseNumber(text),
+            },
+            new()
+            {
+                Key = "Display:DangerCellVolts",
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionVoltageTape",
+                LabelKey = "SettingDangerCellVolts",
+                UnitKey = "UnitVolts",
+                IsVisible = () => dashboard.VoltageScale != VoltageScaleMode.Pack,
+                Maximum = 4.25,
+                Step = 0.05,
+                Decimals = 2,
+                Current = () => SettingsCatalogue.Fixed(dashboard.DangerCellVolts, 2),
+                Apply = text => dashboard.DangerCellVolts = SettingsCatalogue.ParseNumber(text),
+            },
+            new()
+            {
+                Key = "Display:EmptyCellVolts",
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionVoltageTape",
+                LabelKey = "SettingEmptyCellVolts",
+                HintKey = "SettingEmptyCellVoltsHint",
+                UnitKey = "UnitVolts",
+                IsVisible = () => dashboard.VoltageScale != VoltageScaleMode.Pack,
+                Maximum = 4.25,
+                Step = 0.05,
+                Decimals = 2,
+                Current = () => SettingsCatalogue.Fixed(dashboard.EmptyCellVolts, 2),
+                Apply = text => dashboard.EmptyCellVolts = SettingsCatalogue.ParseNumber(text),
+            },
+
+            // Всё, что ниже, — в вольтах пакета, тех самых, что видны на делениях в заводском
+            // режиме, и всё задаётся на колесо. Окно шкалы общее для всех трёх режимов: на ячейку
+            // оно пересчитывается делителем, а не задаётся вторым числом.
             new()
             {
                 Key = "Display:SagWindowVolts",

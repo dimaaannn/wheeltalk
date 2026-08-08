@@ -1,3 +1,5 @@
+using WheelTalk.Core.Battery;
+
 namespace WheelTalk.Dashboard.Droid;
 
 /// <summary>
@@ -175,6 +177,33 @@ public sealed class DashboardOptions
     /// вольт видна как заметный ход, а не как дрожание у окна.
     /// </summary>
     public double SagWindowVolts { get; set; } = 10;
+
+    /// <summary>
+    /// Видимый кусок <b>ячейковой</b> шкалы, вольт на банку. Своё число, а не пересчитанное из
+    /// пакетного: у ленты на ячейку своя жизнь (план 27 §27.4). Полвольта — примерно тот же ход,
+    /// что даёт десять вольт на двадцатибаночном паке.
+    /// </summary>
+    public double SagWindowCellVolts { get; set; } = 0.5;
+
+    /// <summary>
+    /// Что показывает левая шкала. Заводское — напряжение пакета, и само оно не переключается
+    /// никогда: пункт выбирает человек (план 27 §27.4). Режим, которому нечем считать (нет BMS,
+    /// не задан ряд), мягко возвращается к пакету — это не ошибка, а обычный день.
+    /// </summary>
+    public VoltageScaleMode VoltageScale { get; set; } = VoltageScaleMode.Pack;
+
+    /// <summary>
+    /// Порог «жёлтой» зоны в вольтах на ячейку. В отличие от пакетного, предзаполнен и работает из
+    /// коробки: 3,5 В — это 3,5 В и на 20S, и на 60S, угадывать тут нечего (план 27 §27.4). Ноль
+    /// выключает зону, как и у пакетного порога.
+    /// </summary>
+    public double WarnCellVolts { get; set; } = 3.5;
+
+    /// <summary>Порог красной зоны, вольт на ячейку. Ноль выключает.</summary>
+    public double DangerCellVolts { get; set; } = 3.3;
+
+    /// <summary>Пол шкалы, вольт на ячейку: ниже — пак кончился, а не просел. Ноль выключает.</summary>
+    public double EmptyCellVolts { get; set; } = 3.2;
 
     /// <summary>
     /// Растягивать шкалу напряжения под размах поездки, беря <see cref="SagWindowVolts"/> за

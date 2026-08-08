@@ -13,6 +13,24 @@ public enum SettingOrigin
     Wheel,
 }
 
+/// <summary>
+/// В каких слоях настройке позволено жить. Два края здесь не симметричные оговорки, а два разных
+/// вида вреда: общее значение там, где различие физически невозможно (звук в кармане у одного
+/// райдера), — и общее значение там, где различие обязательно (ряд ячеек: 20S у одного колеса,
+/// 16S у другого).
+/// </summary>
+public enum SettingLayer
+{
+    /// <summary>Обычная: общее значение, поверх него — своё у колеса.</summary>
+    Any,
+
+    /// <summary>Только общее. Своё у колеса не заводится и снимается, если было.</summary>
+    GlobalOnly,
+
+    /// <summary>Только своё у колеса. Общий слой не пишется и <b>не читается</b> — даже если в нём что-то лежит.</summary>
+    WheelOnly,
+}
+
 /// <param name="Value">Null only when no layer has the key at all — an unknown setting, not an empty one.</param>
 public readonly record struct ResolvedSetting(string? Value, SettingOrigin Origin)
 {
@@ -72,14 +90,17 @@ public sealed class LayeredSettings
     /// </summary>
     public event Action? Changed;
 
-    public ResolvedSetting Get(string key)
+    public ResolvedSetting Get(string key, SettingLayer layer = SettingLayer.Any)
     {
         if (_scope.Length > 0 && Wheel().TryGetValue(key, out string? own))
         {
             return new ResolvedSetting(own, SettingOrigin.Wheel);
         }
 
-        if (Global().TryGetValue(key, out string? shared))
+        // Настройка колеса общий слой не читает вовсе: колесо, которому ряд не задавали, должно
+        // получить заводское «не задано», а не число соседнего колеса. Это не перестраховка от
+        // собственной записи — в общем слое значение могло оказаться и другим путём.
+        if (layer != SettingLayer.WheelOnly && Global().TryGetValue(key, out string? shared))
         {
             return new ResolvedSetting(shared, SettingOrigin.Global);
         }
@@ -91,17 +112,22 @@ public sealed class LayeredSettings
     /// An edit. It lands on the wheel when there is one — that is what "this wheel's setting" means
     /// and how an override comes into being — and on the global value when there is not.
     /// <para>
-    /// <paramref name="globalOnly"/> is for the settings that cannot differ between two wheels at
-    /// all: the alert channels belong to the phone and its rider, the retry delays to the app, the
-    /// border width to the screen. Storing one of those per wheel would put a frame and a menu on a
-    /// difference that physically cannot exist.
+    /// <see cref="SettingLayer.GlobalOnly"/> is for the settings that cannot differ between two
+    /// wheels at all: the alert channels belong to the phone and its rider, the retry delays to the
+    /// app, the border width to the screen. Storing one of those per wheel would put a frame and a
+    /// menu on a difference that physically cannot exist.
+    /// </para>
+    /// <para>
+    /// <see cref="SettingLayer.WheelOnly"/> — обратный случай: колеса нет, значит писать некуда, и
+    /// правка не делается вовсе. Молча: единственный путь сюда — правка в общей области, а строку
+    /// такой настройки там не показывают.
     /// </para>
     /// </summary>
-    public void Set(string key, string value, bool globalOnly = false)
+    public void Set(string key, string value, SettingLayer layer = SettingLayer.Any)
     {
-        if (globalOnly)
+        if (layer == SettingLayer.GlobalOnly)
         {
-            Store(GlobalScope, key, value);
+            Store(GlobalScope, key, value, layer);
             // Переопределение у такого ключа всё же может лежать в базе — заведённое до того, как
             // признак появился. Не снять его значит писать в слой, который всё равно перекрыт:
             // правка выглядела бы не сработавшей.
@@ -109,7 +135,9 @@ public sealed class LayeredSettings
         }
         else
         {
-            Store(CurrentScope(), key, value);
+            if (layer == SettingLayer.WheelOnly && _scope.Length == 0) return;
+
+            Store(CurrentScope(), key, value, layer);
         }
 
         Invalidate();
@@ -145,12 +173,16 @@ public sealed class LayeredSettings
     /// while doing it. Keeping both would leave a second copy of a value that is now shared, which
     /// is a disagreement waiting to happen rather than a setting.
     /// </summary>
-    public void PromoteToGlobal(string key)
+    public void PromoteToGlobal(string key, SettingLayer layer = SettingLayer.Any)
     {
-        string? value = Get(key).Value;
+        // «Сделать значением по умолчанию» для настройки колеса — это и есть та самая коллизия,
+        // от которой её оберегают: 20S уехали бы на все колёса разом.
+        if (layer == SettingLayer.WheelOnly) return;
+
+        string? value = Get(key, layer).Value;
         if (value is null) return;
 
-        Store(GlobalScope, key, value);
+        Store(GlobalScope, key, value, layer);
         if (_scope.Length > 0) _store.Write(_scope, key, null);
         Invalidate();
     }
@@ -181,12 +213,16 @@ public sealed class LayeredSettings
     /// The same reasoning <see cref="PromoteToGlobal"/> follows when it clears the override it just
     /// copied upwards. Comparing text is safe — a descriptor renders each value one way only.
     /// </summary>
-    private void Store(string scope, string key, string value) =>
-        _store.Write(scope, key, value == Underlying(scope, key) ? null : value);
+    private void Store(string scope, string key, string value, SettingLayer layer) =>
+        _store.Write(scope, key, value == Underlying(scope, key, layer) ? null : value);
 
-    /// <summary>What <paramref name="scope"/> would show if it held nothing for this key.</summary>
-    private string? Underlying(string scope, string key) =>
-        scope.Length > 0 && Global().TryGetValue(key, out string? shared)
+    /// <summary>
+    /// What <paramref name="scope"/> would show if it held nothing for this key. У настройки колеса
+    /// под ней сразу заводское: общий слой она не читает, и сверяться с ним значило бы стереть
+    /// правку, совпавшую с чужим числом.
+    /// </summary>
+    private string? Underlying(string scope, string key, SettingLayer layer) =>
+        scope.Length > 0 && layer != SettingLayer.WheelOnly && Global().TryGetValue(key, out string? shared)
             ? shared
             : _factory.GetValueOrDefault(key);
 

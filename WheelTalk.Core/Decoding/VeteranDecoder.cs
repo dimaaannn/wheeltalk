@@ -220,7 +220,15 @@ public sealed partial class VeteranDecoder : IWheelDecoder
             bms.MaxCellNum = 1;
             bms.MinCellNum = 1;
             double totalVolt = 0.0;
-            int cellsForWheel = GetCellsForWheel();
+
+            // Не больше, чем банок в массиве. Ряд теперь приходит и от человека (план 27 §27.4), а
+            // 60S — законный ряд, какого в массиве на 56 мест просто нет: без ограничения кадр BMS
+            // ронял бы приложение посреди поездки. До §27.4 сюда попадала только версия протокола,
+            // максимум 42, и до конца массива было далеко.
+            //
+            // Ограниченное число едет и в CellCount: иначе среднее поделилось бы на то, чего не
+            // считали.
+            int cellsForWheel = Math.Min(GetCellsForWheel().Cells, bms.Cells.Length);
             bms.CellCount = cellsForWheel;
             for (int i = 0; i < cellsForWheel; i++)
             {
@@ -242,7 +250,12 @@ public sealed partial class VeteranDecoder : IWheelDecoder
             }
             bms.CellDiff = bms.MaxCell - bms.MinCell;
             bms.Voltage = totalVolt;
-            bms.AvgCell = totalVolt / cellsForWheel;
+
+            // Ноль в делителе законен: каскад вправе ответить «ряда не знаю», и тогда цикл выше не
+            // сделал ни одного шага. Оригинал делит не глядя, но у него ряд всегда приходил из
+            // таблицы; у нас деление дало бы NaN, а NaN на шкале читается не как ошибка, а как
+            // пустота — и разбираются в такой пустоте долго.
+            bms.AvgCell = cellsForWheel > 0 ? totalVolt / cellsForWheel : 0;
         }
         // pnum == 8: new packet, not yet recognized (matches Android TODO)
     }
@@ -324,10 +337,13 @@ public sealed partial class VeteranDecoder : IWheelDecoder
 
     /// <summary>
     /// Ответ идёт через общий каскад (план 27 §27.3): декодер подаёт наверх то, что знает сам, —
-    /// ряд по версии протокола, — а число выдаёт резолвер.
+    /// ряд по версии протокола и число, заданное человеком (§27.4), — а ответ выдаёт резолвер.
     /// </summary>
-    public int GetCellsForWheel() =>
-        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = CellsFromProtocolVersion() }).Cells;
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    {
+        ConfiguredCells = _config.CellsInSeries,
+        ProtocolCells = CellsFromProtocolVersion(),
+    });
 
     private int CellsFromProtocolVersion() => _protocolVersion switch
     {

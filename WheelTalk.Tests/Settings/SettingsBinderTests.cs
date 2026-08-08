@@ -21,6 +21,7 @@ public class SettingsBinderTests
         public bool HwPwm { get; set; }
         public bool AlarmsEnabled { get; set; } = true;
         public bool Sound { get; set; } = true;
+        public int CellsInSeries { get; set; }
 
         /// <summary>Сколько раз сработал крючок «правил человек» — см. <see cref="SettingDescriptor.AfterEdit"/>.</summary>
         public int Edits { get; set; }
@@ -208,6 +209,58 @@ public class SettingsBinderTests
         Assert.Equal(2, options.Edits);
     }
 
+    /// <summary>
+    /// Признак «только у колеса» держит биндер, а не разметка. Правка в общей области не пишется
+    /// никуда — ни в слои, ни в живой объект: писать её некуда, и молча раздать чужой ряд всем
+    /// колёсам хуже, чем не сделать ничего.
+    /// </summary>
+    [Fact]
+    public void A_wheel_only_setting_is_not_edited_while_no_wheel_is_chosen()
+    {
+        var options = new LiveOptions();
+        var (binder, settings) = Build(options);
+        var descriptor = binder.Descriptors.First(d => d.Key == "WheelConfig:CellsInSeries");
+
+        binder.Set(descriptor, "20");
+
+        // Заводское «не задано» на месте: ни один слой правку не принял, живой объект не тронут.
+        Assert.Equal(new ResolvedSetting("0", SettingOrigin.Factory), settings.Get(descriptor.Key));
+        Assert.Equal(0, options.CellsInSeries);
+    }
+
+    /// <summary>Вторая дверь: перенести своё число колеса в общее нельзя даже командой строки.</summary>
+    [Fact]
+    public void A_wheel_only_setting_is_not_promoted_to_the_global_layer()
+    {
+        var options = new LiveOptions();
+        var (binder, settings) = Build(options);
+        var descriptor = binder.Descriptors.First(d => d.Key == "WheelConfig:CellsInSeries");
+        settings.Scope = Sherman;
+        binder.Set(descriptor, "20");
+
+        binder.PromoteToGlobal(descriptor);
+
+        settings.Scope = MTen3;
+        Assert.Equal(0, options.CellsInSeries);
+    }
+
+    /// <summary>
+    /// Кнопка «рассчитать» правит соседнюю строку по ключу — и через биндер, а не мимо: слой,
+    /// крючок правки и признаки у неё те же, что у правки руками.
+    /// </summary>
+    [Fact]
+    public void An_action_edits_its_neighbour_by_key()
+    {
+        var options = new LiveOptions();
+        var (binder, settings) = Build(options);
+        settings.Scope = Sherman;
+
+        binder.Set("WheelConfig:CellsInSeries", "24");
+
+        Assert.Equal(24, options.CellsInSeries);
+        Assert.Equal(new ResolvedSetting("24", SettingOrigin.Wheel), settings.Get("WheelConfig:CellsInSeries"));
+    }
+
     private static (SettingsBinder Binder, LayeredSettings Settings) Build(LiveOptions options)
     {
         var descriptors = Describe(options);
@@ -250,6 +303,17 @@ public class SettingsBinderTests
             GlobalOnly = true,
             Current = () => options.Sound.ToString(),
             Apply = text => options.Sound = bool.Parse(text),
+        },
+        new SettingDescriptor
+        {
+            Key = "WheelConfig:CellsInSeries",
+            Kind = SettingKind.Number,
+            Page = SettingsPage.Wheel,
+            SectionKey = "SectionBattery",
+            LabelKey = "CellsInSeries",
+            WheelOnly = true,
+            Current = () => options.CellsInSeries.ToString(CultureInfo.InvariantCulture),
+            Apply = text => options.CellsInSeries = int.Parse(text, CultureInfo.InvariantCulture),
         },
         new SettingDescriptor
         {

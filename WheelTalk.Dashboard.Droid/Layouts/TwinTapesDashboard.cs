@@ -45,6 +45,13 @@ public sealed class TwinTapesDashboard : DashboardView
     private const float TickFadeDp = 20;
 
     private readonly TapeDrawable _voltage;
+
+    /// <summary>
+    /// Вторая левая лента — в вольтах на ячейку. Обе живут всегда, а рисуется одна: элементы
+    /// разные, чтобы пороги пакета и пороги банки не делили одни поля (план 27 §27.4).
+    /// </summary>
+    private readonly TapeDrawable _cellVoltage;
+
     private readonly TapeDrawable _pwm;
     private readonly SpeedBlockDrawable _centre;
 
@@ -57,6 +64,7 @@ public sealed class TwinTapesDashboard : DashboardView
     public TwinTapesDashboard(Context context, DashboardOptions options) : base(context, options)
     {
         _voltage = Tapes.Voltage(options, TapeSide.Left);
+        _cellVoltage = Tapes.CellVoltage(options, TapeSide.Left);
         _pwm = Tapes.Pwm(options, TapeSide.Right);
         _centre = new SpeedBlockDrawable { Options = options };
     }
@@ -79,7 +87,12 @@ public sealed class TwinTapesDashboard : DashboardView
     {
         float tape = (float)(Width * TapeShare / 100.0);
 
-        Tapes.ApplyVoltage(_voltage, Reading, Options);
+        // Слева стоит одна из двух лент. Считать вольт на ячейку бывает нечем — нет BMS, не задан
+        // ряд, — и тогда возвращается пакетная: молча и мягко, это обычный день, а не ошибка.
+        var left = Tapes.ShowsCellVoltage(Reading, Options) ? _cellVoltage : _voltage;
+        if (left == _cellVoltage) Tapes.ApplyCellVoltage(_cellVoltage, Reading, Options);
+        else Tapes.ApplyVoltage(_voltage, Reading, Options);
+
         Tapes.ApplyPwm(_pwm, Reading, Options);
         _centre.Reading = Reading;
 
@@ -87,13 +100,13 @@ public sealed class TwinTapesDashboard : DashboardView
         // снизу — только поле. Ставится здесь, а не в Tapes.Apply*, потому что высота бара — свойство
         // экрана, а не ленты: у стенда его нет вовсе.
         float fade = Density * TickFadeDp;
-        foreach (var scale in (TapeDrawable[])[_voltage, _pwm])
+        foreach (var scale in (TapeDrawable[])[left, _pwm])
         {
             scale.Ticks.FadeTop = TopInset + fade;
             scale.Ticks.FadeBottom = fade;
         }
 
-        _voltage.Draw(canvas, new RectF(0, content.Top, tape, content.Bottom), Density);
+        left.Draw(canvas, new RectF(0, content.Top, tape, content.Bottom), Density);
         _pwm.Draw(canvas, new RectF(Width - tape, content.Top, Width, content.Bottom), Density);
         _centre.Draw(canvas, new RectF(tape, content.Top, Width - tape, content.Bottom));
     }

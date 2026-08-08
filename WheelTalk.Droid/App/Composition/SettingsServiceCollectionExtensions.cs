@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Globalization;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -55,7 +56,15 @@ public static class SettingsServiceCollectionExtensions
             () => sp.GetRequiredService<WheelSession>().RestartAuthentication(),
             // Тоже лениво: звук нужен только тому, кто открыл «Предупреждения», а описания строятся
             // на запуске — поднимать ради них звуковой поток незачем.
-            intensity => sp.GetRequiredService<AlertSignals>().Preview(intensity))));
+            intensity => sp.GetRequiredService<AlertSignals>().Preview(intensity),
+            // Последний кадр — по нему считает кнопка ряда и предупреждает строка ряда (план 27
+            // §27.4). Лениво и здесь: до подключения сессии ещё нет, а спрашивают её с открытой
+            // страницы настроек.
+            () => sp.GetRequiredService<WheelSession>().LastSnapshot,
+            // Запись — через биндер: слой у настройки колеса свой, и знать о нём кнопке незачем.
+            cells => sp.GetRequiredService<SettingsBinder>()
+                .Set(WheelPage.CellsKey, cells.ToString(CultureInfo.InvariantCulture)),
+            () => sp.GetRequiredService<LayeredSettings>().Scope.Length > 0)));
         services.AddSingleton(sp => new LayeredSettings(
             sp.GetRequiredService<ISettingsStore>(),
             SettingsBinder.FactoryDefaults(sp.GetRequiredService<IReadOnlyList<SettingDescriptor>>()))

@@ -1181,7 +1181,7 @@ public sealed class MainActivity : Activity
         if (_screenChoice == choice) return;
 
         ShowScreen(choice);
-        _layers.Set(ScreenChoiceKey, choice, globalOnly: true);
+        _layers.Set(ScreenChoiceKey, choice, SettingLayer.GlobalOnly);
     }
 
     /// <summary>

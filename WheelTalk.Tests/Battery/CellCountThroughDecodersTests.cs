@@ -1,4 +1,5 @@
 using System.Text;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Decoding;
 using WheelTalk.Tests.TestSupport;
 
@@ -34,7 +35,7 @@ public class CellCountThroughDecodersTests
     {
         var harness = DecoderHarness.ForGotway(config => config.GotwayVoltage = voltageSetting);
 
-        Assert.Equal(expected, ((GotwayDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel());
+        Assert.Equal(expected, ((GotwayDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel().Cells);
     }
 
     /// <summary>
@@ -56,7 +57,7 @@ public class CellCountThroughDecodersTests
         var harness = DecoderHarness.ForVeteran();
         harness.FeedHex(frames);
 
-        Assert.Equal(expected, ((VeteranDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel());
+        Assert.Equal(expected, ((VeteranDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel().Cells);
     }
 
     /// <summary>
@@ -75,7 +76,7 @@ public class CellCountThroughDecodersTests
         var harness = DecoderHarness.ForKingSong();
         harness.Decoder.ProtocolDecoder.Decode(NameFrame(wheelName));
 
-        Assert.Equal(expected, ((KingsongDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel());
+        Assert.Equal(expected, ((KingsongDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel().Cells);
     }
 
     /// <summary>У InMotion первого поколения ряд один на все модели.</summary>
@@ -84,7 +85,7 @@ public class CellCountThroughDecodersTests
     {
         var harness = DecoderHarness.ForInMotion();
 
-        Assert.Equal(20, ((InMotionDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel());
+        Assert.Equal(20, ((InMotionDecoder)harness.Decoder.ProtocolDecoder).GetCellsForWheel().Cells);
     }
 
     /// <summary>
@@ -101,8 +102,32 @@ public class CellCountThroughDecodersTests
             var decoder = (InMotionDecoderV2)harness.Decoder.ProtocolDecoder;
             decoder.SetModel(model);
 
-            Assert.Equal(CellsBeforeTheCascade(model), decoder.GetCellsForWheel());
+            Assert.Equal(CellsBeforeTheCascade(model), decoder.GetCellsForWheel().Cells);
         }
+    }
+
+    /// <summary>
+    /// Вход <c>Configured</c> замкнут (§27.4): число, заданное человеком, бьёт и знание протокола, и
+    /// умный BMS — у всех декодеров разом, а не у того, где о нём вспомнили. Ноль означает «не
+    /// задано», поэтому настройка, которой не касались, ничего не сдвигает — это и проверяют
+    /// таблицы выше.
+    /// </summary>
+    [Fact]
+    public void A_series_set_by_hand_beats_every_lower_step()
+    {
+        var gotway = DecoderHarness.ForGotway(config =>
+        {
+            config.GotwayVoltage = "1";   // протокол сказал бы 20
+            config.CellsInSeries = 32;
+        });
+        var kingsong = DecoderHarness.ForKingSong(config => config.CellsInSeries = 32);
+        var inMotion = DecoderHarness.ForInMotion(config => config.CellsInSeries = 32);
+
+        var byHand = new CellCount(32, CellCountSource.UserSetting);
+
+        Assert.Equal(byHand, ((GotwayDecoder)gotway.Decoder.ProtocolDecoder).GetCellsForWheel());
+        Assert.Equal(byHand, ((KingsongDecoder)kingsong.Decoder.ProtocolDecoder).GetCellsForWheel());
+        Assert.Equal(byHand, ((InMotionDecoder)inMotion.Decoder.ProtocolDecoder).GetCellsForWheel());
     }
 
     /// <summary>Снимок таблицы <c>InMotionV2Model.CellsForWheel</c> на день подмены.</summary>

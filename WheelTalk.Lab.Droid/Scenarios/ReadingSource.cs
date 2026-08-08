@@ -1,3 +1,4 @@
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Dashboard.Droid;
 
@@ -32,6 +33,9 @@ public sealed class ReadingSource
     /// <summary>Ток, ниже которого колесо считается разгруженным, — опора для просадки, ампер.</summary>
     private const double NoLoadCurrent = 2;
 
+    /// <summary>На сколько поддельная средняя банка ниже частного «пакет ÷ ряд», вольт. Только чтобы два режима «на ячейку» различались на глаз.</summary>
+    private const double BmsImbalanceVolts = 0.03;
+
     private readonly double[] _smoothed;
     private readonly double[] _rate;
     private readonly double[] _speedRate;
@@ -42,7 +46,6 @@ public sealed class ReadingSource
     private readonly double[] _noLoadVoltage;
     private readonly double[] _maxSag;
     private readonly int[] _maxTemperature;
-    private readonly int _packCells;
 
     public ReadingSource(Timeline timeline, DashboardOptions options)
     {
@@ -58,16 +61,20 @@ public sealed class ReadingSource
         _noLoadVoltage = new double[count];
         _maxSag = new double[count];
         _maxTemperature = new int[count];
-        _packCells = TrackHistory();
+        TrackHistory();
         Retune(options);
     }
 
     /// <summary>
-    /// То, что накапливается по ходу поездки и от настроек не зависит: следы минимума и максимума,
-    /// опорное холостое напряжение и размер пакета. Считается один раз — в отличие от сглаживания,
-    /// крутить тут нечего.
+    /// То, что накапливается по ходу поездки и от настроек не зависит: следы минимума и максимума и
+    /// опорное холостое напряжение. Считается один раз — в отличие от сглаживания, крутить тут
+    /// нечего.
+    /// <para>
+    /// Своей догадки о числе банок здесь больше нет: она была вторым счётом ячеек, а план 27 держит
+    /// его в одном месте. Ряд приходит с ручки стенда — как в приложении приходит из настроек.
+    /// </para>
     /// </summary>
-    private int TrackHistory()
+    private void TrackHistory()
     {
         var frames = Timeline.Frames;
 
@@ -106,10 +113,6 @@ public sealed class ReadingSource
             _maxSag[i] = deepestSag;
             _maxTemperature[i] = hottest;
         }
-
-        // Число банок колесо не сообщает. Пакет не бывает заряжен выше 4,2 В на банку, поэтому
-        // округление вверх от наибольшего виденного напряжения даёт ближайший разумный размер.
-        return highest > 0 ? (int)Math.Ceiling(highest / 4.2) : 0;
     }
 
     public Timeline Timeline { get; }
@@ -189,8 +192,33 @@ public sealed class ReadingSource
                 NoLoadVoltageV = _noLoadVoltage[index],
                 MaxSagV = _maxSag[index],
                 MaxTemperatureC = _maxTemperature[index],
-                PackCells = _packCells,
+                PackCells = ConfiguredCells(),
+                BmsCellVolts = FakeBmsCell(frame.Snapshot.VoltageV),
             };
+    }
+
+    /// <summary>
+    /// Ряд так, как его видит панель: числом человека, потому что на шкалу «по числу ячеек»
+    /// пускается только оно. Ручка стенда играет здесь ту же роль, что настройка колеса в
+    /// приложении.
+    /// </summary>
+    private static CellCount ConfiguredCells()
+    {
+        int cells = LabSettings.Current.CellsInSeries;
+        return cells > 0 ? new CellCount(cells, CellCountSource.UserSetting) : CellCount.Unknown;
+    }
+
+    /// <summary>
+    /// Средняя банка, какой её отдал бы умный BMS: пакет, делённый на заданный ряд, минус небольшой
+    /// перекос — иначе два режима «на ячейку» рисовали бы одну и ту же линию и различить их было бы
+    /// нельзя. Ноль — «BMS молчит», и шкала вернётся к вольтам пакета.
+    /// </summary>
+    private static double FakeBmsCell(double packVolts)
+    {
+        var settings = LabSettings.Current;
+        if (!settings.FakeBms || settings.CellsInSeries <= 0 || packVolts <= 0) return 0;
+
+        return packVolts / settings.CellsInSeries - BmsImbalanceVolts;
     }
 
     private int IndexBefore(int index, TimeSpan window)

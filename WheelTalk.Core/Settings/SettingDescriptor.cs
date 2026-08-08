@@ -134,6 +134,40 @@ public sealed class SettingDescriptor
     public bool GlobalOnly { get; init; }
 
     /// <summary>
+    /// Зеркало <see cref="GlobalOnly"/>: у настройки не бывает «одинаково для всех колёс». Ряд
+    /// ячеек тому пример — 20S у одного колеса и 16S у другого, и общее значение здесь не
+    /// компромисс, а тихая порча: колесо без своего числа унаследовало бы чужое (план 27 §27.4).
+    /// <para>
+    /// Признак держит <see cref="SettingsBinder"/>, а не разметка: правка при пустой области не
+    /// пишется никуда, «сделать значением по умолчанию» отказывает, а чтение минует общий слой —
+    /// даже если там что-то уже лежит, положенное не нашей правкой.
+    /// </para>
+    /// </summary>
+    public bool WheelOnly { get; init; }
+
+    /// <summary>В каких слоях этой настройке позволено жить. <see cref="GlobalOnly"/> старше — обе сразу задать нельзя по смыслу.</summary>
+    public SettingLayer Layer => GlobalOnly ? SettingLayer.GlobalOnly
+        : WheelOnly ? SettingLayer.WheelOnly
+        : SettingLayer.Any;
+
+    /// <summary>
+    /// Строка предупреждения под настройкой — не ключ ресурса, а готовый текст: он зависит от того,
+    /// что колесо говорит прямо сейчас, и в ресурсе целиком не выражается. <c>null</c> —
+    /// предупреждать не о чем, и это обычный случай.
+    /// <para>
+    /// Заведена ради числа ячеек: отменять заданное человеком мы не вправе, а сказать, что из его
+    /// числа выходит 21 В на ячейку, — обязаны (план 27 §27.4).
+    /// </para>
+    /// </summary>
+    public Func<string?>? Warning { get; init; }
+
+    /// <summary>
+    /// Подпись на кнопке <see cref="SettingKind.Action"/>, ключом ресурса. Не задана — общая
+    /// «Передать»: она годилась, пока действие было одно.
+    /// </summary>
+    public string? ActionLabelKey { get; init; }
+
+    /// <summary>
     /// Whether the row is shown right now. Used for the cascades the original has and we want:
     /// alarms off hides everything under them, hardware PWM hides the three numbers the duty cycle
     /// would otherwise be computed from.

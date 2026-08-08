@@ -54,6 +54,9 @@ public sealed class SettingsCategoryActivity : Activity
     private static readonly Color OverrideColor = Color.ParseColor("#FF8F00");
     private static readonly Color BorderColor = Color.ParseColor("#40808080");
 
+    /// <summary>Цвет предупреждения под строкой. Красный, а не янтарь переопределения: тот говорит «не заводское», это — «похоже на ошибку».</summary>
+    private static readonly Color WarningColor = Color.ParseColor("#E53935");
+
     private SettingsBinder _binder = null!;
     private LayeredSettings _settings = null!;
     private WheelOptions _wheel = null!;
@@ -366,6 +369,20 @@ public sealed class SettingsCategoryActivity : Activity
             });
         }
 
+        // Предупреждение — под подсказкой и цветом: подсказка объясняет настройку всегда, а это
+        // говорит о введённом числе и появляется, только если с ним что-то не так. Отменять выбор
+        // человека мы не вправе, сказать о нём — обязаны.
+        if (descriptor.Warning?.Invoke() is { Length: > 0 } warning)
+        {
+            var note = new TextView(this) { Text = warning };
+            note.SetTextSize(ComplexUnitType.Sp, 12);
+            note.SetTextColor(WarningColor);
+            card.AddView(note, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            {
+                TopMargin = this.Dp(2),
+            });
+        }
+
         return card;
     }
 
@@ -448,7 +465,9 @@ public sealed class SettingsCategoryActivity : Activity
             }
 
             case SettingKind.Action:
-                var button = UiKit.CreateButton(this, AppStrings.SettingsRun);
+                var button = UiKit.CreateButton(this, descriptor.ActionLabelKey is { } actionLabel
+                    ? TranslateExtension.Get(actionLabel)
+                    : AppStrings.SettingsRun);
                 button.SetTextSize(ComplexUnitType.Sp, 12);
                 button.Click += (_, _) => RunAction(descriptor, button);
                 return button;
@@ -625,13 +644,24 @@ public sealed class SettingsCategoryActivity : Activity
             .Show();
     }
 
-    /// <summary>The one row kind that does something rather than store something — wrapped in a try because it runs off a tap, same rule as everywhere else event handlers can throw.</summary>
+    /// <summary>
+    /// The one row kind that does something rather than store something — wrapped in a try because
+    /// it runs off a tap, same rule as everywhere else event handlers can throw. Сообщение
+    /// исключения показывается человеку: у действия, которому нечего сделать, это единственный
+    /// способ ответить (кнопка ряда так и говорит, что считать не по чему).
+    /// <para>
+    /// Страница перестраивается после удачного действия: кнопка вправе изменить соседнюю строку —
+    /// ряд ячеек она как раз и подставляет, — а незамеченная правка выглядит как ничего не
+    /// сделавшая кнопка.
+    /// </para>
+    /// </summary>
     private void RunAction(SettingDescriptor descriptor, Button button)
     {
         button.Enabled = false;
         try
         {
             descriptor.Apply("");
+            Rebuild();
         }
         catch (Exception ex)
         {
@@ -653,9 +683,14 @@ public sealed class SettingsCategoryActivity : Activity
     /// <summary>Same two commands and the same "one layer down, not straight to factory" semantics as the MAUI original's OpenRowMenu.</summary>
     private void ShowRowMenu(SettingDescriptor descriptor, ResolvedSetting resolved)
     {
+        // У настройки колеса общего значения не бывает вовсе: снятие своего числа возвращает к
+        // заводскому, а «сделать значением по умолчанию» ей не предлагается — это и есть та самая
+        // коллизия, от которой её берегут. Отказ сидит и в ядре; здесь — чтобы не предлагать того,
+        // что всё равно не будет сделано.
         bool overridden = resolved.IsOverridden;
-        string restore = overridden ? AppStrings.SettingsUseGlobal : AppStrings.SettingsUseFactory;
-        string[] actions = overridden ? [restore, AppStrings.SettingsMakeGlobal] : [restore];
+        bool shareable = overridden && !descriptor.WheelOnly;
+        string restore = shareable ? AppStrings.SettingsUseGlobal : AppStrings.SettingsUseFactory;
+        string[] actions = shareable ? [restore, AppStrings.SettingsMakeGlobal] : [restore];
         string origin = overridden ? AppStrings.SettingsOverridden : AppStrings.SettingsGlobalValue;
 
         new AlertDialog.Builder(this)!

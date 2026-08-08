@@ -135,10 +135,14 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected,
 
     /// <summary>
     /// Ответ идёт через общий каскад (план 27 §27.3). Знание протокола здесь короткое: у всех
-    /// колёс InMotion первого поколения ряд один — 20 (порт <c>getCellsForWheel()</c>).
+    /// колёс InMotion первого поколения ряд один — 20 (порт <c>getCellsForWheel()</c>); выше него
+    /// только число, заданное человеком (§27.4).
     /// </summary>
-    public int GetCellsForWheel() =>
-        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = 20 }).Cells;
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    {
+        ConfiguredCells = _config.CellsInSeries,
+        ProtocolCells = 20,
+    });
 
     /// <summary>Port of InMotionAdapter.decode(byte[]).</summary>
     public bool Decode(byte[] data)

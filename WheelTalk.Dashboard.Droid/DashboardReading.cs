@@ -1,3 +1,4 @@
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 
 namespace WheelTalk.Dashboard.Droid;
@@ -61,8 +62,23 @@ public sealed record DashboardReading
     /// <summary>Самая глубокая просадка за поездку, вольт. Не «сколько сейчас», а «на что способно».</summary>
     public double MaxSagV { get; init; }
 
-    /// <summary>Число банок в пакете. Нужно, чтобы вольты превратить в долю шкалы.</summary>
-    public int PackCells { get; init; }
+    /// <summary>
+    /// Ряд ячеек и его источник. Шкала «на ячейку расчётом» делит на это число, но только когда
+    /// источник — сам человек: остальные ступени каскада хороши для процентов заряда, а на шкалу
+    /// их пускает не догадка, а выбор в настройках (план 27 §27.4).
+    /// </summary>
+    public CellCount PackCells { get; init; }
+
+    /// <summary>
+    /// Средняя живая банка по данным умного BMS, вольт (<see cref="BmsCells.Average"/>). Ноль —
+    /// «банок никто не мерил»: BMS либо нет вовсе, либо кадра с банками ещё не было.
+    /// <para>
+    /// Среднее, а не минимум: битые банки встречаются, и одна деградировавшая держала бы шкалу в
+    /// тревоге всю поездку — тревога, звучащая всегда, не сработает тогда, когда понадобится. Да и
+    /// пороги 3,5/3,3/3,2 сняты с кривой обычной банки, то есть применимы к среднему.
+    /// </para>
+    /// </summary>
+    public double BmsCellVolts { get; init; }
 
     public int MaxTemperatureC { get; init; }
 
@@ -91,5 +107,11 @@ public sealed record DashboardReading
         TemperatureC = snapshot.TemperatureC,
         TripKm = snapshot.WheelDistanceKm,
         AlertIntensity = alertIntensity,
+        PackCells = snapshot.PackCells,
+
+        // Считается из самих банок, а не берётся из bms.AvgCell: то поле — часть порта 1:1, и в
+        // сумму у него входят незаполненные места, отчего после подключения оно втрое ниже правды
+        // (план 27 §27.4).
+        BmsCellVolts = BmsCells.Average(snapshot.Bms1, snapshot.Bms2),
     };
 }

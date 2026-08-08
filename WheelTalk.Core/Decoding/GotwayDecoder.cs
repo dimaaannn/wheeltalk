@@ -453,13 +453,14 @@ public sealed partial class GotwayDecoder : IWheelDecoder
     /// <summary>
     /// Ответ идёт через общий каскад (план 27 §27.3): своего счёта ячеек у декодера больше нет —
     /// он лишь подаёт наверх то, что знает сам. Порядок ступеней повторяет прежний порядок этого
-    /// метода: ответил умный BMS — берётся он, иначе настройка вольтажа.
+    /// метода: задал человек — берётся его число (§27.4), иначе умный BMS, иначе настройка вольтажа.
     /// </summary>
-    public int GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
     {
+        ConfiguredCells = _config.CellsInSeries,
         SmartBmsCells = _smartBmsCells,
         ProtocolCells = CellsFromVoltageSetting(),
-    }).Cells;
+    });
 
     /// <summary>
     /// Port of the settings table in GotwayAdapter.getCellsForWheel() (GotwayAdapter.java:424-436).

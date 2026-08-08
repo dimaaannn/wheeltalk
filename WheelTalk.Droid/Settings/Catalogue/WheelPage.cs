@@ -1,6 +1,9 @@
+using System.Globalization;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Settings;
 using WheelTalk.Droid.Configuration;
+using WheelTalk.Droid.Resources.Strings;
 
 namespace WheelTalk.Droid.Settings.Catalogue;
 
@@ -17,12 +20,21 @@ internal static class WheelPage
     /// </summary>
     public const string AliasKey = "Wheel:Alias";
 
+    /// <summary>
+    /// Ряд ячеек. Константой по той же причине, что и алиас: в него пишет кнопка «рассчитать»,
+    /// а ключ, названный в двух файлах порознь, однажды переименуют наполовину.
+    /// </summary>
+    public const string CellsKey = "WheelConfig:CellsInSeries";
+
     public static IReadOnlyList<SettingDescriptor> Build(
         AppWheelConfig wheel,
         WheelOptions selected,
         WheelIdentity identity,
         Func<WheelProtocol?> protocol,
-        Action restartAuthentication)
+        Action restartAuthentication,
+        Func<TelemetrySnapshot?> lastFrame,
+        Action<int> saveCells,
+        Func<bool> wheelScopeChosen)
     {
         // Спрашивается у сессии, а не у настроек: протокол теперь опознаётся при подключении, и
         // сохранённой копии, по которой можно было бы решить заранее, больше нет. До первого кадра
@@ -165,6 +177,54 @@ internal static class WheelPage
                 Current = () => wheel.UseBetterPercents.ToString(),
                 Apply = text => wheel.UseBetterPercents = SettingsCatalogue.ParseBool(text),
             },
+            // Ряд ячеек — верхняя ступень каскада (план 27): задан человеком — бьёт и умный BMS, и
+            // знание протокола. Ноль означает «не задано», как принято у нас и в оригинале.
+            new()
+            {
+                Key = CellsKey,
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Wheel,
+                SectionKey = "SectionBattery",
+                LabelKey = "SettingCellsInSeries",
+                HintKey = "SettingCellsInSeriesHint",
+                UnitKey = "UnitCells",
+                // Число принадлежит колесу, а не приложению: 20S у одного и 16S у другого — не
+                // разногласие, а два разных колеса. Общего значения у него не бывает вовсе, поэтому
+                // и в общей области строка не показывается: писать её там некуда.
+                WheelOnly = true,
+                IsVisible = wheelScopeChosen,
+                Maximum = 60,
+                Current = () => SettingsCatalogue.Whole(wheel.CellsInSeries),
+                Apply = text => wheel.CellsInSeries = (int)SettingsCatalogue.ParseNumber(text),
+
+                // Отменять заданное человеком мы не вправе — он знает своё колесо, — но сказать,
+                // что из его числа выходит 21 В на банку, обязаны: ошибку «4 вместо 20» иначе не
+                // видно. Пока напряжения не было, пугать нечем, и предупреждения нет.
+                Warning = () => ImplausibleCellsNote(wheel.CellsInSeries, lastFrame()?.VoltageV ?? 0),
+            },
+            new()
+            {
+                Key = "WheelConfig:CellsFromCascade",
+                Kind = SettingKind.Action,
+                Page = SettingsPage.Wheel,
+                SectionKey = "SectionBattery",
+                LabelKey = "SettingCellsCalculate",
+                HintKey = "SettingCellsCalculateHint",
+                ActionLabelKey = "SettingCellsCalculateAction",
+                IsVisible = wheelScopeChosen,
+                Current = () => "",
+
+                // Догадка становится решением человека: он видит число в соседней строке и либо
+                // оставляет его, либо правит. Считать не по чему — сказать об этом, а не записать
+                // ноль: ноль здесь значит «не задано», и молчаливая запись отменила бы настройку.
+                Apply = _ =>
+                {
+                    var cells = lastFrame()?.PackCells ?? CellCount.Unknown;
+                    if (!cells.IsKnown) throw new InvalidOperationException(AppStrings.SettingCellsNoData);
+
+                    saveCells(cells.Cells);
+                },
+            },
             new()
             {
                 Key = "WheelConfig:CustomPercents",
@@ -303,5 +363,20 @@ internal static class WheelPage
                 Apply = text => wheel.PowerFactor = (int)SettingsCatalogue.ParseNumber(text),
             },
         ];
+    }
+
+    /// <summary>
+    /// Что сказать о заданном ряде, если поделить на него нельзя всерьёз. Критерий один и тот же,
+    /// каким живёт весь план 27: вольт на ячейку вне живого Li-ion. Он производный — от ряда и
+    /// напряжения вместе, — поэтому до первого кадра ответа нет и предупреждения тоже.
+    /// </summary>
+    private static string? ImplausibleCellsNote(int cells, double packVolts)
+    {
+        if (cells <= 0 || packVolts <= 0) return null;
+
+        double cellVolts = packVolts / cells;
+        return LiIonCell.IsPlausible(cellVolts)
+            ? null
+            : string.Format(CultureInfo.CurrentCulture, AppStrings.SettingCellsImplausible, cells, cellVolts);
     }
 }
