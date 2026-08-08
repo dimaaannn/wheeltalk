@@ -10,7 +10,8 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// </summary>
 internal static class AlertsPage
 {
-    public static IReadOnlyList<SettingDescriptor> Build(AlertOptions alerts, AlertSignalOptions channels)
+    public static IReadOnlyList<SettingDescriptor> Build(AlertOptions alerts, AlertSignalOptions channels,
+        Action<double> previewAlarm)
     {
         return
         [
@@ -129,6 +130,24 @@ internal static class AlertsPage
                 ChoiceLabelKeys = ["SettingAlarmWaveTwoTone", "SettingAlarmWaveStack"],
                 Current = () => channels.Wave.ToString(),
                 Apply = text => channels.Wave = Enum.TryParse(text, out AlarmWave wave) ? wave : AlarmWave.TwoToneStack,
+            },
+            // Прослушивание, а не настройка: хранить нечего, а звук, переживший страницу, играл бы в
+            // кармане. Ползунок ведёт ту же интенсивность, что приходит от движка тревог, поэтому
+            // слышно и редкий писк у порога, и сплошной сигнал у предела.
+            new()
+            {
+                Key = "AlertSignals:Preview",
+                Kind = SettingKind.Slider,
+                Page = SettingsPage.Warnings,
+                SectionKey = "SectionChannels",
+                LabelKey = "SettingAlarmPreview",
+                HintKey = "SettingAlarmPreviewHint",
+                Transient = true,
+                IsVisible = () => channels.Sound,
+                UnitKey = "UnitPercent",
+                Maximum = 100,
+                Current = () => "0",
+                Apply = text => previewAlarm(SettingsCatalogue.ParseNumber(text) / 100),
             },
             new()
             {

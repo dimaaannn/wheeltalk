@@ -34,7 +34,7 @@ public static class SettingsCatalogue
             .. WheelPage.Build(context.Wheel, context.Selected, context.Identity, context.Protocol,
                 context.RestartAuthentication),
             .. AppPage.Build(context.Connection, context.Power, context.Share),
-            .. AlertsPage.Build(context.Alerts, context.Channels),
+            .. AlertsPage.Build(context.Alerts, context.Channels, context.PreviewAlarm),
             .. DisplayPage.Build(context.Dashboard, context.Screen),
         ];
     }

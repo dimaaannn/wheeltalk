@@ -92,6 +92,29 @@ public sealed class SettingsCategoryActivity : Activity
         Rebuild();
     }
 
+    /// <summary>
+    /// Прослушивание не переживает страницу: звук, оставшийся играть в кармане, — худшее, что может
+    /// сделать экран настроек. Гасится на уходе, а не на закрытии, потому что до закрытия телефон
+    /// успевает и погаснуть, и уехать.
+    /// </summary>
+    protected override void OnPause()
+    {
+        Silence();
+        base.OnPause();
+    }
+
+    /// <summary>
+    /// По всем описаниям, а не по строкам этой страницы: строка могла стать невидимой ровно тем
+    /// касанием, из-за которого мы сюда попали, — выключенный звук прячет и выбор, и прослушивание.
+    /// </summary>
+    private void Silence()
+    {
+        foreach (var descriptor in _binder.Descriptors)
+        {
+            if (descriptor.Page == _page && descriptor.Kind == SettingKind.Slider) _binder.Set(descriptor, "0");
+        }
+    }
+
     private static string PageTitleKey(SettingsPage page) => page switch
     {
         SettingsPage.Wheel => "SettingsPageWheel",
@@ -211,6 +234,9 @@ public sealed class SettingsCategoryActivity : Activity
 
     private void Rebuild()
     {
+        // Ползунки прослушивания рисуются с нуля, значит и звучать после перестроения нечему.
+        Silence();
+
         ShowScope();
 
         _content.RemoveAllViews();
@@ -281,7 +307,11 @@ public sealed class SettingsCategoryActivity : Activity
         title.SetTextColor(UiKit.PlainText(this));
         top.AddView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        top.AddView(BuildEditor(descriptor, resolved));
+        // Ползунок ведут пальцем во всю его длину, поэтому он идёт отдельной строкой под подписью,
+        // а не в узкую колонку справа, где живут значения.
+        var editor = BuildEditor(descriptor, resolved);
+        bool ownRow = descriptor.Kind == SettingKind.Slider;
+        if (!ownRow) top.AddView(editor);
 
         if (CanOpenMenu(descriptor, resolved))
         {
@@ -295,6 +325,14 @@ public sealed class SettingsCategoryActivity : Activity
         }
 
         card.AddView(top);
+
+        if (ownRow)
+        {
+            card.AddView(editor, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            {
+                TopMargin = this.Dp(4),
+            });
+        }
 
         string? meta = BuildMeta(descriptor, resolved);
         if (meta is not null)
@@ -334,7 +372,8 @@ public sealed class SettingsCategoryActivity : Activity
     /// <summary>Layer the value came from, plus — for numbers, always — the range: "70 % · Колесо AA:BB". Snap of МAUI's ScopeLabel/rows, minus the menu they needed a second glance to notice.</summary>
     private string? BuildMeta(SettingDescriptor descriptor, ResolvedSetting resolved)
     {
-        if (descriptor.ReportedByWheel || descriptor.Kind == SettingKind.Action) return null;
+        // У действия и у прослушивания нет ни значения, ни слоя, из которого оно пришло.
+        if (descriptor.ReportedByWheel || descriptor.Kind is SettingKind.Action or SettingKind.Slider) return null;
 
         string origin = resolved.Origin switch
         {
@@ -393,6 +432,19 @@ public sealed class SettingsCategoryActivity : Activity
                 var readout = Outlined(value.Length > 0 ? value : AppStrings.SettingsTextEmpty, resolved.IsOverridden);
                 readout.Click += (_, _) => EditText(descriptor, value);
                 return readout;
+            }
+
+            case SettingKind.Slider:
+            {
+                // Правит на ходу и мимо слоёв: строка не хранит значения, она даёт услышать.
+                // Каждое движение — сразу в живой объект, поэтому Set, а не Commit: перестроение
+                // страницы на каждый шаг ползунка стоило бы дороже самого звука и оборвало бы его.
+                var live = new SeekBar(this) { Max = (int)descriptor.Maximum, Progress = 0 };
+                live.ProgressChanged += (_, e) =>
+                {
+                    if (e.FromUser) _binder.Set(descriptor, e.Progress.ToString(CultureInfo.InvariantCulture));
+                };
+                return live;
             }
 
             case SettingKind.Action:

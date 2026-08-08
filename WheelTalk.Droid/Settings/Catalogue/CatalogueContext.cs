@@ -20,6 +20,11 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// запуске, когда колесо ещё молчит, а настройки Begode обязаны появиться, как только оно
 /// назовётся. <c>null</c> — «пока не знаем».
 /// </param>
+/// <param name="PreviewAlarm">
+/// Дать послушать выбранный сигнал тревоги, 0…1. Делегатом, а не самим <c>AlertSignals</c>, по той
+/// же причине, что протокол и пароль: описания строятся при запуске, а звук нужен только тому, кто
+/// открыл страницу «Предупреждения».
+/// </param>
 public sealed record CatalogueContext(
     AppWheelConfig Wheel,
     AlertOptions Alerts,
@@ -32,4 +37,5 @@ public sealed record CatalogueContext(
     ScreenOptions Screen,
     PowerOptions Power,
     Func<WheelProtocol?> Protocol,
-    Action RestartAuthentication);
+    Action RestartAuthentication,
+    Action<double> PreviewAlarm);

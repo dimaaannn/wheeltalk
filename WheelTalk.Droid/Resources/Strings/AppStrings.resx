@@ -165,6 +165,8 @@
   <data name="SettingAlarmWave" xml:space="preserve"><value>Сигнал тревоги</value></data>
   <data name="SettingAlarmWaveTwoTone" xml:space="preserve"><value>Двухтон</value></data>
   <data name="SettingAlarmWaveStack" xml:space="preserve"><value>Стопка</value></data>
+  <data name="SettingAlarmPreview" xml:space="preserve"><value>Послушать</value></data>
+  <data name="SettingAlarmPreviewHint" xml:space="preserve"><value>Близость к пределу: 1 — редкий писк, 100 — сплошной сигнал</value></data>
   <data name="SettingChannelVibration" xml:space="preserve"><value>Вибрация</value></data>
   <data name="SettingChannelTorch" xml:space="preserve"><value>Вспышка камеры</value></data>
   <data name="SettingChannelTorchHint" xml:space="preserve"><value>Моргает в такт тревоге по ШИМ. На предупреждение по скорости не реагирует.</value></data>

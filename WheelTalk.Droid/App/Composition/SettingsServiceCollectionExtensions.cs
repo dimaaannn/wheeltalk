@@ -7,6 +7,7 @@ using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
+using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
 using WheelTalk.Droid.Logging;
@@ -51,7 +52,10 @@ public static class SettingsServiceCollectionExtensions
             // Тем же ленивым способом и по той же причине: пароль правят и с главного экрана, и со
             // страницы настроек, а разговор с колесом после правки обязан начаться заново в обоих
             // случаях. До первого подключения зов безвреден — сессии нечего перезапускать.
-            () => sp.GetRequiredService<WheelSession>().RestartAuthentication())));
+            () => sp.GetRequiredService<WheelSession>().RestartAuthentication(),
+            // Тоже лениво: звук нужен только тому, кто открыл «Предупреждения», а описания строятся
+            // на запуске — поднимать ради них звуковой поток незачем.
+            intensity => sp.GetRequiredService<AlertSignals>().Preview(intensity))));
         services.AddSingleton(sp => new LayeredSettings(
             sp.GetRequiredService<ISettingsStore>(),
             SettingsBinder.FactoryDefaults(sp.GetRequiredService<IReadOnlyList<SettingDescriptor>>()))

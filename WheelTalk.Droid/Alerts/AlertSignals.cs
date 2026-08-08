@@ -86,6 +86,26 @@ public sealed class AlertSignals : IDisposable
         }
     }
 
+    /// <summary>
+    /// Дать послушать выбранный сигнал, 0…1 — та же интенсивность, что приходит от движка тревог, и
+    /// та же волна в том же потоке. Ноль глушит.
+    /// <para>
+    /// <b>Настоящая тревога сильнее превью.</b> Пока она идёт, прослушивание молчит и в звук не
+    /// лезет; начнись она во время прослушивания — тик перебьёт его на следующем же блоке, а её
+    /// конец погасит звук вовсе. Спорить об одном динамике здесь некому.
+    /// </para>
+    /// </summary>
+    public void Preview(double intensity)
+    {
+        lock (_torch)
+        {
+            if (_state.Any) return;
+        }
+
+        _alarmTone.Wave = _channels.Wave;
+        _alarmTone.SetIntensity(Math.Clamp(intensity, 0, 1));
+    }
+
     public void Dispose()
     {
         // Тем же путём, что конец тревоги, а не «стоп-таймер и погасить»: Timer.Dispose не ждёт
