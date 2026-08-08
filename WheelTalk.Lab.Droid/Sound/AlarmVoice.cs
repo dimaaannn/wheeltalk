@@ -15,26 +15,39 @@ namespace WheelTalk.Lab.Droid.Sound;
 public sealed record AlarmVoice(string Id, string Title, string Note, Func<double, double, double> Sample);
 
 /// <summary>
-/// Набор вариантов для выезда. <b>Каждый следующий отличается от опорного ровно одним приёмом</b> —
-/// иначе на улице выяснится, что «седьмой лучше третьего», и непонятно чем именно.
+/// Набор вариантов для выезда: три отобранных приёма, их пары и все три вместе.
 /// <para>
-/// Откуда взяты приёмы (план 26, ресерч 08.08.2026):
+/// <b>Первый отбор уже прошёл на телефоне 08.08.2026.</b> Из восьми вариантов первого захода
+/// владелец оставил три — пачки по IEC, стопку гармоник и двухтон, — а свип, дыхание громкости и
+/// голый подъём основы отсеял на слух. Номера сохранены от первого захода (0, 2, 4, 6): по ним уже
+/// говорят, и переномеровать их значит потерять общий язык с тем, кто слушал.
+/// </para>
+/// <para>
+/// <b>Отсеянный вариант 1 не пропал.</b> Он был не рисунком, а правкой несущей: основа 440 из
+/// динамика телефона почти не выходит (резонанс микродинамика 800–1000 Гц, ниже спад 12 дБ на
+/// октаву), слышны только её гармоники. Эта правка изначально заложена внутрь варианта 2 — его
+/// несущая 880, а не 440, — и живёт в нём дальше. Ниже 500 Гц несущей нет ни у одного варианта,
+/// кроме опорного, которому положено быть тем, что стоит в приложении.
+/// </para>
+/// <para>
+/// Откуда приёмы (план 26, ресерч 08.08.2026):
 /// </para>
 /// <list type="bullet">
 /// <item><b>Рабочая полоса уже, чем в ISO 7731.</b> Стандарт называет 500–2500 Гц, но снизу её режет
-/// сам телефон: микродинамик имеет резонанс около 800–1000 Гц, ниже спад 12 дБ на октаву. Сверху
-/// режет ткань — до 2,5 кГц однослойный хлопок почти прозрачен, выше глушит. Ветер при этом падает
-/// примерно на 10 дБ на октаву от 250 Гц, то есть выше килогерца маскирует слабее всего. Пересечение
-/// трёх — <b>1–2 кГц</b>.</item>
+/// сам телефон, сверху — ткань кармана (до 2,5 кГц однослойный хлопок почти прозрачен, выше глушит),
+/// а ветер падает примерно на 10 дБ на октаву от 250 Гц, то есть выше килогерца маскирует слабее
+/// всего. Пересечение трёх — <b>1–2 кГц</b>.</item>
 /// <item><b>Пачки и тишина</b> вместо ровной сетки — IEC 60601-1-8: импульс высокой срочности
 /// 25–75 мс, группа импульсов, пауза. ISO 7731 хочет повторение 0,5–4 Гц; наши 5 Гц выше диапазона,
 /// а на потолке сигнал и вовсе сплошной.</item>
-/// <item><b>Свип</b> — едущий спектральный пик уходит из-под маскирования, а восходящий тон читается
-/// как рост срочности.</item>
-/// <item><b>Глубокая модуляция</b> — у ветра огибающая ровная, и по этой оси он пуст.</item>
 /// <item><b>Широкая стопка гармоник</b> — тракт «карман плюс динамик» непредсказуем: замаскировали
-/// одну составляющую, остались остальные.</item>
+/// одну составляющую, остались остальные. IEC требует того же: четыре сильнейшие в пределах 15 дБ.</item>
+/// <item><b>Двухтон</b> — смена и по спектру, и по времени; ни на что вокруг не похоже.</item>
 /// </list>
+/// <para>
+/// Порядок списка: опорный, три приёма поодиночке, потом их пары и все три вместе — от простого к
+/// сложному, чтобы на выезде было слышно, что даёт каждое усложнение.
+/// </para>
 /// </summary>
 public static class AlarmVoices
 {
@@ -44,72 +57,133 @@ public static class AlarmVoices
     /// </summary>
     private const double Edge = 0.004;
 
+    /// <summary>Импульс пачки: середина диапазона высокой срочности IEC (25–75 мс).</summary>
+    private const double BurstPulse = 0.040;
+
+    /// <summary>От начала одного импульса пачки до начала следующего.</summary>
+    private const double BurstStep = 0.100;
+
+    /// <summary>Сколько импульсов в группе. Десять у IEC — это две таких группы подряд.</summary>
+    private const int BurstCount = 5;
+
+    /// <summary>Пауза между группами импульсов на пороге тревоги.</summary>
+    private const double BurstSilence = 0.600;
+
+    /// <summary>Длина одного тона двухтона.</summary>
+    private const double ToneSegment = 0.120;
+
+    /// <summary>Пауза между парами тонов на пороге тревоги.</summary>
+    private const double ToneSilence = 0.400;
+
+    /// <summary>
+    /// Основа стопки и её же нижняя составляющая. Пять гармоник от неё дают ровно полосу ISO —
+    /// 500, 1000, 1500, 2000, 2500 Гц.
+    /// </summary>
+    private const double StackRoot = 500;
+
+    /// <summary>Вторая основа стопки, квинтой выше первой: слышно как смену высоты, а не как расстройку.</summary>
+    private const double StackFifth = 750;
+
+    private const int StackHarmonics = 5;
+
     public static readonly IReadOnlyList<AlarmVoice> All =
     [
         new("combat", "0 · Как сейчас",
-            "Опорный: 440 Гц со второй волной 1,34f, сетка 200 мс. То, что стоит в приложении.",
+            "Опорный: основа 440, слышны 590, 880, 1760. Сетка 200 мс. То, что стоит в приложении.",
             (t, i) => Grid(t, i) * CombatWave(t, 440)),
 
-        new("high", "1 · Та же волна, основа 880",
-            "Меняется только высота. Основа 440 из динамика телефона почти не выходит — слышны её гармоники.",
-            (t, i) => Grid(t, i) * CombatWave(t, 880)),
-
         new("burst", "2 · Пачки по IEC",
-            "Меняется только рисунок: импульс 40 мс, пять в группе, тишина. Пауза сжимается к пределу.",
-            (t, i) => Burst(t, i, pulse: 0.040, step: 0.100, count: 5) * CombatWave(t, 880)),
-
-        new("sweep", "3 · Свип 1→2 кГц",
-            "Меняется только волна: внутри импульса частота едет вверх. Сетка прежняя.",
-            (t, i) =>
-            {
-                double length = ToneLength(i);
-                double at = t % Period;
-                return Envelope(at, length) * Sweep(at, length, 1000, 2000);
-            }),
+            "Рисунок: импульс 40 мс, пять в группе, тишина. Несущая 880, слышны 1180 и 1760.",
+            (t, i) => Pulse(t, i) * CombatWave(t, 880)),
 
         new("twotone", "4 · Двухтон 1000/1500",
-            "Меняется только волна: два тона по 120 мс подряд. Ни на что вокруг не похоже.",
-            (t, i) =>
-            {
-                double at = t % (0.240 + 0.400 * (1 - Clamp(i)));
-                if (at >= 0.240) return 0;
-                double inSegment = at % 0.120;
-                return Envelope(inSegment, 0.120) * Math.Sin(2 * Math.PI * (at < 0.120 ? 1000 : 1500) * t);
-            }),
-
-        new("modulated", "5 · 1,4 кГц с модуляцией",
-            "Сплошной тон, но громкость дышит 6…16 раз в секунду. Тишины нет вовсе — интенсивность правит скорость дыхания.",
-            (t, i) =>
-            {
-                double rate = 6 + 10 * Clamp(i);
-                double depth = 0.5 - 0.5 * Math.Cos(2 * Math.PI * rate * t);
-                return depth * Math.Sin(2 * Math.PI * 1400 * t);
-            }),
+            "Два чистых тона по 120 мс подряд. Несущие ровно в рабочей полосе.",
+            (t, i) => Alternating(t, i, first: 1000, second: 1500, Tone)),
 
         new("stack", "6 · Стопка 500…2500",
-            "Меняется только спектр: пять равных гармоник от 500 Гц — вся полоса ISO разом. Сетка прежняя.",
-            (t, i) => Grid(t, i) * Harmonics(t, 500, 5)),
+            "Пять равных гармоник от 500 — вся полоса ISO разом. Сетка прежняя, 200 мс.",
+            (t, i) => Grid(t, i) * Stack(t, StackRoot)),
 
-        new("sweepburst", "7 · Свип пачкой",
-            "Оба сильных приёма вместе: свип 1,2→2,2 кГц импульсами по 60 мс, пять в группе, тишина.",
-            (t, i) =>
-            {
-                double at = BurstPosition(t, i, pulse: 0.060, step: 0.120, count: 5);
-                return at < 0 ? 0 : Envelope(at, 0.060) * Sweep(at, 0.060, 1200, 2200);
-            }),
+        new("burststack", "2+6 · Стопка пачками",
+            "Спектр шестого, рисунок второго. Оба из IEC, потому и родня: 500…2500 импульсами по 40 мс.",
+            (t, i) => Pulse(t, i) * Stack(t, StackRoot)),
+
+        new("bursttwotone", "2+4 · Двухтон пачками",
+            "Импульсы пачки чередуют 1000 и 1500 — смена высоты внутри группы, тишина между группами.",
+            (t, i) => PulseAlternating(t, i, first: 1000, second: 1500, Tone)),
+
+        new("twotonestack", "4+6 · Двухтон стопками",
+            "Чередуются две стопки: от 500 и от 750, квинта. Широкий спектр, меняющийся по высоте.",
+            (t, i) => Alternating(t, i, StackRoot, StackFifth, Stack)),
+
+        new("all", "2+4+6 · Всё вместе",
+            "Стопки от 500 и 750 попеременно, пачкой по IEC. Предел того, что дают три приёма разом.",
+            (t, i) => PulseAlternating(t, i, StackRoot, StackFifth, Stack)),
     ];
 
-    public static AlarmVoice ById(string? id) =>
-        All.FirstOrDefault(v => v.Id == id) ?? All[0];
+    public static AlarmVoice ById(string? id) => All.FirstOrDefault(v => v.Id == id) ?? All[0];
 
     private static double Period => AlertRhythm.Period.TotalSeconds;
-
-    private static double ToneLength(double intensity) => AlertRhythm.ToneLength(intensity).TotalSeconds;
 
     private static double Clamp(double intensity) => Math.Clamp(intensity, 0, 1);
 
     /// <summary>Боевая сетка: сигнал занимает начало периода и растёт с интенсивностью до всего периода.</summary>
-    private static double Grid(double t, double intensity) => Envelope(t % Period, ToneLength(intensity));
+    private static double Grid(double t, double intensity) =>
+        Envelope(t % Period, AlertRhythm.ToneLength(intensity).TotalSeconds);
+
+    /// <summary>Огибающая пачки: пять импульсов, потом тишина. Ноль, пока идёт тишина.</summary>
+    private static double Pulse(double t, double intensity)
+    {
+        var (_, at) = Slot(t, intensity);
+        return at < 0 ? 0 : Envelope(at, BurstPulse);
+    }
+
+    /// <summary>Пачка, у которой соседние импульсы звучат разной высотой.</summary>
+    private static double PulseAlternating(double t, double intensity,
+        double first, double second, Func<double, double, double> wave)
+    {
+        var (index, at) = Slot(t, intensity);
+        return at < 0 ? 0 : Envelope(at, BurstPulse) * wave(t, index % 2 == 0 ? first : second);
+    }
+
+    /// <summary>Два тона подряд по 120 мс, потом пауза; пауза сжимается с интенсивностью.</summary>
+    private static double Alternating(double t, double intensity,
+        double first, double second, Func<double, double, double> wave)
+    {
+        double pair = 2 * ToneSegment;
+        double at = t % (pair + Silence(intensity, ToneSilence));
+        if (at >= pair) return 0;
+
+        double inSegment = at % ToneSegment;
+        return Envelope(inSegment, ToneSegment) * wave(t, at < ToneSegment ? first : second);
+    }
+
+    /// <summary>
+    /// Где мы внутри импульса пачки и какой это импульс по счёту. Позиция −1 значит тишину.
+    /// </summary>
+    private static (int Index, double At) Slot(double t, double intensity)
+    {
+        double group = BurstStep * BurstCount;
+        double at = t % (group + Silence(intensity, BurstSilence));
+        if (at >= group) return (0, -1);
+
+        int index = (int)(at / BurstStep);
+        double inPulse = at - index * BurstStep;
+        return (index, inPulse < BurstPulse ? inPulse : -1);
+    }
+
+    /// <summary>
+    /// Тишина между группами: сжимается до нуля к пределу. Тот же закон, что у боевой сетки —
+    /// ближе к пределу плотнее, — и он же держит повторение в диапазоне ISO 7731 (0,5–4 Гц).
+    /// <para>
+    /// Пауза у пачки и у двухтона разная, и это не небрежность: оба звучали на телефоне 08.08.2026
+    /// именно с этими паузами и с ними отобраны. Свести их к одному числу значило бы поменять то,
+    /// что уже слушали, — и следующий выезд сравнивал бы не то, что предыдущий.
+    /// </para>
+    /// </summary>
+    private static double Silence(double intensity, double full) => full * (1 - Clamp(intensity));
+
+    private static double Tone(double t, double frequency) => Math.Sin(2 * Math.PI * frequency * t);
 
     /// <summary>
     /// Волна приложения (<c>WheelTalk.Droid/Alerts/AlarmTone.cs</c>): основа, негармоничная вторая
@@ -130,46 +204,15 @@ public static class AlarmVoices
     /// Фазы разведены по Шрёдеру, иначе все синусы складываются в один острый пик, и на пик уходит
     /// весь запас громкости при копеечной мощности.
     /// </summary>
-    private static double Harmonics(double t, double fundamental, int count)
+    private static double Stack(double t, double fundamental)
     {
         double sum = 0;
-        for (int n = 1; n <= count; n++)
+        for (int n = 1; n <= StackHarmonics; n++)
         {
-            double schroeder = Math.PI * n * (n - 1) / count;
+            double schroeder = Math.PI * n * (n - 1) / StackHarmonics;
             sum += Math.Sin(2 * Math.PI * fundamental * n * t + schroeder);
         }
         return sum;
-    }
-
-    /// <summary>
-    /// Свип внутри импульса. Фаза — интеграл частоты, а не «частота × время»: иначе на конце свипа
-    /// фаза не та, что слышна, и стык импульсов щёлкает.
-    /// </summary>
-    private static double Sweep(double at, double length, double from, double to)
-    {
-        double phase = 2 * Math.PI * (from * at + (to - from) * at * at / (2 * length));
-        return Math.Sin(phase);
-    }
-
-    private static double Burst(double t, double intensity, double pulse, double step, int count)
-    {
-        double at = BurstPosition(t, intensity, pulse, step, count);
-        return at < 0 ? 0 : Envelope(at, pulse);
-    }
-
-    /// <summary>
-    /// Где мы внутри импульса пачки, или −1, если сейчас тишина. Пауза между группами сжимается с
-    /// интенсивностью до нуля — тот же закон, что у боевой сетки: ближе к пределу плотнее.
-    /// </summary>
-    private static double BurstPosition(double t, double intensity, double pulse, double step, int count)
-    {
-        double group = step * count;
-        double silence = 0.600 * (1 - Clamp(intensity));
-        double at = t % (group + silence);
-        if (at >= group) return -1;
-
-        double inPulse = at % step;
-        return inPulse < pulse ? inPulse : -1;
     }
 
     /// <summary>
