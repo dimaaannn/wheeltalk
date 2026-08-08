@@ -168,6 +168,21 @@ public sealed class SettingDescriptor
     public string? ActionLabelKey { get; init; }
 
     /// <summary>
+    /// Что сказать человеку <b>после удачного действия</b>. Готовый текст, а не ключ ресурса:
+    /// в нём числа этого раза. Пусто — сказать нечего, и тогда молча.
+    /// <para>
+    /// Зовётся после <see cref="Apply"/>, то есть видит уже применённое значение. Заведено ради
+    /// кнопки «рассчитать»: она предлагает число, а не устанавливает истину, и человек обязан его
+    /// проверить — по вольту на банку, который тут же и назван (план 27 §27.4).
+    /// </para>
+    /// <para>
+    /// Отказ действия сообщается исключением и живёт отдельно: «не смог» и «вот что вышло» — разные
+    /// вести, и путать их в одном канале значит однажды показать отказ как успех.
+    /// </para>
+    /// </summary>
+    public Func<string?>? Report { get; init; }
+
+    /// <summary>
     /// Whether the row is shown right now. Used for the cascades the original has and we want:
     /// alarms off hides everything under them, hardware PWM hides the three numbers the duty cycle
     /// would otherwise be computed from.

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Settings;
@@ -41,6 +42,11 @@ internal static class WheelPage
         // ответа нет вовсе — тогда настройки Begode не показываются, и это честно.
         bool IsGotway() => protocol() == WheelProtocol.Gotway;
         bool IsInMotion() => protocol() == WheelProtocol.InMotion;
+
+        // Кадр, по которому считала кнопка «рассчитать», — чтобы отчитаться ровно им. Кадры идут
+        // по нескольку в секунду, и взять напряжение заново значило бы назвать вольт на банку от
+        // одного кадра, а ряд — от другого.
+        TelemetrySnapshot? calculatedFrom = null;
 
         return
         [
@@ -223,11 +229,25 @@ internal static class WheelPage
                 // «что сказало бы приложение, не скажи я ему».
                 Apply = _ =>
                 {
-                    var cells = lastFrame()?.AutoPackCells ?? CellCount.Unknown;
+                    var frame = lastFrame();
+                    var cells = frame?.AutoPackCells ?? CellCount.Unknown;
                     if (!cells.IsKnown) throw new InvalidOperationException(AppStrings.SettingCellsNoData);
 
+                    calculatedFrom = frame;
                     saveCells(cells.Cells);
                 },
+
+                // Молча подставленное число некому проверить, а проверить его обязан человек —
+                // требование владельца. Отчёт даёт ему для этого вольт на банку: 3,9 правдоподобно,
+                // 2,7 значит, что ряд назван вдвое больше нужного.
+                Report = () => CellsReport(calculatedFrom),
+
+                // До нажатия — то же условие, но лишь когда оно и вправду в силе: у колеса, чей ряд
+                // называет протокол, заряд ни при чём, и пугать им там значило бы приучить
+                // пролистывать предупреждения.
+                Warning = () => lastFrame()?.AutoPackCells.Source == CellCountSource.VoltageGuess
+                    ? AppStrings.SettingCellsGuessCaveat
+                    : null,
             },
             new()
             {
@@ -368,6 +388,63 @@ internal static class WheelPage
             },
         ];
     }
+
+    /// <summary>
+    /// Ниже этого заряда догадка по одному напряжению уже опасна: она делит на 4,2 В, то есть
+    /// считает колесо полным, и на разряженном занижает ряд. Порог грубый нарочно — точное «под
+    /// завязку» назвать нечем, а процент здесь только повод предупредить, не поправка к числу.
+    /// </summary>
+    private const int NearlyFullPercent = 90;
+
+    /// <summary>
+    /// Отчёт кнопки «рассчитать»: сколько, откуда и <b>сколько вольт на банку из этого выходит</b>.
+    /// Последнее и есть проверка без арифметики — ради неё отчёт и заведён (план 27 §27.4).
+    /// <para>
+    /// Считается по кадру, которым считала сама кнопка, а не по свежему: иначе ряд и напряжение
+    /// пришли бы из разных мгновений.
+    /// </para>
+    /// </summary>
+    private static string? CellsReport(TelemetrySnapshot? frame)
+    {
+        if (frame?.AutoPackCells is not { IsKnown: true } cells) return null;
+
+        var report = new StringBuilder();
+        report.AppendFormat(CultureInfo.CurrentCulture, AppStrings.SettingCellsFound, cells.Cells, CellsSourceName(cells.Source));
+
+        // Напряжения может не быть у колеса, назвавшего ряд рукопожатием раньше первой телеметрии.
+        // Тогда делить не на что, и проверка откладывается до кадра — но число уже названо.
+        if (frame.VoltageV > 0)
+        {
+            report.Append(' ').AppendFormat(CultureInfo.CurrentCulture, AppStrings.SettingCellsPerCell, frame.VoltageV / cells.Cells);
+        }
+
+        report.Append("\n\n").Append(AppStrings.SettingCellsCheck);
+
+        if (cells.Source == CellCountSource.VoltageGuess)
+        {
+            report.Append("\n\n").Append(AppStrings.SettingCellsGuessWarning);
+
+            if (frame.Battery < NearlyFullPercent)
+            {
+                report.Append(' ').AppendFormat(CultureInfo.CurrentCulture, AppStrings.SettingCellsGuessLowCharge, frame.Battery);
+            }
+        }
+
+        return report.ToString();
+    }
+
+    /// <summary>
+    /// Ступень каскада словами райдера. <see cref="CellCountSource.UserSetting"/> и
+    /// <see cref="CellCountSource.Unknown"/> сюда не доходят: кнопка берёт ответ без верхней
+    /// ступени, а незнание отказывает исключением ещё в <c>Apply</c>.
+    /// </summary>
+    private static string CellsSourceName(CellCountSource source) => source switch
+    {
+        CellCountSource.SmartBms => AppStrings.SettingCellsSourceBms,
+        CellCountSource.Protocol => AppStrings.SettingCellsSourceProtocol,
+        CellCountSource.VoltageWithPercent => AppStrings.SettingCellsSourcePercent,
+        _ => AppStrings.SettingCellsSourceGuess,
+    };
 
     /// <summary>
     /// Что сказать о заданном ряде, если поделить на него нельзя всерьёз. Критерий один и тот же,

@@ -661,21 +661,35 @@ public sealed class SettingsCategoryActivity : Activity
         try
         {
             descriptor.Apply("");
+
+            // Отчёт снимается после применения и до перестроения: он описывает то, что действие
+            // только что сделало, а строка на экране к этому времени уже показывает новое значение.
+            string? report = descriptor.Report?.Invoke();
             Rebuild();
+
+            if (report is { Length: > 0 }) Announce(descriptor, report);
         }
         catch (Exception ex)
         {
-            new AlertDialog.Builder(this)!
-                .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
-                .SetMessage(ex.Message)!
-                .SetPositiveButton(AppStrings.Cancel, (_, _) => { })!
-                .Show();
+            Announce(descriptor, ex.Message);
         }
         finally
         {
             button.Enabled = true;
         }
     }
+
+    /// <summary>
+    /// Ответ действия человеку — один вид окна и на отказ, и на итог: обе вести приходят на то же
+    /// нажатие, и разводить их по разным способам показа значило бы учить райдера двум языкам вместо
+    /// одного.
+    /// </summary>
+    private void Announce(SettingDescriptor descriptor, string message) =>
+        new AlertDialog.Builder(this)!
+            .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
+            .SetMessage(message)!
+            .SetPositiveButton(AppStrings.SettingsAccept, (_, _) => { })!
+            .Show();
 
     private bool CanOpenMenu(SettingDescriptor descriptor, ResolvedSetting resolved) =>
         !descriptor.ReportedByWheel && resolved.Origin != SettingOrigin.Factory;

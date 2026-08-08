@@ -344,14 +344,15 @@ public sealed partial class VeteranDecoder : IWheelDecoder
     /// <summary>
     /// Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.
     /// <para>
-    /// Числа банок Ветеран не сообщает, но сами банки шлёт, и счёт их выводится сверкой суммы с
-    /// напряжением (<see cref="BmsSeries"/>). Не сошлось — там ноль, и отвечает версия протокола.
+    /// Ступень умного BMS тут пуста, и это решение владельца (08.08.2026): банки Ветеран шлёт, а
+    /// счёт их не называет, и вывести счёт из самих банок нельзя — хвостовые места пакета держат
+    /// значения <b>внутри</b> облака живых банок (замер в плане 27 §27.4). Ряд называет версия
+    /// протокола, и называет верно.
     /// </para>
     /// </summary>
     private CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
-        SmartBmsCells = BmsSeries.Count(_state.Bms1, _state.Bms2, _state.Voltage / 100.0, _state.Current / 100.0),
         ProtocolCells = CellsFromProtocolVersion(),
     };
 

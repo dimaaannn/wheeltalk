@@ -137,9 +137,19 @@
   <data name="SettingCellsInSeries" xml:space="preserve"><value>Ячеек в ряду</value></data>
   <data name="SettingCellsInSeriesHint" xml:space="preserve"><value>Сколько ячеек соединено последовательно. Ноль — не задано: тогда шкала на ячейку недоступна.</value></data>
   <data name="SettingCellsCalculate" xml:space="preserve"><value>Определить ряд</value></data>
-  <data name="SettingCellsCalculateHint" xml:space="preserve"><value>Подставит в строку выше число, определённое приложением по колесу. Оно останется вашим — правьте.</value></data>
+  <data name="SettingCellsCalculateHint" xml:space="preserve"><value>Подставит в строку выше число, определённое по колесу. Обычно ряд называет сам протокол — тогда заряд неважен. Если же ряд приходится прикидывать по напряжению, считайте на почти полном заряде: 24 ячейки по 3,5 В дают те же 84 В, что 20 полных, и ряд выйдет меньше настоящего.</value></data>
+  <data name="SettingCellsGuessCaveat" xml:space="preserve"><value>У этого колеса ряд приходится прикидывать по напряжению. Считайте только на почти полном заряде: на разряженном число выйдет меньше настоящего.</value></data>
+  <data name="SettingCellsFound" xml:space="preserve"><value>Насчитано ячеек: {0} — {1}.</value></data>
+  <data name="SettingCellsPerCell" xml:space="preserve"><value>При нынешнем напряжении это {0:F2} В на ячейку.</value></data>
+  <data name="SettingCellsCheck" xml:space="preserve"><value>Проверьте число сами: у исправного пакета выходит от 3,0 до 4,2 В на ячейку.</value></data>
+  <data name="SettingCellsSourceBms" xml:space="preserve"><value>по данным BMS</value></data>
+  <data name="SettingCellsSourceProtocol" xml:space="preserve"><value>по модели колеса</value></data>
+  <data name="SettingCellsSourcePercent" xml:space="preserve"><value>по напряжению и заряду</value></data>
+  <data name="SettingCellsSourceGuess" xml:space="preserve"><value>догадка по напряжению</value></data>
+  <data name="SettingCellsGuessWarning" xml:space="preserve"><value>Это догадка: она верна, когда колесо заряжено почти полностью, а иначе занижает ряд.</value></data>
+  <data name="SettingCellsGuessLowCharge" xml:space="preserve"><value>Сейчас заряд {0} %, и на таком число скорее занижено. Зарядите колесо и рассчитайте заново.</value></data>
   <data name="SettingCellsCalculateAction" xml:space="preserve"><value>Рассчитать</value></data>
-  <data name="SettingCellsNoData" xml:space="preserve"><value>Считать не по чему: колесо ещё не назвало ни ряда, ни напряжения. Число можно задать и вручную.</value></data>
+  <data name="SettingCellsNoData" xml:space="preserve"><value>Определить ряд не удалось: того, что колесо сообщило, для этого мало. Число можно задать вручную.</value></data>
   <data name="SettingCellsImplausible" xml:space="preserve"><value>При {0} ячейках выходит {1:F1} В на ячейку — столько не бывает.</value></data>
   <data name="UnitCells" xml:space="preserve"><value>ячеек</value></data>
   <data name="SettingHwPwm" xml:space="preserve"><value>Аппаратный ШИМ</value></data>
