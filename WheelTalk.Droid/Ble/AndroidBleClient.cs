@@ -103,6 +103,24 @@ public sealed class AndroidBleClient : ITransport
     private BluetoothGattCharacteristic? _writeCharacteristic;
     private bool _disconnecting;
 
+    /// <summary>
+    /// The callback adapter for the connection currently in play. Android does not cancel callbacks
+    /// already queued for delivery when <c>Close()</c> is called — a late one from a connection that
+    /// has since been closed would otherwise find its own <c>ready</c> already completed and reach
+    /// for <see cref="OnLinkLost"/>, tearing down the *next*, live connection (or, in
+    /// <c>OnServicesDiscovered</c>, overwrite its characteristics). Comparing against this rather
+    /// than the gatt object itself is deliberate: the very first Connected callback can arrive
+    /// before <see cref="ConnectOnceAsync"/> has finished assigning <see cref="_gatt"/>, and a gatt
+    /// comparison would reject a genuine callback in that window. The adapter, unlike
+    /// <see cref="_gatt"/>, exists before the connect call is even made, so there is no such race
+    /// here.
+    /// <c>volatile</c> for the same reason as <see cref="_attMtu"/>: the session thread writes it,
+    /// binder threads read it, and ARM's weak write ordering can otherwise show a binder thread a
+    /// stale (still-non-null) value — which is precisely the bug this field exists to close, just
+    /// rare and unreproducible instead of certain.
+    /// </summary>
+    private volatile GattCallbackAdapter? _activeCallback;
+
     // Согласованный MTU держится здесь, а не спрашивается у стека: getter'а на него в API нет,
     // OnMtuChanged — единственный способ узнать значение. volatile, потому что пишет binder-поток
     // колбэка, а читает поток очереди записи.
@@ -215,6 +233,7 @@ public sealed class AndroidBleClient : ITransport
     {
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var callback = new GattCallbackAdapter(this, ready, _logger);
+        _activeCallback = callback;
 
         // Два режима, как у оригинала: autoConnect: false — подключиться сейчас и честно доложить
         // о неудаче (первая попытка, пока человек ждёт у экрана); autoConnect: true — пассивное
@@ -268,6 +287,10 @@ public sealed class AndroidBleClient : ITransport
         // размере записи ровно в том случае, когда переговоры не состоятся.
         _attMtu = DefaultAttMtu;
         Interlocked.Exchange(ref _tooLongReported, 0);
+
+        // Обнулено до Disconnect()/Close() — колбэки этого адаптера, ещё стоящие в очереди Android,
+        // после этой строки узнают себя чужими и выйдут молча (см. remark у _activeCallback).
+        _activeCallback = null;
 
         // Порядок важен: сначала характеристики обнулены, и только потом очередь узнаёт об обрыве —
         // тогда команда, которую насос успел вынуть, гарантированно упирается в пустой линк, а не
@@ -425,8 +448,24 @@ public sealed class AndroidBleClient : ITransport
         // а они приходят по одному в binder-потоке.
         private bool _mtuAsked;
 
+        /// <summary>
+        /// True once this adapter has been superseded — <see cref="CloseGatt"/> nulls
+        /// <see cref="_activeCallback"/> before it ever tears down the gatt itself, so a callback
+        /// Android still had queued for delivery lands here rather than acting on state (or,
+        /// worse, characteristics) that now belong to a different, live connection.
+        /// </summary>
+        private bool IsStale([CallerMemberName] string? callback = null)
+        {
+            if (ReferenceEquals(this, client._activeCallback)) return false;
+
+            logger.LogDebug("Ble.StaleCallback {Callback}", callback);
+            return true;
+        }
+
         public override void OnConnectionStateChange(BluetoothGatt? gatt, GattStatus status, ProfileState newState)
         {
+            if (IsStale()) return;
+
             // Число рядом с именем не для красоты: здесь Android отдаёт коды HCI, а не ATT, и
             // привязка зовёт их именами ATT. Так `8` — таймаут супервизии линка (колесо уехало,
             // выключилось, модуль перезагрузился) — читается как `InsufficientAuthorization`, и
@@ -458,6 +497,8 @@ public sealed class AndroidBleClient : ITransport
 
         public override void OnServicesDiscovered(BluetoothGatt? gatt, GattStatus status)
         {
+            if (IsStale()) return;
+
             logger.LogInformation("Ble.ServicesDiscovered {Status} {Count}", status, gatt?.Services?.Count ?? 0);
 
             var pair = gatt is null ? null : SelectCharacteristics(gatt);
@@ -500,6 +541,8 @@ public sealed class AndroidBleClient : ITransport
 
         public override void OnDescriptorWrite(BluetoothGatt? gatt, BluetoothGattDescriptor? descriptor, GattStatus status)
         {
+            if (IsStale()) return;
+
             if (status == GattStatus.Success)
             {
                 // Asks the radio for the shortest connection interval it will grant. It cannot make
@@ -549,13 +592,13 @@ public sealed class AndroidBleClient : ITransport
 
         public override void OnMtuChanged(BluetoothGatt? gatt, int mtu, GattStatus status)
         {
-            logger.LogInformation("Ble.MtuChanged {Mtu} {Status}", mtu, status);
-
             // Ответ прошлого линка не смеет говорить за нынешний: Close() уже поставленные в
             // очередь колбэки не отменяет. Порядок «линк оборвался → подняли новый → на нём MTU не
             // дали → прилетел чужой 517» вернул бы ровно ту поломку, против которой всё это
             // написано: 22 байта прошли бы проверку и ушли обрезанными.
-            if (!ReferenceEquals(gatt, client._gatt)) return;
+            if (IsStale()) return;
+
+            logger.LogInformation("Ble.MtuChanged {Mtu} {Status}", mtu, status);
 
             // Успех может прийти и с меньшим размером, чем просили, — верим стеку, но не ниже
             // гарантированного минимума.
@@ -582,6 +625,8 @@ public sealed class AndroidBleClient : ITransport
         /// </summary>
         public override void OnCharacteristicWrite(BluetoothGatt? gatt, BluetoothGattCharacteristic? characteristic, GattStatus status)
         {
+            if (IsStale()) return;
+
             bool success = status == GattStatus.Success;
             if (!success)
             {
@@ -596,12 +641,16 @@ public sealed class AndroidBleClient : ITransport
         // against runs Android 11, so both are live code.
         public override void OnCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, byte[] value)
         {
+            if (IsStale()) return;
+
             client.OnFrame(value);
         }
 
 #pragma warning disable CA1422, CS0672
         public override void OnCharacteristicChanged(BluetoothGatt? gatt, BluetoothGattCharacteristic? characteristic)
         {
+            if (IsStale()) return;
+
             byte[]? value = characteristic?.GetValue();
             if (value is not null)
             {
