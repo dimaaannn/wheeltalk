@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
@@ -87,7 +88,13 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
 
     public bool IsReady => _model != InMotionV2Model.Unknown && _protoVer != 0;
 
-    public int GetCellsForWheel() => _model.CellsForWheel();
+    /// <summary>
+    /// Ответ идёт через общий каскад (план 27 §27.3). Модель приходит из рукопожатия, и это
+    /// измерение, а не догадка: единственную тесную пару рядов внутри марки — V13 (30) против
+    /// V14 (32) — разбирает именно она (§27.1а).
+    /// </summary>
+    public int GetCellsForWheel() =>
+        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = _model.CellsForWheel() }).Cells;
 
     /// <summary>Port of setModel(Model) (InmotionAdapterV2.java:180-182) — production code calls
     /// this from the wheel-type handshake (<see cref="DecodeMainInfo"/>); the original also uses it

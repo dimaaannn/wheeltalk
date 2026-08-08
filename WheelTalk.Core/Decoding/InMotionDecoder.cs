@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
@@ -132,7 +133,12 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected,
     public bool AwaitingPassword =>
         _rejectionReported && Volatile.Read(ref _restartRequested) == 0 && _model == InMotionModel.Unknown;
 
-    public int GetCellsForWheel() => 20;
+    /// <summary>
+    /// Ответ идёт через общий каскад (план 27 §27.3). Знание протокола здесь короткое: у всех
+    /// колёс InMotion первого поколения ряд один — 20 (порт <c>getCellsForWheel()</c>).
+    /// </summary>
+    public int GetCellsForWheel() =>
+        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = 20 }).Cells;
 
     /// <summary>Port of InMotionAdapter.decode(byte[]).</summary>
     public bool Decode(byte[] data)

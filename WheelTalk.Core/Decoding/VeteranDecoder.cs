@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
@@ -321,7 +322,14 @@ public sealed partial class VeteranDecoder : IWheelDecoder
         _ => "Unknown",
     };
 
-    public int GetCellsForWheel() => _protocolVersion switch
+    /// <summary>
+    /// Ответ идёт через общий каскад (план 27 §27.3): декодер подаёт наверх то, что знает сам, —
+    /// ряд по версии протокола, — а число выдаёт резолвер.
+    /// </summary>
+    public int GetCellsForWheel() =>
+        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = CellsFromProtocolVersion() }).Cells;
+
+    private int CellsFromProtocolVersion() => _protocolVersion switch
     {
         4 or 7 or 43 => 30,
         8 => 42,

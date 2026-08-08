@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
@@ -357,8 +358,15 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     private bool Is151VWheel() => _state.Model == "KS-F18P";
     private bool Is100VWheel() => _state.Model == "KS-S19";
 
+    /// <summary>
+    /// Ответ идёт через общий каскад (план 27 §27.3): декодер подаёт наверх ряд, узнанный по имени
+    /// модели, а число выдаёт резолвер.
+    /// </summary>
+    public int GetCellsForWheel() =>
+        CellCountResolver.Resolve(new CellCountInputs { ProtocolCells = CellsFromModel() }).Cells;
+
     /// <summary>Port of KingsongAdapter.getCellsForWheel() (KingsongAdapter.java:494-503).</summary>
-    public int GetCellsForWheel()
+    private int CellsFromModel()
     {
         if (Is84VWheel()) return 20;
         if (Is100VWheel()) return 24;

@@ -13,11 +13,13 @@ public class CellCountResolverTests
         int? percent = null,
         double? maxVolts = null,
         int? configured = null,
-        int? bms = null) =>
+        int? bms = null,
+        int? protocol = null) =>
         CellCountResolver.Resolve(new CellCountInputs
         {
             ConfiguredCells = configured,
             SmartBmsCells = bms,
+            ProtocolCells = protocol,
             PackVolts = volts,
             WheelPercent = percent,
             MaxPackVolts = maxVolts,
@@ -41,13 +43,37 @@ public class CellCountResolverTests
         Assert.Equal(new CellCount(24, CellCountSource.UserSetting), result);
     }
 
-    /// <summary>Ответ BMS — измерение; напряжение с процентом ниже него ступенью.</summary>
+    /// <summary>Ответ BMS — измерение; знание протокола и напряжение ниже него ступенями.</summary>
     [Fact]
-    public void Smart_bms_outranks_voltage()
+    public void Smart_bms_outranks_the_protocol()
     {
-        CellCount result = Resolve(volts: 84, percent: 100, bms: 32);
+        CellCount result = Resolve(volts: 84, percent: 100, bms: 32, protocol: 20);
 
         Assert.Equal(new CellCount(32, CellCountSource.SmartBms), result);
+    }
+
+    /// <summary>
+    /// Знание протокола выше пары «напряжение + процент»: 84 В при 100 % кричат «20S», а протокол
+    /// говорит 24 — и он прав, потому что рукопожатие не гадает. На этом стоит весь шаг 27.3.
+    /// </summary>
+    [Fact]
+    public void Protocol_outranks_voltage_with_percent()
+    {
+        CellCount result = Resolve(volts: 84, percent: 100, protocol: 24);
+
+        Assert.Equal(new CellCount(24, CellCountSource.Protocol), result);
+    }
+
+    /// <summary>
+    /// Число протокола не сверяется со списком правдоподобных рядов и не правится: спорить с
+    /// декодером — не дело этой ступени. Иначе подмена в 27.3 тихо сдвинула бы проценты заряда.
+    /// </summary>
+    [Theory]
+    [InlineData(28)]
+    [InlineData(32)]
+    public void Protocol_answer_passes_through_verbatim(int protocolCells)
+    {
+        Assert.Equal(protocolCells, Resolve(volts: 117.6, protocol: protocolCells).Cells);
     }
 
     /// <summary>Ноль — это «не задано» у обоих: так молчит и настройка, и не ответивший BMS.</summary>

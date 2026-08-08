@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
@@ -449,21 +450,34 @@ public sealed partial class GotwayDecoder : IWheelDecoder
         _ => 1.0,
     });
 
-    public int GetCellsForWheel()
+    /// <summary>
+    /// Ответ идёт через общий каскад (план 27 §27.3): своего счёта ячеек у декодера больше нет —
+    /// он лишь подаёт наверх то, что знает сам. Порядок ступеней повторяет прежний порядок этого
+    /// метода: ответил умный BMS — берётся он, иначе настройка вольтажа.
+    /// </summary>
+    public int GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
     {
-        if (_smartBmsCells != 0) return _smartBmsCells;
-        return _config.GotwayVoltage switch
-        {
-            "0" => 16,
-            "1" => 20,
-            "2" => 24,
-            "3" => 32,
-            "4" => 32,
-            "5" => 40,
-            "6" => 36,
-            _ => 24,
-        };
-    }
+        SmartBmsCells = _smartBmsCells,
+        ProtocolCells = CellsFromVoltageSetting(),
+    }).Cells;
+
+    /// <summary>
+    /// Port of the settings table in GotwayAdapter.getCellsForWheel() (GotwayAdapter.java:424-436).
+    /// Расхождение настройки <c>"3"</c> — 32 ячейки при множителе на 116,8 В, где по напряжению их
+    /// 28, — перенесено 1:1 вместе с остальным и здесь не чинится: у людей накоплены поездки с
+    /// процентами, посчитанными по 32 (`docs/port-deviations.md`, план 27 §27.3).
+    /// </summary>
+    private int CellsFromVoltageSetting() => _config.GotwayVoltage switch
+    {
+        "0" => 16,
+        "1" => 20,
+        "2" => 24,
+        "3" => 32,
+        "4" => 32,
+        "5" => 40,
+        "6" => 36,
+        _ => 24,
+    };
 
     /// <summary>Port of the "V"/"N" handshake polling loop (GotwayAdapter.java:395-422), run once per completed frame.</summary>
     private void RunHandshakeAttempt()
