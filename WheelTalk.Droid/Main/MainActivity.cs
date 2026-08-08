@@ -81,6 +81,13 @@ public sealed class MainActivity : Activity
     /// </summary>
     private const string ScreenChoiceKey = "Screen:Main";
 
+    /// <summary>
+    /// Счётчик попыток спросить об экономии заряда (bugfix 3 §3.1) — общий на все колёса по той же
+    /// причине, что и <see cref="ScreenChoiceKey"/>: привычка райдера, а не свойство колеса. В
+    /// каталоге настроек намеренно нет строки — крутить порог показов некому и незачем.
+    /// </summary>
+    private const string BatterySaverAsksKey = "Power:BatterySaverAsks";
+
     private const string PanelChoice = "panel";
     private const string TilesChoice = "tiles";
 
@@ -665,9 +672,15 @@ public sealed class MainActivity : Activity
     /// <summary>
     /// Просьба исключить приложение из экономии заряда. Как у оригинала
     /// (<c>DialogHelper.checkBatteryOptimizationsAndShowAlert</c>): системный запрос напрямую, при
-    /// запуске, пока исключения нет, — и переключатель в настройках как единственный тормоз, потому
-    /// что своей памяти об отказе тут не нужно. Выдали исключение — система помнит его сама, и
-    /// проверка ниже больше не проходит.
+    /// запуске, пока исключения нет, — и переключатель в настройках как один из двух тормозов.
+    /// Выдали исключение — система помнит его сама, и проверка ниже больше не проходит.
+    /// <para>
+    /// Второй тормоз — <see cref="BatterySaverAsk"/> (bugfix 3 §3.1, решение владельца 09.08.2026):
+    /// сверка с оригиналом расхождений не нашла, но часть прошивок никогда не считает исключение
+    /// выданным (вендорский список вместо системного, или Doze чистит его при перезагрузке), и
+    /// приложение выпрашивало бы разрешение на каждом запуске до посинения. Спрашиваем три раза,
+    /// дальше молчим; включили тумблер заново — снова три.
+    /// </para>
     /// <para>
     /// План 11 §2.4 предлагал мягче — свою подсказку с кнопкой в «О приложении», — из-за политики
     /// Google Play на это разрешение. Пока приложение не в магазине, цена этой мягкости
@@ -682,10 +695,27 @@ public sealed class MainActivity : Activity
     /// </summary>
     private void AskAboutBatterySaver()
     {
-        if (!_power.WarnAboutBatterySaver || _transport.IsReplay) return;
+        // Реплей — не устройство райдера: считать его попытки в общий счётчик значило бы портить
+        // решение для настоящих запусков дампом, снятым неизвестно на чём.
+        if (_transport.IsReplay) return;
 
         var power = (PowerManager?)GetSystemService(PowerService);
-        if (power is null || power.IsIgnoringBatteryOptimizations(PackageName!)) return;
+        bool isIgnoring = power is not null && power.IsIgnoringBatteryOptimizations(PackageName!);
+        int asksSoFar = int.TryParse(_layers.Get(BatterySaverAsksKey, SettingLayer.GlobalOnly).Value, out int parsed)
+            ? parsed
+            : 0;
+
+        var decision = BatterySaverAsk.Decide(_power.WarnAboutBatterySaver, isIgnoring, asksSoFar);
+
+        _logger.LogInformation("Power.BatterySaverAsk {ShouldAsk} {IsIgnoring} {AsksSoFar}",
+            decision.ShouldAsk, isIgnoring, asksSoFar);
+
+        if (decision.NextAskCount != asksSoFar)
+        {
+            _layers.Set(BatterySaverAsksKey, decision.NextAskCount.ToString(), SettingLayer.GlobalOnly);
+        }
+
+        if (!decision.ShouldAsk) return;
 
         try
         {
@@ -695,7 +725,8 @@ public sealed class MainActivity : Activity
         }
         catch (Exception ex)
         {
-            // Экрана может не быть вовсе — прошивки бывают и без него. Это не повод падать на старте.
+            // Экрана может не быть вовсе — прошивки бывают и без него. Это не повод падать на старте,
+            // а счётчик уже вырос: считается попытка, а не успех.
             _logger.LogWarning(ex, "Power.BatterySaverRequestUnavailable");
         }
     }
