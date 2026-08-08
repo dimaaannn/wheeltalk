@@ -16,6 +16,7 @@ using WheelTalk.Core.Services;
 using WheelTalk.Droid.Ble;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Resources.Strings;
+using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Droid.Ui;
 
@@ -24,7 +25,7 @@ using WheelTalk.Droid.App;
 namespace WheelTalk.Droid.Scan;
 
 /// <summary>
-/// Поиск колеса: статус и список найденных устройств. Логика скана уже нативная
+/// Поиск колеса: статус и список колёс. Логика скана уже нативная
 /// (<see cref="AndroidBleClient"/>/<see cref="BleReadiness"/>) — портируется только экран, с эталона
 /// <c>WheelTalk.App/Pages/ScanPage.xaml(.cs)</c> (опись §1.3, §5): «поиск отдаёт устройства, тап по
 /// строке — подключение и возврат на главный экран».
@@ -32,6 +33,12 @@ namespace WheelTalk.Droid.Scan;
 /// Кнопки «Сканировать» нет: поиск начинается сам при появлении экрана и останавливается при уходе
 /// с него. Сюда приходят ровно за одним — найти колесо, — и лишнее нажатие между «открыл экран» и
 /// «увидел список» не давало ничего, кроме экрана, на котором ничего не происходит.
+/// </para>
+/// <para>
+/// <b>Привязанные колёса стоят вверху</b> (план 24 §А), свежие первыми, и живут там независимо от
+/// скана: подключиться можно и к тому, чего в эфире сейчас нет, — <c>ConnectAsync</c> начнёт
+/// погоню, и она поймает колесо, когда его включат. Найденное привязанное показывается только
+/// вверху, иначе оно задвоилось бы само с собой.
 /// </para>
 /// </summary>
 [Activity]
@@ -41,10 +48,18 @@ public sealed class ScanActivity : Activity
     private WheelSession _session = null!;
     private WheelOptions _wheel = null!;
     private UserSettingsStore _settings = null!;
+    private BoundWheels _bound = null!;
+    private DashboardOptions _dashboard = null!;
     private ILogger<ScanActivity> _logger = null!;
 
+    /// <summary>Что нашёл скан — <b>всё</b>, включая безымянное: привязанное колесо узнаётся по MAC, а не по имени.</summary>
     private readonly List<DiscoveredDevice> _devices = [];
-    private DeviceAdapter _adapter = null!;
+
+    /// <summary>Привязанные колёса, как их отдало хранилище. Перечитывается при появлении экрана и после забывания.</summary>
+    private IReadOnlyList<BoundWheel> _boundWheels = [];
+
+    private readonly List<WheelRow> _rows = [];
+    private WheelAdapter _adapter = null!;
 
     private TextView _statusLabel = null!;
 
@@ -73,6 +88,8 @@ public sealed class ScanActivity : Activity
         _session = MainApplication.Services.GetRequiredService<WheelSession>();
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
         _settings = MainApplication.Services.GetRequiredService<UserSettingsStore>();
+        _bound = MainApplication.Services.GetRequiredService<BoundWheels>();
+        _dashboard = MainApplication.Services.GetRequiredService<DashboardOptions>();
         _logger = MainApplication.Services.GetRequiredService<ILogger<ScanActivity>>();
 
         var root = BuildLayout();
@@ -90,6 +107,7 @@ public sealed class ScanActivity : Activity
         // уже не у кого.
         _chased = _session.Address;
 
+        ReloadBound();
         StartScan();
     }
 
@@ -151,7 +169,7 @@ public sealed class ScanActivity : Activity
     private async Task ScanUntilStopped()
     {
         _devices.Clear();
-        _adapter.NotifyDataSetChanged();
+        Rebuild();
         _scanCts = new CancellationTokenSource();
         _statusLabel.SetText(AppStrings.ScanInProgress);
 
@@ -162,7 +180,6 @@ public sealed class ScanActivity : Activity
             // каждое обращение к разметке явно завёрнуто в RunOnUiThread (план 12 §4).
             await foreach (var device in _ble.ScanAsync(_scanCts.Token))
             {
-                if (device.Name.Length == 0) continue;
                 var found = device;
                 RunOnUiThread(() => Show(found));
             }
@@ -182,19 +199,70 @@ public sealed class ScanActivity : Activity
     private void Show(DiscoveredDevice device)
     {
         int existing = _devices.FindIndex(d => d.Address == device.Address);
-        if (existing < 0)
+        if (existing < 0) _devices.Add(device);
+        else _devices[existing] = device;
+
+        Rebuild();
+
+        // Считаются показанные строки, а не всё, что ответило: безымянная мелочь из соседних
+        // квартир в список не попадает и обещать её человеку незачем.
+        _statusLabel.SetText(string.Format(
+            CultureInfo.CurrentCulture, AppStrings.ScanFound, _rows.Count(r => r.Found)));
+    }
+
+    private void ReloadBound()
+    {
+        _boundWheels = _bound.All();
+        Rebuild();
+    }
+
+    /// <summary>
+    /// Список целиком: привязанные сверху (свежие первыми — порядок задаёт хранилище), под ними
+    /// найденное новое. Привязанное, найденное сканом, остаётся только вверху: сверка по MAC, иначе
+    /// одно колесо стояло бы в списке дважды.
+    /// <para>
+    /// Строится заново на каждую находку и не пользуется DiffUtil — список короткий и живёт только
+    /// пока открыт экран, ровно как и раньше.
+    /// </para>
+    /// </summary>
+    private void Rebuild()
+    {
+        _rows.Clear();
+
+        foreach (var wheel in _boundWheels)
         {
-            _devices.Add(device);
-            _adapter.NotifyItemInserted(_devices.Count - 1);
-        }
-        else
-        {
-            _devices[existing] = device;
-            _adapter.NotifyItemChanged(existing);
+            var advertised = Advertisement(wheel.Mac);
+
+            // Алиас, данный человеком; нет его — имя анонса, но только пока колесо в эфире (это
+            // живые данные, расходиться им не с чем); нет и его — голый MAC.
+            string caption = wheel.Alias.Length > 0 ? wheel.Alias
+                : advertised?.Name is { Length: > 0 } name ? name
+                : wheel.Mac;
+
+            // Словом, а не одним цветом: зелёное от серого отличает не всякий глаз, и палитра по
+            // умолчанию выбрана как раз из этих соображений.
+            string state = advertised is null ? AppStrings.ScanWheelSilent : AppStrings.ScanWheelInAir;
+
+            _rows.Add(new WheelRow(
+                wheel.Mac, caption, Bound: true, Found: advertised is not null,
+                Details: caption == wheel.Mac ? state : $"{wheel.Mac}   {state}"));
         }
 
-        _statusLabel.SetText(string.Format(AppStrings.ScanFound, _devices.Count));
+        foreach (var device in _devices)
+        {
+            // Безымянное показывать нечем: MAC уже стоит второй строкой, а первой встал бы он же.
+            if (device.Name.Length == 0 || _boundWheels.Any(w => Same(w.Mac, device.Address))) continue;
+
+            _rows.Add(new WheelRow(device.Address, device.Name, Bound: false, Found: true,
+                Details: $"{device.Address}   {device.Rssi} dBm"));
+        }
+
+        _adapter.NotifyDataSetChanged();
     }
+
+    private DiscoveredDevice? Advertisement(string mac) => _devices.Find(d => Same(d.Address, mac));
+
+    private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Stops the scan and waits for the loop to unwind — a scan still in flight would keep
     /// writing over the status text while the connection is being set up.</summary>
@@ -242,31 +310,37 @@ public sealed class ScanActivity : Activity
         });
     }
 
-    private async void OnDeviceSelected(DiscoveredDevice device)
+    /// <summary>
+    /// Тап по строке — обычное подключение, и для привязанного колеса оно ровно то же самое:
+    /// <c>ConnectAsync</c> возвращается после первой попытки, а погоня продолжается фоном. Поэтому
+    /// серая строка кликабельна, а экран после неё закрывается на главный, как при любом выборе:
+    /// «ищем», а не «не удалось».
+    /// </summary>
+    private async void OnWheelSelected(WheelRow row)
     {
         try
         {
             // Скан во время подключения его замедляет, а иногда мешает совсем.
             await StopScanAsync();
 
-            _statusLabel.SetText(string.Format(AppStrings.ScanConnecting, device.Name));
+            _statusLabel.SetText(string.Format(CultureInfo.CurrentCulture, AppStrings.ScanConnecting, row.Caption));
 
             try
             {
-                await _session.ConnectAsync(device.Address);
+                await _session.ConnectAsync(row.Address);
             }
             catch (Exception ex) when (ex is WheelNotRecognisedException or WheelNotSupportedException)
             {
                 // Не наше колесо. Причина остаётся на экране поиска — человек здесь и выбирает,
                 // так что показать её надо тут же, рядом со списком, а не диалогом поверх.
-                _logger.LogWarning(ex, "Connect.Refused {Mac}", device.Address);
+                _logger.LogWarning(ex, "Connect.Refused {Mac}", row.Address);
                 _statusLabel.SetText(ex.Message);
                 return;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Connect.Failed {Mac}", device.Address);
-                _statusLabel.SetText(string.Format(AppStrings.ScanConnectFailed, ex.Message));
+                _logger.LogError(ex, "Connect.Failed {Mac}", row.Address);
+                _statusLabel.SetText(string.Format(CultureInfo.CurrentCulture, AppStrings.ScanConnectFailed, ex.Message));
                 return;
             }
 
@@ -281,16 +355,62 @@ public sealed class ScanActivity : Activity
 
             // Колесо, выбранное вручную, становится тем, к которому приложение подключается само.
             // Протокол не сохраняется: его больше не выбирают, а опознают на каждом подключении.
-            _settings.SaveWheel(device.Address);
+            _settings.SaveWheel(row.Address);
 
             // Назад на главный экран: он подхватит уже идущую сессию, когда снова станет видимым.
             Finish();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ui.DeviceSelectFailed {Mac}", device.Address);
+            _logger.LogError(ex, "Ui.DeviceSelectFailed {Mac}", row.Address);
             _statusLabel.SetText(AppStrings.ActionFailed);
         }
+    }
+
+    /// <summary>
+    /// Долгий тап по привязанному — «забыть все настройки» (план 24 §А3). Уносит разом имя, пароль и
+    /// пороги этого колеса, поэтому спрашивается подтверждение; поездки остаются, и вопрос об этом
+    /// говорит прямо. По новому колесу забывать нечего — жест там ничего не делает.
+    /// </summary>
+    private async void OnWheelLongPressed(WheelRow row)
+    {
+        try
+        {
+            if (!row.Bound) return;
+
+            bool confirmed = await ConfirmAsync(
+                AppStrings.ScanForget,
+                string.Format(CultureInfo.CurrentCulture, AppStrings.ScanForgetConfirm, row.Caption));
+
+            if (!confirmed) return;
+
+            await _bound.ForgetAsync(row.Address);
+
+            // Забытое колесо возвращать некуда: без этого уход с экрана воскресил бы его погоней за
+            // прежним (ResumeChase), и забывание отменилось бы само.
+            if (_chased is not null && Same(_chased, row.Address)) _chased = null;
+
+            ReloadBound();
+            _statusLabel.SetText(string.Format(CultureInfo.CurrentCulture, AppStrings.ScanForgotten, row.Caption));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ui.WheelForgetFailed {Mac}", row.Address);
+            _statusLabel.SetText(AppStrings.ActionFailed);
+        }
+    }
+
+    private Task<bool> ConfirmAsync(string title, string message)
+    {
+        var answer = new TaskCompletionSource<bool>();
+        new AlertDialog.Builder(this)!
+            .SetTitle(title)!
+            .SetMessage(message)!
+            .SetCancelable(false)!
+            .SetPositiveButton(AppStrings.ScanForget, (_, _) => answer.TrySetResult(true))!
+            .SetNegativeButton(AppStrings.Cancel, (_, _) => answer.TrySetResult(false))!
+            .Show();
+        return answer.Task;
     }
 
     // ---- Разметка ---------------------------------------------------------------------------
@@ -314,18 +434,32 @@ public sealed class ScanActivity : Activity
         var list = new RecyclerView(this) { LayoutParameters = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, 0, 1f) { TopMargin = this.Dp(12) } };
         list.SetLayoutManager(new LinearLayoutManager(this));
-        _adapter = new DeviceAdapter(this, _devices, OnDeviceSelected);
+        _adapter = new WheelAdapter(this, _rows, _dashboard, OnWheelSelected, OnWheelLongPressed);
         list.SetAdapter(_adapter);
         root.AddView(list);
 
         return root;
     }
 
-    /// <summary>Строка списка — имя устройства и адрес с уровнем сигнала под ним. Без DiffUtil: список короткий и живёт только на время скана.</summary>
-    private sealed class DeviceAdapter(Context context, List<DiscoveredDevice> devices, Action<DiscoveredDevice> onSelected)
+    /// <summary>
+    /// Строка списка — подпись колеса и адрес с состоянием под ней. Без DiffUtil: список короткий и
+    /// живёт только пока открыт экран.
+    /// <para>
+    /// Цвет берётся из палитры, а не из константы: привязанное и найденное — «хорошо» (у палитры
+    /// Ванга это сине-зелёный, различимый при дейтеранопии), привязанное и молчащее — «приглушённое».
+    /// Новое колесо остаётся обычным текстом: зелёный у него значил бы то же, что и у привязанного,
+    /// а это разные вещи.
+    /// </para>
+    /// </summary>
+    private sealed class WheelAdapter(
+        Context context,
+        List<WheelRow> rows,
+        DashboardOptions dashboard,
+        Action<WheelRow> onSelected,
+        Action<WheelRow> onLongPress)
         : RecyclerView.Adapter
     {
-        public override int ItemCount => devices.Count;
+        public override int ItemCount => rows.Count;
 
         public override RecyclerView.ViewHolder OnCreateViewHolder(ViewGroup parent, int viewType)
         {
@@ -335,7 +469,6 @@ public sealed class ScanActivity : Activity
 
             var name = new TextView(context) { Id = View.GenerateViewId() };
             name.SetTextSize(ComplexUnitType.Sp, 17);
-            name.SetTextColor(UiKit.PlainText(context));
             layout.AddView(name);
 
             var details = new TextView(context) { Id = View.GenerateViewId() };
@@ -348,13 +481,21 @@ public sealed class ScanActivity : Activity
 
         public override void OnBindViewHolder(RecyclerView.ViewHolder holder, int position)
         {
-            var device = devices[position];
+            var row = rows[position];
             var h = (Holder)holder;
-            h.Name.SetText(device.Name);
-            h.Details.SetText($"{device.Address}   {device.Rssi} dBm");
+            h.Name.SetText(row.Caption);
+            h.Name.SetTextColor(row.Bound
+                ? row.Found ? dashboard.Palette.Good : dashboard.Palette.Dim
+                : UiKit.PlainText(context));
+            h.Details.SetText(row.Details);
+
             h.ItemView.Click -= h.ClickHandler;
-            h.ClickHandler = (_, _) => onSelected(device);
+            h.ClickHandler = (_, _) => onSelected(row);
             h.ItemView.Click += h.ClickHandler;
+
+            h.ItemView.LongClick -= h.LongClickHandler;
+            h.LongClickHandler = (_, e) => { onLongPress(row); e.Handled = true; };
+            h.ItemView.LongClick += h.LongClickHandler;
         }
 
         private sealed class Holder(View itemView, TextView name, TextView details) : RecyclerView.ViewHolder(itemView)
@@ -362,6 +503,13 @@ public sealed class ScanActivity : Activity
             public TextView Name => name;
             public TextView Details => details;
             public EventHandler? ClickHandler;
+            public EventHandler<View.LongClickEventArgs>? LongClickHandler;
         }
     }
+
+    /// <summary>
+    /// Строка списка, одна на оба вида колёс: привязанное и просто найденное. Одна модель, а не две,
+    /// потому что тап по ним делает одно и то же — подключается по адресу.
+    /// </summary>
+    private sealed record WheelRow(string Address, string Caption, bool Bound, bool Found, string Details);
 }
