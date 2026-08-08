@@ -60,12 +60,35 @@ KingSong S22 Pro у одного продавца «111V Li-Ion» — это 30 
 самого метода: Begode Nikola+ — 24 × 3,6 × 4 × 4,2 = 1451 Вт·ч ровно в объявленные 1451; Ninebot
 Z10 — 16 × 3,7 × 4 × 4,2 = 995 ровно в объявленные 995.
 
-Две строки дали `P` **неоднозначным** (между двумя целыми, а не мимо всех) — там прочерк:
+Четыре клетки остались пустыми — см. следующий раздел, там сказано, что по каждой уже искали.
 
-- **Veteran Sherman, 100,8 В / 3200 Вт·ч** — при 18650, названных источником, выходит 10–11
-  параллелей, и выбрать между ними не по чему.
-- **Ninebot One Z6, 67,2 В / 530 Вт·ч** — 2 или 3, в зависимости от банки, которую источник не
-  называет.
+## Прочерки: что по ним искал, чтобы не ходить дважды
+
+*Заполненная неверно клетка хуже пустой: по ней посчитают и поверят. Ниже — уже пройденный круг,
+чтобы следующий начал с непройденного.*
+
+**`P` у Veteran Sherman (100,8 В / 3200 Вт·ч).** Банка названа источником — NCR18650GA, 3,45 А·ч;
+при ней ватт-часы дают **10,4–10,7 параллели**, то есть 10 либо 11, и выбрать не по чему. Искал:
+строку `24sXXp` в спеках и обзорах; ветку форума «Veteran sherman battery info thread» и «Veteran
+Sherman battery rebuild» — **обе отдают 403 на автоматическое чтение, глазами они, вероятно,
+откроются**; поиск по «24s10p», «24s12p», «240 cells». Не нашёл. *Косвенно: у Sherman Max при тех же
+18650 ровно ложится 12P — если пакеты родня, у Sherman вероятнее 10, но это догадка, и в таблицу
+она не пошла.*
+
+**`P` у Veteran Sherman Max (100,8 В / 3600 Вт·ч).** Ватт-часы сходятся **дважды**: 12P при 18650
+(+2 %) и 8P при 21700 на 5,0 А·ч (−1 %). Оба в пределах нормы, а банку для Max ни один источник не
+называет — Sherman-S рядом описан как «Samsung», Max никак. Искал спеку пакета и артикул запчасти.
+Разрешится типом банки, а не арифметикой.
+
+**Ватт-часы и `P` у Veteran Abrams.** Здесь источники **противоречат друг другу**, потому и прочерк
+вместо числа: один даёт «2700 Вт·ч», другой приписывает Abrams 100,8 В (что неверно — Abrams
+126-вольтовый), а карточка запчасти на ewheels названа «Battery Pack with Panel, 1,350Wh» при том,
+что в её же адресе стоит `1700wh`. Двух согласных чисел не нашлось ни одного. **Ряд 30 при этом
+твёрдый** — он от напряжения, а не от ёмкости.
+
+**`P` у Ninebot One Z6 (67,2 В / 530 Вт·ч).** Выходит 2 или 3 смотря по банке, а банку не называет
+никто. Искал: разбор («Ninebot One Z Teardown»), спеку пакета, артикул запчасти, руководство
+пользователя. Разбор Z-серии существует, но числа ячеек в доступном виде не отдаёт.
 
 ## Рядов, которых не бывает — это ценнее самой таблицы
 
@@ -111,9 +134,11 @@ Z10 — 16 × 3,7 × 4 × 4,2 = 995 ровно в объявленные 995.
 |---|---|---|---|---|---|
 | A2 | 84 | 20 (вывод) | 2 (вывод) | 750 | [ewheels: «A2/A2+, 750Wh»](https://ewheels.com/products/begode-a2) |
 | C8 | 84 | 20 (вывод) | 4 (вывод) | 1500 | [oneride: «C8 84V 2500W 1500Wh»](https://oneride.eu/en/begode/1855-begode-c8-50gb-84v-2500w-1500wh.html) |
-| Mten3 84 | 84 | 20 (вывод) | 2 (вывод, банка 18650) | 460 или 512 | [3euc: «Mten3 84V, 460Wh / 512Wh»](https://www.3euc.com/begode/) |
-| MSX 84 | 84 | 20 (вывод) | — | — | вторым источником не сверял |
-| Nikola 84 | 84 | 20 (вывод) | — | — | вторым источником не сверял |
+| Mten3 84 / 460 | 84 | 20 (вывод) | 2 (вывод, банка ~3,1 А·ч) | 460 | [EUC.NYC: «Mten3 84V, 460Wh»](http://shop.euc.nyc/GotWay-MTen3) + [3euc](https://www.3euc.com/begode/) |
+| Mten3 84 / 512 | 84 | 20 (вывод) | 2 (вывод, банка 3,45 А·ч) | 512 | [smartwheel.ca: «Mten3 512Wh/84V»](https://www.smartwheel.ca/begode-gotway-mten3-10-800w-motor-electric-unicycle-512wh/84v---black/) + [3euc](https://www.3euc.com/begode/) |
+| MSX 84 / 1600 | 84 | 20 (вывод) | 6 (вывод, банка 18650 3,5 А·ч) | 1600 | [ветка форума «Nikola 84v 1600Wh vs MSX 84v 1600Wh»](https://forum.electricunicycle.org/topic/17900-nikola-84v-1600wh-vs-msx-84v-1600wh/) |
+| MSX 84 / 1859 | 84 | 20 (вывод) | 7 (вывод, банка 18650 3,5 А·ч) | 1859 | [ветка форума «MSX 84V 1859Wh VS MSP 100V 1800Wh»](https://forum.electricunicycle.org/topic/17874-msx-84v-1859wh-vs-msp-100v-1800wh/) |
+| Nikola 84 | 84 | 20 (вывод) | 6 (вывод, банка 18650 3,5 А·ч) | 1600 | [ветка форума «Nikola 84v 1600Wh vs MSX 84v 1600Wh»](https://forum.electricunicycle.org/topic/17900-nikola-84v-1600wh-vs-msx-84v-1600wh/) |
 | Falcon | 100,8 | 24 (вывод) | 2 (вывод) | 900 | [ewheels: «900Wh, 100.8V»](https://ewheels.com/products/begode-falcon-900wh-battery-2800w-peak-power) |
 | Falcon Pro | 100,8 | 24 (вывод) | 4 (вывод) | 1800 | [escooterclinic: «1800Wh 100.8V»](https://escooterclinic.co.uk/en/products/begode-falcon-pro-electric-unicycle-3000w-power-17-8ah-battery-65mph-speed-50mi-range-9246) |
 | Nikola+ | 100,8 | 24 (вывод) | 4 (вывод, банка P42A 4,2 А·ч — сходится точно) | 1451 | [ewheels: «1451Wh P42A»](https://ewheels.com/products/new-gotway-nikola-1800wh-battery-2000w-motor-3-wide-tire) |
@@ -142,28 +167,28 @@ Z10 — 16 × 3,7 × 4 × 4,2 = 995 ровно в объявленные 995.
 
 | Модель | Полное, В | Ряд S | Паралл. P | Вт·ч, паспорт | Откуда |
 |---|---|---|---|---|---|
-| Sherman | 100,8 | 24 (вывод) | — | 3200 | [e-smartway: «100.8V 3200Wh»](https://e-smartway.com/products/leaperkim-veteran-sherman-electric-unicycle-100-8v-3200wh-motor-power-2500w-off-road-20-inch-ncr18650ga-battery-max-70km-h); при названных там 18650 выходит 10–11 параллелей, выбрать не по чему |
-| Sherman Max | 100,8 | 24 (вывод) | — | — | вторым источником не сверял |
-| Sherman S | 100,8 | 24 (вывод) | 8 (вывод) | 3600 | [ewheels](https://www.ewheels.com/product/veteran-sherman-s/) |
-| Abrams | 126 | 30 (вывод) | — | — | вторым источником не сверял |
+| Sherman | 100,8 | 24 (вывод) | — *(искал, см. ниже)* | 3200 | [e-smartway: «100.8V 3200Wh», банка NCR18650GA](https://e-smartway.com/products/leaperkim-veteran-sherman-electric-unicycle-100-8v-3200wh-motor-power-2500w-off-road-20-inch-ncr18650ga-battery-max-70km-h) |
+| Sherman Max | 100,8 | 24 (вывод) | — *(искал, см. ниже)* | 3600 | [ewheels: «Sherman Max, 3600Wh»](https://ewheels.com/products/new-veteran-sherman-18-100v-3200wh-battery-2500w-motor) |
+| Sherman S | 100,8 | 24 (вывод) | 8 (вывод, банка 21700 5,0 А·ч) | 3600 | [ewheels: «100V, 3600Wh, Samsung»](https://www.ewheels.com/product/veteran-sherman-s/) |
+| Abrams | 126 | 30 (вывод) | — *(искал, см. ниже)* | — *(искал, см. ниже)* | ряд — по 126 В; ватт-часы источники дают вразнобой |
 | Patton | 126 | **30 (прямо)** | **4 (прямо)** | 2220 | [форум: «126V Samsung packs, 2220Wh — 2 sets, 30 strings, 2 parallel»](https://forum.electricunicycle.org/topic/24765-veteran-sherman-battery-info-thread/) — два набора по 30S2P и дают 4P |
 | Patton-S | 126 | 30 (вывод) | 4 (вывод) | 2220 | [ewheels: «2220Wh/126V»](https://ewheels.com/products/new-veteran-patton-s-2-220wh-battery-3-000w-motor-suspension) |
 | Sherman L | 151,2 | 36 (вывод) | 6 (вывод) | 4000 | [ewheels: «4000Wh/151V»](https://ewheels.com/products/veteran-sherman-l-4-000wh-battery-3-200w-motor-8kw-peak) |
 | Lynx | 151,2 | 36 (вывод) | 4 (вывод) | 2700 | [ewheels: «2700Wh/151V»](https://ewheels.com/products/veteran-lynx-2700wh-battery-3200w-motor-8kw-peak) |
-| Lynx-S | 151,2 | 36 (вывод) | 4 (вывод) | 2700 | [eucer.ru](https://eucer.ru/) — источник один, вторым не сверял |
+| Lynx-S | 151,2 | 36 (вывод) | 4 (вывод, банка 21700 5,0 А·ч) | 2700 | [oneride: «Lynx S 3800W 2700Wh»](https://oneride.eu/en/electric-unicycles/2189-leaperkim-lynx-s-electric-unicycle.html) + [eucer.ru](https://eucer.ru/) |
 | Oryx | 176,4 | 42 (вывод) | 6 (вывод) | 4700 | [ewheels: «176.4v, 4700Wh»](https://ewheels.com/products/new-veteran-oryx-4-700wh-battery-4-200w-motor-suspension) |
 
 ### KingSong
 
 | Модель | Полное, В | Ряд S | Паралл. P | Вт·ч, паспорт | Откуда |
 |---|---|---|---|---|---|
-| KS-16X | 84 | 20 (вывод) | — | — | вторым источником не сверял |
+| KS-16X | 84 | 20 (вывод) | 6 (вывод, банка 3,5 А·ч — сходится точно) | 1554 | [официальная спека 16X](https://www.kingsong.com/pages/16x-spec) + [ewheels: «16X, 1554Wh»](https://ewheels.com/products/new-king-song-16x-1554wh-battery-2000w-motor-3-wide-tire) |
 | KS-S18 | 84 | 20 (вывод) | 3 (вывод, банка P42A) | 903 | [ewheels: «S18, 903Wh P42A»](https://ewheels.com/products/new-king-song-s18-1110wh-battery-2200w-motor-full-body-suspension); [официальная спека](https://www.kingsong.com/pages/s18-spec) |
 | KS-S19 | 100,8 | 24 (вывод) | 3 (вывод, банка P42A) | 1110 | [kingsong.com: зарядник «Output 100.8V 5A», 1110Wh](https://www.kingsong.com/products/kingsong-s19-pro) |
 | KS-S19 Pro | 100,8 | 24 (вывод) | 4 (вывод) | 1776 или 1800 | [ewheels: «S19 Pro, 1800Wh»](https://ewheels.com/products/king-song-s19); kingsong.com даёт 1776 |
-| KS-S20 | 126 | 30 (вывод) | — | — | вторым источником не сверял |
+| KS-S20 | 126 | 30 (вывод) | 4 (вывод, банка 21700 5,0 А·ч) | 2200 | [EUC Direct: «KS-S20, 2200Wh»](https://eucdirect.ca/products/kingsong-ks-s20-with-2200wh-battery-capacity); 126 В — [evnerds](https://evnerds.com/electric-vehicles/e-unicycle-hoverboard-news/kingsong-s20-eagle-the-best-electric-unicycle-next-level/) |
 | KS-S22 / S22 Pro | 126 | 30 (вывод) | 4 (вывод) | 2220 | [официальная спека: «2220Wh 126V», «Charger DC 126V × 6A»](https://www.kingsong.com/pages/s22-pro-spec) |
-| KS-S22 Eagle | 126 | 30 (вывод) | — | — | вторым источником не сверял |
+| KS-S22 Eagle | 126 | 30 (вывод) | 4 (вывод, банка 21700 5,0 А·ч) | 2220 | [smartwheel.ca: «S22 Eagle, 2220Wh»](https://www.smartwheel.ca/kingsong-ks-s22-eagle/) + [voltride](https://voltride.com/kingsong-ks-s22-eagle-king-of-suspension-wheels/) |
 | KS-F18 | 151,2 | 36 (вывод) | 4 (вывод) | 2700 | [ewheels: «2700Wh/151.2V»](https://ewheels.com/products/king-song-f18-2-700wh-battery-5-000w-motor) |
 | KS-F22 Pro | 176,4 | 42 (вывод) | 4 (вывод, сходится точно) | 3108 | [ewheels: «3108Wh/176.4V»](https://ewheels.com/products/king-song-f22-pro-3-108wh-battery-5-500w-motor) |
 
@@ -186,7 +211,7 @@ Z10 — 16 × 3,7 × 4 × 4,2 = 995 ровно в объявленные 995.
 | Модель | Полное, В | Ряд S | Паралл. P | Вт·ч, паспорт | Откуда |
 |---|---|---|---|---|---|
 | One Z10 | 67,2 | 16 (вывод) | 4 (вывод, банка 4,2 А·ч — сходится точно) | 995 | [форум: полка CV зарядки 67,3 В при 16S](https://forum.electricunicycle.org/topic/10983-ninebot-z10-power-supply-charge-doctor-mod/); [995 Вт·ч, 63 В номинала](https://e-catalog.com/NINEBOT-ONE-Z10.htm) |
-| One Z6 | 67,2 | 16 (вывод) | — | 530 | [обзор ElectricUnicycles.eu](https://www.electricunicycles.eu/new_ninebot_one_z_(z6_z8_z10)_electric_unicycle_what_about_the_range_and_power-c__275); ряд — только по родству с Z10, `P` выходит 2 или 3 в зависимости от банки |
+| One Z6 | 67,2 | 16 (вывод) | — *(искал, см. ниже)* | 530 | [обзор ElectricUnicycles.eu](https://www.electricunicycles.eu/new_ninebot_one_z_(z6_z8_z10)_electric_unicycle_what_about_the_range_and_power-c__275); ряд — только по родству с Z10 |
 
 ## Годы выпуска
 
@@ -211,6 +236,8 @@ Z10 — 16 × 3,7 × 4 × 4,2 = 995 ровно в объявленные 995.
 - Явной записи конфигурации словами: она есть только у четырёх — P6 (`56S4P`), Master (`32s4p`),
   Race (`50S`), 126-вольтовый пак Veteran (`2 набора по 30 strings, 2 parallel`). Остальные `S` и
   `P` — расчёт.
-- Ватт-часов у девяти моделей: MSX 84, Nikola 84, MSP, RS, Monster Pro, Sherman Max, Abrams,
-  KS-16X, KS-S20, KS-S22 Eagle, V11, V12, V12S. Без них `P` не выводится.
+- Ватт-часов у шести моделей: MSP, RS, Monster Pro, V11, V12, V12S. Без них `P` не выводится.
+- Варианта Nikola 84 на 2100 Вт·ч: он упомянут в обсуждении, но подтвердить его отдельной страницей
+  или заголовком не вышло, и строкой в таблицу он не пошёл.
+- Четырёх клеток, по которым круг уже пройден, — см. раздел «Прочерки: что по ним искал».
 - Официальной спеки Ninebot с числом ячеек: 16S держится на полке зарядки и номинале из каталога.
