@@ -63,7 +63,7 @@ public static class SettingsServiceCollectionExtensions
             () => sp.GetRequiredService<WheelSession>().LastSnapshot,
             // Запись — через биндер: слой у настройки колеса свой, и знать о нём кнопке незачем.
             cells => sp.GetRequiredService<SettingsBinder>()
-                .Set(WheelPage.CellsKey, cells.ToString(CultureInfo.InvariantCulture)),
+                .Set(ExperimentalPage.CellsKey, cells.ToString(CultureInfo.InvariantCulture)),
             () => sp.GetRequiredService<LayeredSettings>().Scope.Length > 0)));
         services.AddSingleton(sp => new LayeredSettings(
             sp.GetRequiredService<ISettingsStore>(),

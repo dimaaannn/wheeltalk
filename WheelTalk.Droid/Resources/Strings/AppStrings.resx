@@ -80,6 +80,8 @@
   <data name="SettingsPageApplication" xml:space="preserve"><value>Приложение</value></data>
   <data name="SettingsPageDisplay" xml:space="preserve"><value>Отображение</value></data>
   <data name="SettingsDisplayHint" xml:space="preserve"><value>«Отображение» — вид приборной панели: шкалы, цифры, палитра.</value></data>
+  <data name="SettingsPageExperimental" xml:space="preserve"><value>Тестовые функции</value></data>
+  <data name="SettingsPageExperimentalNotice" xml:space="preserve"><value>Наши доработки, которых нет в оригинальном приложении и которые ещё не проверены на дороге. Работают полностью — здесь ничего не выключено, страница только помечает. Со временем они могут измениться, а обкатанные переедут на постоянные страницы; заданные значения переезд переживут.</value></data>
   <data name="SettingsScopeGlobal" xml:space="preserve"><value>Колесо не выбрано — правится общее значение</value></data>
   <data name="SettingsScopeWheel" xml:space="preserve"><value>Настройки колеса {0}</value></data>
   <data name="SettingsOverridden" xml:space="preserve"><value>Своё значение у этого колеса</value></data>
@@ -108,6 +110,8 @@
   <data name="SettingsAdvanced" xml:space="preserve"><value>Дополнительно</value></data>
   <data name="SectionSpeedWarning" xml:space="preserve"><value>Предупреждение по скорости</value></data>
   <data name="SectionChannels" xml:space="preserve"><value>Чем предупреждать</value></data>
+  <data name="SectionAlarmSignal" xml:space="preserve"><value>Сигнал тревоги</value></data>
+  <data name="SectionCellVoltage" xml:space="preserve"><value>Вольт на банку</value></data>
   <data name="SettingGotwayNegative" xml:space="preserve"><value>Знак скорости и тока</value></data>
   <data name="SettingGotwayNegativeHint" xml:space="preserve"><value>Если при езде вперёд скорость и ток показываются отрицательными — переключите на другой вариант.</value></data>
   <data name="SettingSignStraight" xml:space="preserve"><value>Прямой</value></data>

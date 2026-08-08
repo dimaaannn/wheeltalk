@@ -3,6 +3,11 @@ namespace WheelTalk.Core.Settings;
 /// <summary>
 /// The four pages, as in the notes. Warnings are their own page rather than a group on another
 /// because there are many of them and they matter more than the rest.
+/// <para>
+/// Пятая — <see cref="Experimental"/> — не тема, а отметка зрелости: сюда складывается придуманное
+/// нами и ещё не проверенное на дороге, чтобы его не путали с портированным 1:1 и обкатанным
+/// тысячами райдеров (план 28). Страница ничего не выключает; обкатанное с неё уходит.
+/// </para>
 /// </summary>
 public enum SettingsPage
 {
@@ -10,6 +15,14 @@ public enum SettingsPage
     Application,
     Display,
     Warnings,
+
+    /// <summary>
+    /// Наши доработки, ещё не побывавшие на дороге. Переезд отсюда бесплатен: в хранилище настройка
+    /// опознаётся <b>только по <see cref="SettingDescriptor.Key"/></b>, а <see cref="SettingDescriptor.Page"/>
+    /// и <see cref="SettingDescriptor.SectionKey"/> — оформление, и заданное человеком значение
+    /// перевода на постоянную страницу не заметит.
+    /// </summary>
+    Experimental,
 }
 
 /// <summary>What a row looks like and how it is edited.</summary>

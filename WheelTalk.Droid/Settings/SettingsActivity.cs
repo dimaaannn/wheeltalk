@@ -43,6 +43,10 @@ public sealed class SettingsActivity : Activity
         (SettingsPage.Warnings, "SettingsPageWarnings"),
         (SettingsPage.Application, "SettingsPageApplication"),
         (SettingsPage.Display, "SettingsPageDisplay"),
+
+        // Пятой и последней: не тема наравне с четырьмя, а отметка зрелости (план 28). Стоит внизу
+        // потому, что заходить туда незачем, пока не понадобилось именно новое.
+        (SettingsPage.Experimental, "SettingsPageExperimental"),
     ];
 
     private SettingsBinder _binder = null!;

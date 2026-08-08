@@ -123,8 +123,22 @@ public sealed class SettingsCategoryActivity : Activity
         SettingsPage.Wheel => "SettingsPageWheel",
         SettingsPage.Warnings => "SettingsPageWarnings",
         SettingsPage.Display => "SettingsPageDisplay",
+        SettingsPage.Experimental => "SettingsPageExperimental",
         _ => "SettingsPageApplication",
     };
+
+    /// <summary>
+    /// Пояснение над списком — есть только у «Тестовых функций» (план 28), и это не украшение:
+    /// страница названа по зрелости, а не по теме, и без одной фразы её название читается как
+    /// «здесь можно что-то сломать». Сказать надо ровно обратное — строки работают полностью,
+    /// страница <b>только помечает</b>.
+    /// <para>
+    /// У остальных четырёх пояснения нет: их названия говорят сами за себя, а надпись над каждым
+    /// списком — это строка, которую перестают читать.
+    /// </para>
+    /// </summary>
+    private static string? PageNoticeKey(SettingsPage page) =>
+        page == SettingsPage.Experimental ? "SettingsPageExperimentalNotice" : null;
 
     // ---- Scope (общее / это колесо) ----------------------------------------------------------
 
@@ -244,6 +258,19 @@ public sealed class SettingsCategoryActivity : Activity
 
         _content.RemoveAllViews();
         _sectionAnchors.Clear();
+
+        // Внутри списка, а не над ним: прочитанное однажды пояснение должно уезжать вверх вместе с
+        // прокруткой, а не занимать экран у каждой строки.
+        if (PageNoticeKey(_page) is { } noticeKey)
+        {
+            var notice = new TextView(this) { Text = TranslateExtension.Get(noticeKey) };
+            notice.SetTextSize(ComplexUnitType.Sp, 13);
+            notice.Alpha = 0.75f;
+            _content.AddView(notice, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            {
+                TopMargin = this.Dp(4),
+            });
+        }
 
         bool dividedAdvanced = false;
         bool any = false;

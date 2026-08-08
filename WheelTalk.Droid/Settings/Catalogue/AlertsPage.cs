@@ -7,11 +7,16 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// <summary>
 /// Descriptors of <see cref="SettingsPage.Warnings"/> — split out of <c>SettingsCatalogue.Build</c>
 /// (plan 14, А2.1), body moved as-is.
+/// <para>
+/// Форма сигнала и прослушивание отсюда уехали на <see cref="SettingsPage.Experimental"/> (план 28):
+/// они придуманы нами и на дороге не проверены. Сам выключатель звука остался здесь — он в оригинале
+/// был. Каскад от этого не пострадал: зависимые строки смотрят на <see cref="AlertSignalOptions.Sound"/>,
+/// живой объект, а не на соседнюю строку экрана.
+/// </para>
 /// </summary>
 internal static class AlertsPage
 {
-    public static IReadOnlyList<SettingDescriptor> Build(AlertOptions alerts, AlertSignalOptions channels,
-        Action<double> previewAlarm)
+    public static IReadOnlyList<SettingDescriptor> Build(AlertOptions alerts, AlertSignalOptions channels)
     {
         return
         [
@@ -114,41 +119,9 @@ internal static class AlertsPage
                 Current = () => channels.Sound.ToString(),
                 Apply = text => channels.Sound = SettingsCatalogue.ParseBool(text),
             },
-            // Оба варианта отобраны владельцем на слух из восьми (план 26); заводской — тот, что он
-            // назвал первым. Выбирается ушами, поэтому подписи называют рисунок, а не частоты.
-            new()
-            {
-                Key = "AlertSignals:Wave",
-                Kind = SettingKind.Choice,
-                Page = SettingsPage.Warnings,
-                SectionKey = "SectionChannels",
-                LabelKey = "SettingAlarmWave",
-                GlobalOnly = true,
-                // Выбирать нечего, пока звук выключен.
-                IsVisible = () => channels.Sound,
-                Choices = [nameof(AlarmWave.TwoToneStack), nameof(AlarmWave.Stack)],
-                ChoiceLabelKeys = ["SettingAlarmWaveTwoTone", "SettingAlarmWaveStack"],
-                Current = () => channels.Wave.ToString(),
-                Apply = text => channels.Wave = Enum.TryParse(text, out AlarmWave wave) ? wave : AlarmWave.TwoToneStack,
-            },
-            // Прослушивание, а не настройка: хранить нечего, а звук, переживший страницу, играл бы в
-            // кармане. Ползунок ведёт ту же интенсивность, что приходит от движка тревог, поэтому
-            // слышно и редкий писк у порога, и сплошной сигнал у предела.
-            new()
-            {
-                Key = "AlertSignals:Preview",
-                Kind = SettingKind.Slider,
-                Page = SettingsPage.Warnings,
-                SectionKey = "SectionChannels",
-                LabelKey = "SettingAlarmPreview",
-                HintKey = "SettingAlarmPreviewHint",
-                Transient = true,
-                IsVisible = () => channels.Sound,
-                UnitKey = "UnitPercent",
-                Maximum = 100,
-                Current = () => "0",
-                Apply = text => previewAlarm(SettingsCatalogue.ParseNumber(text) / 100),
-            },
+            // Форма сигнала и прослушивание стояли здесь же, следом за выключателем звука; обе
+            // уехали на страницу «Тестовые функции» (план 28) — вместе с ними уехало и гашение
+            // ползунка при уходе со страницы.
             new()
             {
                 Key = "AlertSignals:Vibration",

@@ -32,10 +32,16 @@ public static class SettingsCatalogue
         return
         [
             .. WheelPage.Build(context.Wheel, context.Selected, context.Identity, context.Protocol,
-                context.RestartAuthentication, context.LastFrame, context.SaveCells, context.WheelScopeChosen),
+                context.RestartAuthentication),
             .. AppPage.Build(context.Connection, context.Power, context.Share),
-            .. AlertsPage.Build(context.Alerts, context.Channels, context.PreviewAlarm),
+            .. AlertsPage.Build(context.Alerts, context.Channels),
             .. DisplayPage.Build(context.Dashboard, context.Screen),
+
+            // Пятая страница собирается последней, потому что она и в списке последняя: не тема, а
+            // отметка зрелости (план 28). Строки в ней — те же самые описания, что стояли выше, с
+            // одним изменённым полем Page; ключи, признаки и условия переехали нетронутыми.
+            .. ExperimentalPage.Build(context.Wheel, context.Dashboard, context.Channels,
+                context.PreviewAlarm, context.LastFrame, context.SaveCells, context.WheelScopeChosen),
         ];
     }
 

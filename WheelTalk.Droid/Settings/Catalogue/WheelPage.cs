@@ -1,16 +1,17 @@
-using System.Globalization;
-using System.Text;
-using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Settings;
 using WheelTalk.Droid.Configuration;
-using WheelTalk.Droid.Resources.Strings;
 
 namespace WheelTalk.Droid.Settings.Catalogue;
 
 /// <summary>
 /// Descriptors of <see cref="SettingsPage.Wheel"/> — split out of <c>SettingsCatalogue.Build</c>
 /// (plan 14, А2.1), body moved as-is.
+/// <para>
+/// Ряд ячеек и кнопка «рассчитать» переехали отсюда на <see cref="SettingsPage.Experimental"/>
+/// (план 28) — вместе с ключом <c>WheelConfig:CellsInSeries</c>, который теперь назван в
+/// <see cref="ExperimentalPage.CellsKey"/>.
+/// </para>
 /// </summary>
 internal static class WheelPage
 {
@@ -21,32 +22,18 @@ internal static class WheelPage
     /// </summary>
     public const string AliasKey = "Wheel:Alias";
 
-    /// <summary>
-    /// Ряд ячеек. Константой по той же причине, что и алиас: в него пишет кнопка «рассчитать»,
-    /// а ключ, названный в двух файлах порознь, однажды переименуют наполовину.
-    /// </summary>
-    public const string CellsKey = "WheelConfig:CellsInSeries";
-
     public static IReadOnlyList<SettingDescriptor> Build(
         AppWheelConfig wheel,
         WheelOptions selected,
         WheelIdentity identity,
         Func<WheelProtocol?> protocol,
-        Action restartAuthentication,
-        Func<TelemetrySnapshot?> lastFrame,
-        Action<int> saveCells,
-        Func<bool> wheelScopeChosen)
+        Action restartAuthentication)
     {
         // Спрашивается у сессии, а не у настроек: протокол теперь опознаётся при подключении, и
         // сохранённой копии, по которой можно было бы решить заранее, больше нет. До первого кадра
         // ответа нет вовсе — тогда настройки Begode не показываются, и это честно.
         bool IsGotway() => protocol() == WheelProtocol.Gotway;
         bool IsInMotion() => protocol() == WheelProtocol.InMotion;
-
-        // Кадр, по которому считала кнопка «рассчитать», — чтобы отчитаться ровно им. Кадры идут
-        // по нескольку в секунду, и взять напряжение заново значило бы назвать вольт на банку от
-        // одного кадра, а ряд — от другого.
-        TelemetrySnapshot? calculatedFrom = null;
 
         return
         [
@@ -183,72 +170,9 @@ internal static class WheelPage
                 Current = () => wheel.UseBetterPercents.ToString(),
                 Apply = text => wheel.UseBetterPercents = SettingsCatalogue.ParseBool(text),
             },
-            // Ряд ячеек — верхняя ступень каскада (план 27): задан человеком — бьёт и умный BMS, и
-            // знание протокола. Ноль означает «не задано», как принято у нас и в оригинале.
-            new()
-            {
-                Key = CellsKey,
-                Kind = SettingKind.Number,
-                Page = SettingsPage.Wheel,
-                SectionKey = "SectionBattery",
-                LabelKey = "SettingCellsInSeries",
-                HintKey = "SettingCellsInSeriesHint",
-                UnitKey = "UnitCells",
-                // Число принадлежит колесу, а не приложению: 20S у одного и 16S у другого — не
-                // разногласие, а два разных колеса. Общего значения у него не бывает вовсе, поэтому
-                // и в общей области строка не показывается: писать её там некуда.
-                WheelOnly = true,
-                IsVisible = wheelScopeChosen,
-                Maximum = 60,
-                Current = () => SettingsCatalogue.Whole(wheel.CellsInSeries),
-                Apply = text => wheel.CellsInSeries = (int)SettingsCatalogue.ParseNumber(text),
-
-                // Отменять заданное человеком мы не вправе — он знает своё колесо, — но сказать,
-                // что из его числа выходит 21 В на банку, обязаны: ошибку «4 вместо 20» иначе не
-                // видно. Пока напряжения не было, пугать нечем, и предупреждения нет.
-                Warning = () => ImplausibleCellsNote(wheel.CellsInSeries, lastFrame()?.VoltageV ?? 0),
-            },
-            new()
-            {
-                Key = "WheelConfig:CellsFromCascade",
-                Kind = SettingKind.Action,
-                Page = SettingsPage.Wheel,
-                SectionKey = "SectionBattery",
-                LabelKey = "SettingCellsCalculate",
-                HintKey = "SettingCellsCalculateHint",
-                ActionLabelKey = "SettingCellsCalculateAction",
-                IsVisible = wheelScopeChosen,
-                Current = () => "",
-
-                // Догадка становится решением человека: он видит число в соседней строке и либо
-                // оставляет его, либо правит. Считать не по чему — сказать об этом, а не записать
-                // ноль: ноль здесь значит «не задано», и молчаливая запись отменила бы настройку.
-                //
-                // Берётся ответ **без верхней ступени**: с ней кнопка возвращала бы человеку его же
-                // число — то есть была бы бесполезна ровно тогда, когда нужна. «Рассчитать» значит
-                // «что сказало бы приложение, не скажи я ему».
-                Apply = _ =>
-                {
-                    var frame = lastFrame();
-                    var cells = frame?.AutoPackCells ?? CellCount.Unknown;
-                    if (!cells.IsKnown) throw new InvalidOperationException(AppStrings.SettingCellsNoData);
-
-                    calculatedFrom = frame;
-                    saveCells(cells.Cells);
-                },
-
-                // Молча подставленное число некому проверить, а проверить его обязан человек —
-                // требование владельца. Отчёт даёт ему для этого вольт на банку: 3,9 правдоподобно,
-                // 2,7 значит, что ряд назван вдвое больше нужного.
-                Report = () => CellsReport(calculatedFrom),
-
-                // До нажатия — то же условие, но лишь когда оно и вправду в силе: у колеса, чей ряд
-                // называет протокол, заряд ни при чём, и пугать им там значило бы приучить
-                // пролистывать предупреждения.
-                Warning = () => lastFrame()?.AutoPackCells.Source == CellCountSource.VoltageGuess
-                    ? AppStrings.SettingCellsGuessCaveat
-                    : null,
-            },
+            // Ряд ячеек и кнопка «рассчитать» стояли здесь же, в «Батарее». Обе уехали на страницу
+            // «Тестовые функции» (план 28): каскад числа ячеек придуман нами и на дороге не
+            // проверен. Ключи при переезде не тронуты — у кого число задано, оно на месте.
             new()
             {
                 Key = "WheelConfig:CustomPercents",
@@ -387,77 +311,5 @@ internal static class WheelPage
                 Apply = text => wheel.PowerFactor = (int)SettingsCatalogue.ParseNumber(text),
             },
         ];
-    }
-
-    /// <summary>
-    /// Ниже этого заряда догадка по одному напряжению уже опасна: она делит на 4,2 В, то есть
-    /// считает колесо полным, и на разряженном занижает ряд. Порог грубый нарочно — точное «под
-    /// завязку» назвать нечем, а процент здесь только повод предупредить, не поправка к числу.
-    /// </summary>
-    private const int NearlyFullPercent = 90;
-
-    /// <summary>
-    /// Отчёт кнопки «рассчитать»: сколько, откуда и <b>сколько вольт на банку из этого выходит</b>.
-    /// Последнее и есть проверка без арифметики — ради неё отчёт и заведён (план 27 §27.4).
-    /// <para>
-    /// Считается по кадру, которым считала сама кнопка, а не по свежему: иначе ряд и напряжение
-    /// пришли бы из разных мгновений.
-    /// </para>
-    /// </summary>
-    private static string? CellsReport(TelemetrySnapshot? frame)
-    {
-        if (frame?.AutoPackCells is not { IsKnown: true } cells) return null;
-
-        var report = new StringBuilder();
-        report.AppendFormat(CultureInfo.CurrentCulture, AppStrings.SettingCellsFound, cells.Cells, CellsSourceName(cells.Source));
-
-        // Напряжения может не быть у колеса, назвавшего ряд рукопожатием раньше первой телеметрии.
-        // Тогда делить не на что, и проверка откладывается до кадра — но число уже названо.
-        if (frame.VoltageV > 0)
-        {
-            report.Append(' ').AppendFormat(CultureInfo.CurrentCulture, AppStrings.SettingCellsPerCell, frame.VoltageV / cells.Cells);
-        }
-
-        report.Append("\n\n").Append(AppStrings.SettingCellsCheck);
-
-        if (cells.Source == CellCountSource.VoltageGuess)
-        {
-            report.Append("\n\n").Append(AppStrings.SettingCellsGuessWarning);
-
-            if (frame.Battery < NearlyFullPercent)
-            {
-                report.Append(' ').AppendFormat(CultureInfo.CurrentCulture, AppStrings.SettingCellsGuessLowCharge, frame.Battery);
-            }
-        }
-
-        return report.ToString();
-    }
-
-    /// <summary>
-    /// Ступень каскада словами райдера. <see cref="CellCountSource.UserSetting"/> и
-    /// <see cref="CellCountSource.Unknown"/> сюда не доходят: кнопка берёт ответ без верхней
-    /// ступени, а незнание отказывает исключением ещё в <c>Apply</c>.
-    /// </summary>
-    private static string CellsSourceName(CellCountSource source) => source switch
-    {
-        CellCountSource.SmartBms => AppStrings.SettingCellsSourceBms,
-        CellCountSource.Protocol => AppStrings.SettingCellsSourceProtocol,
-        CellCountSource.VoltageWithPercent => AppStrings.SettingCellsSourcePercent,
-        _ => AppStrings.SettingCellsSourceGuess,
-    };
-
-    /// <summary>
-    /// Что сказать о заданном ряде, если поделить на него нельзя всерьёз. Критерий один и тот же,
-    /// каким живёт весь план 27: вольт на ячейку вне живого Li-ion. Он производный — от ряда и
-    /// напряжения вместе, — поэтому до первого кадра ответа нет и предупреждения тоже.
-    /// </summary>
-    private static string? ImplausibleCellsNote(int cells, double packVolts)
-    {
-        if (cells <= 0 || packVolts <= 0) return null;
-
-        double cellVolts = packVolts / cells;
-        return LiIonCell.IsPlausible(cellVolts)
-            ? null
-            : string.Format(CultureInfo.CurrentCulture, AppStrings.SettingCellsImplausible, cells, cellVolts);
     }
 }
