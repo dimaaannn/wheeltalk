@@ -46,7 +46,6 @@ public sealed class ScanActivity : Activity
 {
     private AndroidBleClient _ble = null!;
     private WheelSession _session = null!;
-    private WheelOptions _wheel = null!;
     private UserSettingsStore _settings = null!;
     private BoundWheels _bound = null!;
     private DashboardOptions _dashboard = null!;
@@ -76,7 +75,6 @@ public sealed class ScanActivity : Activity
 
         _ble = MainApplication.Services.GetRequiredService<AndroidBleClient>();
         _session = MainApplication.Services.GetRequiredService<WheelSession>();
-        _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
         _settings = MainApplication.Services.GetRequiredService<UserSettingsStore>();
         _bound = MainApplication.Services.GetRequiredService<BoundWheels>();
         _dashboard = MainApplication.Services.GetRequiredService<DashboardOptions>();
