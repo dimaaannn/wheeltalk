@@ -65,6 +65,24 @@ public sealed partial class SqliteSettingsStore(RideDatabase database, ILogger<S
         }
     }
 
+    public void Remove(string scope)
+    {
+        if (!database.IsWritable) return;
+
+        try
+        {
+            using var connection = database.Connect();
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM setting WHERE scope = $scope;";
+            command.Parameters.AddWithValue("$scope", scope);
+            LogScopeRemoved(scope, command.ExecuteNonQuery());
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+        {
+            LogWriteFailed(ex, scope, "*");
+        }
+    }
+
     [LoggerMessage(EventId = 1620, EventName = "Settings.ReadFailed", Level = LogLevel.Error,
         Message = "Settings.ReadFailed {Scope} — falling back to the shipped defaults")]
     private partial void LogReadFailed(Exception ex, string scope);
@@ -72,4 +90,8 @@ public sealed partial class SqliteSettingsStore(RideDatabase database, ILogger<S
     [LoggerMessage(EventId = 1621, EventName = "Settings.WriteFailed", Level = LogLevel.Error,
         Message = "Settings.WriteFailed {Scope} {Key}")]
     private partial void LogWriteFailed(Exception ex, string scope, string key);
+
+    [LoggerMessage(EventId = 1622, EventName = "Settings.ScopeRemoved", Level = LogLevel.Information,
+        Message = "Settings.ScopeRemoved {Scope} — {Count} настроек")]
+    private partial void LogScopeRemoved(string scope, int count);
 }

@@ -10,6 +10,13 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// </summary>
 internal static class WheelPage
 {
+    /// <summary>
+    /// Своё имя колеса, в слое этого колеса. Константой, потому что читает его не только страница
+    /// настроек: экран поиска подписывает им привязанные колёса (план 24 §А2), а два одинаковых
+    /// литерала в разных файлах — это ключ, который однажды переименуют наполовину.
+    /// </summary>
+    public const string AliasKey = "Wheel:Alias";
+
     public static IReadOnlyList<SettingDescriptor> Build(
         AppWheelConfig wheel,
         WheelOptions selected,
@@ -33,7 +40,7 @@ internal static class WheelPage
             // ровно затем, чтобы поймать подключение к чужому колесу — прогон 5.
             new()
             {
-                Key = "Wheel:Alias",
+                Key = AliasKey,
                 Kind = SettingKind.Text,
                 Page = SettingsPage.Wheel,
                 SectionKey = "SectionWheelIdentity",

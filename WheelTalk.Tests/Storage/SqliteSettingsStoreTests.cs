@@ -64,6 +64,27 @@ public class SqliteSettingsStoreTests
     }
 
     /// <summary>
+    /// «Забыть колесо» (план 24 §А3): слой уходит целиком, а соседний остаётся нетронутым — в том
+    /// числе общий, под которым он лежал.
+    /// </summary>
+    [Fact]
+    public void Removing_a_scope_takes_the_whole_layer_and_only_it()
+    {
+        using var temp = new TempDatabase();
+        var store = Store(temp);
+        store.Write(LayeredSettings.GlobalScope, "PwmWarning", "80");
+        store.Write(Mac, "PwmWarning", "75");
+        store.Write(Mac, "Wheel:Alias", "Шмель");
+        store.Write("C0:FF:EE:00:11:22", "Wheel:Alias", "Оса");
+
+        store.Remove(Mac);
+
+        Assert.Empty(store.Read(Mac));
+        Assert.Equal("80", store.Read(LayeredSettings.GlobalScope)["PwmWarning"]);
+        Assert.Equal("Оса", store.Read("C0:FF:EE:00:11:22")["Wheel:Alias"]);
+    }
+
+    /// <summary>
     /// База от более новой сборки не пишется вовсе — то же правило, что для поездок. Настройка,
     /// молча ушедшая в никуда, хуже настройки, которая не сохранилась заметно.
     /// </summary>

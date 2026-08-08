@@ -10,6 +10,7 @@ using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
 using WheelTalk.Droid.Logging;
+using WheelTalk.Droid.Scan;
 using WheelTalk.Droid.Settings.Catalogue;
 using WheelTalk.Storage;
 
@@ -83,8 +84,10 @@ public static class SettingsServiceCollectionExtensions
         services.AddSingleton<RideExporter>();
 
         // Колёса, к которым подключались (план 24 §А). Отметку ставит подписка на состояние сессии
-        // в CrashGuard, читает её экран поиска.
+        // в CrashGuard, читает её экран поиска — через BoundWheels, который добавляет к истории
+        // подключений слой настроек колеса.
         services.AddSingleton<KnownWheels>();
+        services.AddSingleton<BoundWheels>();
 
         // История для плиток-графиков (план 23 §5.6). Колесо делегатом, а не строкой: адрес меняется
         // в живом приложении, а читатель один.

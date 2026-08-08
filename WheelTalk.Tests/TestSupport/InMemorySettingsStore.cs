@@ -28,4 +28,6 @@ public sealed class InMemorySettingsStore : ISettingsStore
 
         values[key] = value;
     }
+
+    public void Remove(string scope) => _scopes.Remove(scope);
 }
