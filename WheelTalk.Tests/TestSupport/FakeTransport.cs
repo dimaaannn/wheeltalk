@@ -16,6 +16,9 @@ public sealed class FakeTransport : ITransport
     /// <summary>When true, every ConnectAsync throws — a wheel that is switched off.</summary>
     public bool RefuseConnections { get; set; }
 
+    /// <summary>When set, every WriteAsync throws this instead of completing — a dead link.</summary>
+    public Exception? FailWritesWith { get; set; }
+
     public int ConnectAttempts { get; private set; }
 
     /// <summary>Сколько из попыток пришло пассивным ожиданием (<see cref="WaitForWheelAsync"/>).</summary>
@@ -66,6 +69,8 @@ public sealed class FakeTransport : ITransport
 
     public Task WriteAsync(byte[] cmd, CancellationToken ct = default)
     {
+        if (FailWritesWith is { } failure) return Task.FromException(failure);
+
         _written.Add(cmd);
         return Task.CompletedTask;
     }

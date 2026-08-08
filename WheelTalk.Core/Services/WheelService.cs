@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
@@ -15,10 +15,20 @@ namespace WheelTalk.Core.Services;
 /// </summary>
 public sealed partial class WheelService : IDisposable
 {
+    /// <summary>
+    /// Ceiling on how many protocol-initiated writes the handshake window (see
+    /// <see cref="TryConsumeHandshakeLogBudget"/>) may promote to Info. A handshake that never
+    /// completes is exactly the case being diagnosed, and InMotion's keep-alive re-fires every
+    /// 25 ms (<c>InMotionDecoder</c>'s timer) — without a ceiling that alone would turn "no data"
+    /// into an unbounded stream of Info lines instead of a short, readable trail.
+    /// </summary>
+    private const int HandshakeLogBudget = 20;
+
     private readonly ITransport _transport;
     private readonly Decoder _decoder;
     private readonly ILogger<WheelService> _logger;
     private readonly IDisposable _telemetrySubscription;
+    private int _handshakeLogsRemaining = HandshakeLogBudget;
 
     /// <summary>
     /// Most recent snapshot, for callers that need a value the moment they appear (a screen being
@@ -81,14 +91,14 @@ public sealed partial class WheelService : IDisposable
             // Не поломка, а следствие обрыва — и обрыв уже записан тем, кто его заметил. Без этой
             // ветки каждый такт опроса ложился в журнал ошибкой с трассировкой: 02.08.2026 такая
             // строка стояла ровно там, где читающий ищет причину обрыва, и была не причиной.
-            LogProtocolWriteAbandoned(Convert.ToHexString(bytes));
+            if (HandshakeAwareLevel() is { } lostLevel) LogProtocolWriteAbandoned(lostLevel, Convert.ToHexString(bytes));
             return;
         }
         catch (WriteTooLongException ex)
         {
             // Тоже свойство линка, а не команды: до переподключения не изменится, и транспорт уже
             // сказал о нём один раз в полный голос.
-            LogProtocolWriteTooLong(Convert.ToHexString(bytes), ex.Length, ex.Limit);
+            if (HandshakeAwareLevel() is { } longLevel) LogProtocolWriteTooLong(longLevel, Convert.ToHexString(bytes), ex.Length, ex.Limit);
             return;
         }
         catch (Exception ex)
@@ -97,10 +107,49 @@ public sealed partial class WheelService : IDisposable
             return;
         }
 
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            LogProtocolCmdSent(Convert.ToHexString(bytes));
-        }
+        if (HandshakeAwareLevel() is { } sentLevel) LogProtocolCmdSent(sentLevel, Convert.ToHexString(bytes));
+    }
+
+    /// <summary>
+    /// Каким уровнем писать эту запись — и писать ли вообще. Debug обычно, Info пока идёт окно
+    /// рукопожатия (см. <see cref="TryConsumeHandshakeLogBudget"/>); <c>null</c> — уровень выключен,
+    /// строки не будет.
+    /// <para>
+    /// Один метод вместо <c>if/else</c> на каждом месте вызова: сообщение, <c>EventId</c> и
+    /// <c>EventName</c> живут только в атрибуте <c>[LoggerMessage]</c> — раздвоить их правкой одной
+    /// ветки здесь уже нельзя.
+    /// </para>
+    /// <para>
+    /// <c>null</c> нужен ради <c>Convert.ToHexString</c> на месте вызова: генератор снимет саму
+    /// запись выключенного уровня, а вот шестнадцатеричную строку для неё вызывающий уже построит.
+    /// Опрос InMotion идёт каждые 25 мс, и в поле это мусор, который никто не прочтёт.
+    /// </para>
+    /// <para>
+    /// Порядок в первой ветке важен: сперва спрашиваем, включён ли Info, и только потом тратим
+    /// бюджет. Иначе окно рукопожатия сгорало бы на строках, которых никто не написал.
+    /// </para>
+    /// </summary>
+    private LogLevel? HandshakeAwareLevel()
+    {
+        if (_logger.IsEnabled(LogLevel.Information) && TryConsumeHandshakeLogBudget()) return LogLevel.Information;
+
+        return _logger.IsEnabled(LogLevel.Debug) ? LogLevel.Debug : null;
+    }
+
+    /// <summary>
+    /// Пока <see cref="LastSnapshot"/> пуст, разговор ещё не состоялся — 08.08.2026 разбор упёрся
+    /// именно в это: по журналу на Info было не отличить «не спросили» от «спросили, а колесо не
+    /// услышало». Каждая запись в этом окне стоит строки Info вместо обычного Debug; как только
+    /// придёт первый снимок, окно закрывается само. Опрос по таймеру (InMotion, каждые 25 мс) не
+    /// должен захлестнуть отчёт — отсюда ограниченный бюджет строк на окно.
+    /// </summary>
+    private bool TryConsumeHandshakeLogBudget()
+    {
+        if (LastSnapshot is not null) return false;
+        if (_handshakeLogsRemaining <= 0) return false;
+
+        _handshakeLogsRemaining--;
+        return true;
     }
 
     public async Task SendCommand(WheelCommand cmd, CancellationToken ct = default)
@@ -159,13 +208,16 @@ public sealed partial class WheelService : IDisposable
         Level = LogLevel.Error, Message = "Protocol-initiated write failed {Hex}")]
     private partial void LogProtocolWriteFailed(Exception ex, string hex);
 
+    /// <summary>Level is a parameter, not fixed to Debug: <see cref="HandshakeAwareLevel"/> promotes
+    /// this to Info during the handshake window — one message definition either way.</summary>
     [LoggerMessage(EventId = LogEvents.Service.ProtocolWriteAbandonedId, EventName = LogEvents.Service.ProtocolWriteAbandonedName,
-        Level = LogLevel.Debug, Message = "Protocol-initiated write abandoned — link gone {Hex}")]
-    private partial void LogProtocolWriteAbandoned(string hex);
+        Message = "Protocol-initiated write abandoned — link gone {Hex}")]
+    private partial void LogProtocolWriteAbandoned(LogLevel level, string hex);
 
+    /// <summary>Level is a parameter for the same reason as <see cref="LogProtocolWriteAbandoned"/>.</summary>
     [LoggerMessage(EventId = LogEvents.Service.ProtocolWriteTooLongId, EventName = LogEvents.Service.ProtocolWriteTooLongName,
-        Level = LogLevel.Debug, Message = "Protocol-initiated write does not fit ({Length} B > {Limit} B) {Hex}")]
-    private partial void LogProtocolWriteTooLong(string hex, int length, int limit);
+        Message = "Protocol-initiated write does not fit ({Length} B > {Limit} B) {Hex}")]
+    private partial void LogProtocolWriteTooLong(LogLevel level, string hex, int length, int limit);
 
     [LoggerMessage(EventId = LogEvents.Service.CmdSkippedId, EventName = LogEvents.Service.CmdSkippedName,
         Level = LogLevel.Warning, Message = "Cmd.Skipped {Command} (no-op for the active protocol)")]
@@ -181,8 +233,9 @@ public sealed partial class WheelService : IDisposable
 
     /// <summary>Same event identity as <see cref="LogCmdSent"/> — LogEvents.Service.CmdSentId's own
     /// remark documents this: a decoder-initiated write is the same conceptual event as a
-    /// user-initiated one, just from a different origin (no <see cref="WheelCommand"/> to report).</summary>
+    /// user-initiated one, just from a different origin (no <see cref="WheelCommand"/> to report).
+    /// Level is a parameter for the same reason as <see cref="LogProtocolWriteAbandoned"/>.</summary>
     [LoggerMessage(EventId = LogEvents.Service.CmdSentProtocolId, EventName = LogEvents.Service.CmdSentProtocolName,
-        Level = LogLevel.Debug, Message = "Cmd.Sent {Hex}")]
-    private partial void LogProtocolCmdSent(string hex);
+        Message = "Cmd.Sent {Hex}")]
+    private partial void LogProtocolCmdSent(LogLevel level, string hex);
 }
