@@ -24,16 +24,6 @@ public static class CellCountResolver
     /// </summary>
     private static readonly int[] PlausibleSeries = [16, 20, 24, 30, 32, 36, 40, 42, 50, 56, 60];
 
-    /// <summary>Выше этого ячейка Li-ion не живёт: такой ряд физически невозможен, и процент ему не судья.</summary>
-    private const double MaxCellVolts = 4.25;
-
-    /// <summary>
-    /// Ниже этого пакет не ездит. Порог отсекает не разряженное колесо, а показание, которое
-    /// вообще не про пакет: до первого кадра напряжение — ноль, и без границы снизу ноль вольт
-    /// уверенно «опознался» бы как 16S.
-    /// </summary>
-    private const double MinCellVolts = 2.8;
-
     // Кривая заряда — наша собственная, из GotwayDecoder/KingsongDecoder (ветка UseBetterPercents):
     // все её модельные ветки сводятся к одному и тому же на ячейку — 3,2 В = 0 %, 4,175 В = 100 %,
     // с изломом на 3,4 В (~8,8 %). Коэффициенты получены делением 84-вольтовой ветки на 20 ячеек.
@@ -127,7 +117,7 @@ public static class CellCountResolver
 
     /// <summary>Ряды, при которых вольт на ячейку остаётся в пределах живого Li-ion.</summary>
     private static List<int> PossibleSeries(double packVolts) =>
-        [.. PlausibleSeries.Where(series => packVolts / series is >= MinCellVolts and <= MaxCellVolts)];
+        [.. PlausibleSeries.Where(series => LiIonCell.IsPlausible(packVolts / series))];
 
     private static double PercentForCellVolts(double cellVolts) => cellVolts switch
     {
