@@ -6,7 +6,7 @@ namespace WheelTalk.Droid.Alerts;
 
 /// <summary>
 /// Звук тревоги по ШИМ. Наружу отдаётся одно число — интенсивность, — а весь ритм считается
-/// <b>внутри звукового потока, по счётчику отсчётов</b>: период 200 мс это ровно 8820 отсчётов, и
+/// <b>внутри звукового потока, по счётчику отсчётов</b>: время каждого сэмпла известно точно, и
 /// начало каждого писка попадает туда, куда должно, с точностью до одного из них.
 /// <para>
 /// Так пришлось сделать после того, как звук оказался «странным и нестабильным» и на телефоне
@@ -22,31 +22,14 @@ namespace WheelTalk.Droid.Alerts;
 /// был треск. Теперь дорожка молчит, но не останавливается, пока тревога держится.
 /// </para>
 /// <para>
-/// Волна — как в оригинале (<c>utils/AudioUtil.kt</c>): 440 Гц плюс половина на октаве и четверть
-/// на две выше. Чистая синусоида звучит как сигнал прибора, эта смесь — как тревога.
+/// Сама волна — <see cref="AlarmWaves"/> в ядре, и здесь её нет ни строкой. Один и тот же сигнал
+/// слушают на стенде и играют в бою, а вторая его запись значила бы, что сравнивали одно, а едут с
+/// другим. Отсюда и вся работа этого класса: счётчик отсчётов, плавный вход-выход и дорожка.
 /// </para>
 /// </summary>
 public sealed class AlarmTone : IDisposable
 {
     private const int SampleRate = 44100;
-    private const double Frequency = 440;
-    private const double Amplitude = 0.9;
-
-    /// <summary>
-    /// Вторая волна не в кратном отношении к основной — 1,34 против 1. Разница около 150 Гц даёт
-    /// не медленное покачивание, а резкость: две волны, не складывающиеся в общий период,
-    /// звучат жёстко и цепляют слух там, где чистый тон сливается с городским шумом.
-    /// <para>
-    /// Отношение взято у оригинала (<c>utils/AudioUtil.kt</c>), но у него оно во второй области
-    /// буфера — той, что играет тревогу по току; тревоге по ШИМ достаётся первая, без биений.
-    /// То есть это осознанное отклонение, а не воспроизведение: записано в AGENTS.md.
-    /// </para>
-    /// </summary>
-    private const double BeatRatio = 1.34;
-
-    /// <summary>Сумма амплитуд — на неё нормируется, чтобы ничего не переполнялось.</summary>
-    private const double HarmonicSum = 1 + 1 + 0.5 + 0.25;
-
     private const int BlockFrames = 256;
 
     /// <summary>
@@ -55,8 +38,6 @@ public sealed class AlarmTone : IDisposable
     /// </summary>
     private const int RampFrames = SampleRate / 300;
 
-    private static readonly int PeriodFrames = (int)(AlertRhythm.Period.TotalSeconds * SampleRate);
-
     private readonly short[] _block = new short[BlockFrames];
     private readonly ManualResetEventSlim _awake = new(initialState: false);
     private readonly CancellationTokenSource _stopping = new();
@@ -64,10 +45,11 @@ public sealed class AlarmTone : IDisposable
     private readonly Lock _gate = new();
 
     private AudioTrack? _track;
-    private double _phase;
-    private double _gain;
-    private int _positionInPeriod;
+    private double _level;
+    private long _frame;
     private double _intensity;
+    private AlarmWave _wanted;
+    private AlarmWave _playing;
 
     public AlarmTone()
     {
@@ -75,9 +57,15 @@ public sealed class AlarmTone : IDisposable
         _writer.Start();
     }
 
+    /// <summary>Какой из отобранных сигналов играть. Меняется настройкой и подхватывается в тишине.</summary>
+    public AlarmWave Wave
+    {
+        set { lock (_gate) _wanted = value; }
+    }
+
     /// <summary>
     /// Насколько близко к пределу, 0…1 и выше. Ноль и меньше — тревоги нет, звук гаснет и дорожка
-    /// останавливается. Всё остальное — ритм, и его считает звуковой поток.
+    /// останавливается. Всё остальное — рисунок, и его считает звуковой поток.
     /// </summary>
     public void SetIntensity(double intensity)
     {
@@ -114,7 +102,9 @@ public sealed class AlarmTone : IDisposable
                 var track = _track ??= Build();
                 if (track is null) return;
 
-                _positionInPeriod = 0;
+                // Каждая тревога начинается с начала рисунка, а не с середины пачки: обрывок
+                // сигнала на старте читается хуже целого.
+                _frame = 0;
                 track.Play();
 
                 while (!_stopping.IsCancellationRequested && Fill())
@@ -134,47 +124,40 @@ public sealed class AlarmTone : IDisposable
     }
 
     /// <summary>
-    /// Заполняет блок и говорит, есть ли ещё что играть. Ритм считается здесь, по отсчётам: это
-    /// единственное место, где известно точное время каждого сэмпла.
+    /// Заполняет блок и говорит, есть ли ещё что играть. Волну считает ядро, здесь — время каждого
+    /// отсчёта и плавный вход-выход.
     /// </summary>
     private bool Fill()
     {
         double intensity;
-        lock (_gate) intensity = _intensity;
+        AlarmWave wanted;
+        lock (_gate)
+        {
+            intensity = _intensity;
+            wanted = _wanted;
+        }
 
-        int toneFrames = (int)(AlertRhythm.ToneLength(intensity).TotalSeconds * SampleRate);
-        double step = Amplitude / RampFrames;
-        double advance = 2 * Math.PI * Frequency / SampleRate;
+        // Смена сигнала на звучащей волне — разрыв, то есть щелчок. Настройку правят в тишине,
+        // так что ждать этой тишины ничего не стоит.
+        if (_level <= 0) _playing = wanted;
+
         bool alarming = intensity > 0;
+        double target = alarming ? 1 : 0;
+        double step = 1.0 / RampFrames;
 
         for (int i = 0; i < _block.Length; i++)
         {
-            // Писк занимает начало периода, остальное — тишина. На потолке длина писка равна
-            // периоду, и тишине взяться неоткуда: см. AlertRhythm.
-            bool sounding = alarming && _positionInPeriod < toneFrames;
-            if (++_positionInPeriod >= PeriodFrames) _positionInPeriod = 0;
+            _level = _level < target
+                ? Math.Min(target, _level + step)
+                : Math.Max(target, _level - step);
 
-            double target = sounding ? Amplitude : 0;
-            _gain = _gain < target ? Math.Min(target, _gain + step) : Math.Max(target, _gain - step);
-
-            // Фаза не сбрасывается никогда — ни между блоками, ни между писками. Именно её разрыв
-            // и слышен как щелчок.
-            // Заворачивается по 2π·50, а не по 2π: у волны в 1,34 основной период другой, и заворот
-            // по периоду основной дал бы ей разрыв фазы. Пятьдесят периодов — общий знаменатель
-            // (1,34 × 50 = 67 ровно), поэтому обе волны приходят к нему целыми.
-            _phase += advance;
-            if (_phase >= 2 * Math.PI * 50) _phase -= 2 * Math.PI * 50;
-
-            double wave = Math.Sin(_phase)
-                + Math.Sin(BeatRatio * _phase)
-                + 0.5 * Math.Sin(2 * _phase)
-                + 0.25 * Math.Sin(4 * _phase);
-            _block[i] = (short)(short.MaxValue * _gain * wave / HarmonicSum);
+            double sample = _level * AlarmWaves.Sample(_playing, _frame++ / (double)SampleRate, intensity);
+            _block[i] = (short)(short.MaxValue * Math.Clamp(sample, -1, 1));
         }
 
         // Тревога кончилась — доигрываем спад до нуля и только потом останавливаемся: оборванный
         // на полуслове хвост и есть щелчок.
-        return alarming || _gain > 0;
+        return alarming || _level > 0;
     }
 
     private static AudioTrack? Build()

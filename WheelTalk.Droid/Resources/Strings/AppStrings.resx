@@ -162,6 +162,9 @@
   <data name="SettingSpeedRepeatHint" xml:space="preserve"><value>Как часто повторять предупреждение, пока скорость выше порога</value></data>
   <data name="SettingSuppressSpeedHint" xml:space="preserve"><value>Пока идёт тревога по ШИМ, предупреждение по скорости молчит</value></data>
   <data name="SettingChannelSound" xml:space="preserve"><value>Звук</value></data>
+  <data name="SettingAlarmWave" xml:space="preserve"><value>Сигнал тревоги</value></data>
+  <data name="SettingAlarmWaveTwoTone" xml:space="preserve"><value>Двухтон</value></data>
+  <data name="SettingAlarmWaveStack" xml:space="preserve"><value>Стопка</value></data>
   <data name="SettingChannelVibration" xml:space="preserve"><value>Вибрация</value></data>
   <data name="SettingChannelTorch" xml:space="preserve"><value>Вспышка камеры</value></data>
   <data name="SettingChannelTorchHint" xml:space="preserve"><value>Моргает в такт тревоге по ШИМ. На предупреждение по скорости не реагирует.</value></data>

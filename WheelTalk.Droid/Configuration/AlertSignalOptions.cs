@@ -1,3 +1,5 @@
+using WheelTalk.Core.Alerts;
+
 namespace WheelTalk.Droid.Configuration;
 
 /// <summary>
@@ -19,4 +21,11 @@ public sealed class AlertSignalOptions
 
     /// <summary>The camera flash, blinking in time with the beeps. Not a channel the original has.</summary>
     public bool Torch { get; set; } = true;
+
+    /// <summary>
+    /// Каким сигналом звучит тревога. Здесь, а рядом с каналами, потому что это свойство телефона и
+    /// райдера, а не колеса: динамик, карман и шлем одни и те же, на чём бы человек ни ехал.
+    /// Заводской — первый выбор владельца на слух (план 26).
+    /// </summary>
+    public AlarmWave Wave { get; set; } = AlarmWave.TwoToneStack;
 }

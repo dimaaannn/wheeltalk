@@ -1,4 +1,5 @@
 using Android.Media;
+using WheelTalk.Core.Alerts;
 using Encoding = Android.Media.Encoding;
 
 namespace WheelTalk.Lab.Droid.Sound;
@@ -22,12 +23,6 @@ public sealed class AlarmVoicePlayer : IDisposable
 {
     private const int SampleRate = 44100;
     private const int BlockFrames = 512;
-
-    /// <summary>К какому среднеквадратичному уровню приводятся все варианты. −9 дБ от полной шкалы.</summary>
-    private const double TargetRms = 0.35;
-
-    /// <summary>Потолок по пику: у самой шкалы оставлен запас, чтобы не ловить ограничение тракта.</summary>
-    private const double PeakCeiling = 0.98;
 
     /// <summary>Смена уровня за 3 мс: ухо слышит как мгновенно, а щелчка на старте и стопе не остаётся.</summary>
     private const double LevelStep = 1.0 / (SampleRate * 0.003);
@@ -181,38 +176,11 @@ public sealed class AlarmVoicePlayer : IDisposable
     {
         if (_gains.TryGetValue(voice.Id, out double known)) return known;
 
-        double gain = Measure(voice);
+        // Правило выравнивания — ядра, то самое, которым выровнены два отобранных варианта: иначе
+        // опытные варианты сравнивались бы с отобранными по разным меркам.
+        double gain = AlarmWaves.GainFor(voice.Sample);
         _gains[voice.Id] = gain;
         return gain;
-    }
-
-    /// <summary>
-    /// Во сколько раз поднять вариант, чтобы он звучал вровень с остальными. Две секунды — больше
-    /// самого длинного рисунка, значит в замер попадают и пачка, и её тишина.
-    /// </summary>
-    private static double Measure(AlarmVoice voice)
-    {
-        double squares = 0;
-        double peak = 0;
-        int sounding = 0;
-
-        for (int n = 0; n < SampleRate * 2; n++)
-        {
-            double sample = voice.Sample(n / (double)SampleRate, 1);
-            double level = Math.Abs(sample);
-
-            // Тишина рисунка в громкость не считается: сравнивают приёмы, а не скважность.
-            if (level < 0.001) continue;
-
-            squares += sample * sample;
-            peak = Math.Max(peak, level);
-            sounding++;
-        }
-
-        if (sounding == 0 || peak <= 0) return 1;
-
-        double rms = Math.Sqrt(squares / sounding);
-        return Math.Min(TargetRms / rms, PeakCeiling / peak);
     }
 
     private static AudioTrack? Build()

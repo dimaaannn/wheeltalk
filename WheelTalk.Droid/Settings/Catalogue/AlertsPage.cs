@@ -113,6 +113,23 @@ internal static class AlertsPage
                 Current = () => channels.Sound.ToString(),
                 Apply = text => channels.Sound = SettingsCatalogue.ParseBool(text),
             },
+            // Оба варианта отобраны владельцем на слух из восьми (план 26); заводской — тот, что он
+            // назвал первым. Выбирается ушами, поэтому подписи называют рисунок, а не частоты.
+            new()
+            {
+                Key = "AlertSignals:Wave",
+                Kind = SettingKind.Choice,
+                Page = SettingsPage.Warnings,
+                SectionKey = "SectionChannels",
+                LabelKey = "SettingAlarmWave",
+                GlobalOnly = true,
+                // Выбирать нечего, пока звук выключен.
+                IsVisible = () => channels.Sound,
+                Choices = [nameof(AlarmWave.TwoToneStack), nameof(AlarmWave.Stack)],
+                ChoiceLabelKeys = ["SettingAlarmWaveTwoTone", "SettingAlarmWaveStack"],
+                Current = () => channels.Wave.ToString(),
+                Apply = text => channels.Wave = Enum.TryParse(text, out AlarmWave wave) ? wave : AlarmWave.TwoToneStack,
+            },
             new()
             {
                 Key = "AlertSignals:Vibration",

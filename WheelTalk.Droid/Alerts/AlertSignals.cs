@@ -144,6 +144,9 @@ public sealed class AlertSignals : IDisposable
     /// </summary>
     private void SignalPwm(double intensity)
     {
+        // Выбор звука читается на каждом тике по той же причине, что и выключатели каналов: правка
+        // настройки должна быть слышна сейчас, а не после перезапуска.
+        _alarmTone.Wave = _channels.Wave;
         _alarmTone.SetIntensity(_channels.Sound ? intensity : 0);
 
         var since = _timeProvider.GetElapsedTime(_periodStartedAt);
