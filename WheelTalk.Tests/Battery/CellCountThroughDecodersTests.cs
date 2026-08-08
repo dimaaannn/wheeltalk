@@ -1,5 +1,7 @@
+using System.Reflection;
 using System.Text;
 using WheelTalk.Core.Battery;
+using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Decoding;
 using WheelTalk.Tests.TestSupport;
 
@@ -128,6 +130,150 @@ public class CellCountThroughDecodersTests
         Assert.Equal(byHand, ((GotwayDecoder)gotway.Decoder.ProtocolDecoder).GetCellsForWheel());
         Assert.Equal(byHand, ((KingsongDecoder)kingsong.Decoder.ProtocolDecoder).GetCellsForWheel());
         Assert.Equal(byHand, ((InMotionDecoder)inMotion.Decoder.ProtocolDecoder).GetCellsForWheel());
+    }
+
+    /// <summary>
+    /// Гейт шага 27.5: две нижние ступени наконец накормлены — и <b>ни одно число не сдвинулось</b>.
+    /// Отвечает по-прежнему ступень протокола, до напряжения очередь не доходит ни у кого из пяти.
+    /// <para>
+    /// Кадры тут настоящие, потому напряжение в состоянии живое, — без него проверка была бы пустой,
+    /// и оттого оно утверждается отдельно, а не подразумевается.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Live_telemetry_moves_no_answer()
+    {
+        AssertProtocolStillAnswers(FedGotway(), 16);
+        AssertProtocolStillAnswers(FedVeteran(), 24);
+        AssertProtocolStillAnswers(FedKingSong(), 16);
+        AssertProtocolStillAnswers(FedInMotion(), 20);
+        AssertProtocolStillAnswers(FedInMotionV2(), 20);
+    }
+
+    /// <summary>Напряжение пакета подают все пятеро, и подают текущее — то же, что в состоянии.</summary>
+    [Fact]
+    public void Every_decoder_feeds_the_pack_voltage()
+    {
+        foreach (DecoderHarness harness in
+                 (DecoderHarness[])[FedGotway(), FedVeteran(), FedKingSong(), FedInMotion(), FedInMotionV2()])
+        {
+            Assert.Equal(harness.Snapshot().VoltageV, CellInputsOf(harness).PackVolts);
+        }
+    }
+
+    /// <summary>
+    /// Процент подаёт <b>один InMotion V2</b>: у него он приходит из кадра. У остальных четырёх
+    /// заряд посчитан нашей же кривой из напряжения, и подать его значило бы делить напряжение на
+    /// выведенное из него — ступень подтверждала бы любую догадку, включая неверную.
+    /// <para>
+    /// Проверяется тестом, а не глазами, ровно затем, чтобы «недоделанное» не доделали: пустое поле
+    /// выглядит упущением, пока кто-нибудь не увидит, что оно пусто нарочно (§27.5).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Only_inmotion_v2_feeds_the_wheels_own_percent()
+    {
+        Assert.Null(CellInputsOf(FedGotway()).WheelPercent);
+        Assert.Null(CellInputsOf(FedVeteran()).WheelPercent);
+        Assert.Null(CellInputsOf(FedKingSong()).WheelPercent);
+        Assert.Null(CellInputsOf(FedInMotion()).WheelPercent);
+
+        Assert.Equal(88, CellInputsOf(FedInMotionV2()).WheelPercent);
+    }
+
+    /// <summary>
+    /// Ради чего всё и делалось: промолчи ступень протокола — отвечает пара «напряжение с
+    /// процентом», и отвечает верно (79,10 В при 88 % — это 20S). У Ветерана та же подмена доходит
+    /// лишь до догадки: процента в входах нет.
+    /// <para>
+    /// Молчание протокола подставлено руками, потому что живого молчания у нас нет ни у кого:
+    /// неопознанная модель тоже даёт число (у InMotion V2 — 20). Это и есть тот случай, ради
+    /// которого ступени лежат готовыми, — колесо, чей протокол ряда не знает.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_silent_protocol_hands_the_answer_down()
+    {
+        CellCountInputs inMotionV2 = CellInputsOf(FedInMotionV2()) with { ProtocolCells = null };
+        CellCountInputs veteran = CellInputsOf(FedVeteran()) with { ProtocolCells = null };
+
+        Assert.Equal(new CellCount(20, CellCountSource.VoltageWithPercent), CellCountResolver.Resolve(inMotionV2));
+        Assert.Equal(CellCountSource.VoltageGuess, CellCountResolver.Resolve(veteran).Source);
+    }
+
+    private static void AssertProtocolStillAnswers(DecoderHarness harness, int expected)
+    {
+        TelemetrySnapshot snapshot = harness.Snapshot();
+
+        Assert.True(snapshot.VoltageV > 0, "кадры не дали напряжения — проверять было бы нечего");
+        Assert.Equal(new CellCount(expected, CellCountSource.Protocol), snapshot.PackCells);
+    }
+
+    /// <summary>
+    /// Входы каскада наружу не видны и видны быть не должны: их незачем знать никому, кроме
+    /// резолвера. Иначе как отсюда их не проверить — ровно потому, что ответ от них сегодня не
+    /// зависит (тест выше), а неподанное поле молча выглядит как поданное.
+    /// <para>
+    /// Метод ищется по подписи, а не по имени: переименование его не сломает, а исчезновение или
+    /// раздвоение — сломает громко, на <c>Single</c>.
+    /// </para>
+    /// </summary>
+    private static CellCountInputs CellInputsOf(DecoderHarness harness)
+    {
+        object decoder = harness.Decoder.ProtocolDecoder;
+        MethodInfo collectInputs = decoder.GetType()
+            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(method => method.ReturnType == typeof(CellCountInputs) && method.GetParameters().Length == 0);
+
+        return (CellCountInputs)collectInputs.Invoke(decoder, null)!;
+    }
+
+    /// <summary>Кадры живой телеметрии — те же, на которых стоят фикстуры каждого декодера.</summary>
+    private static DecoderHarness FedGotway()
+    {
+        var harness = DecoderHarness.ForGotway();
+        harness.FeedHex(
+            "55AA19C1000000000000008CF0000001FFF80018",
+            "5A5A5A5A55AA000060D248001C20006400010007",
+            "000804185A5A5A5A");
+        return harness;
+    }
+
+    private static DecoderHarness FedVeteran()
+    {
+        var harness = DecoderHarness.ForVeteran();
+        harness.FeedHex("dc5a5c20266d00004aaf00004aaf000000000d9e", "0b8800000af00af007d2000300050004");
+        return harness;
+    }
+
+    private static DecoderHarness FedKingSong()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        harness.FeedHex("aa5570176f009649d2020b0a39300f0ea9100000");
+        return harness;
+    }
+
+    private static DecoderHarness FedInMotion()
+    {
+        var harness = DecoderHarness.ForInMotion();
+        harness.FeedHex(
+            "AAAA1301A5550F60000000B4720020FE000100FF",
+            "3F00003A18DEFF5D01000029F0FFFF29F0FFFFEC",
+            "FFFFFF15200000000000001A1A00000000000000",
+            "0000001CE3130000000000000026061A03D20721",
+            "0000006F0100006F010000F7010000420C00002B",
+            "110000070000000000000000000000265555");
+        return harness;
+    }
+
+    private static DecoderHarness FedInMotionV2()
+    {
+        var harness = DecoderHarness.ForInMotionV2();
+        harness.FeedHex(
+            "AAAA110882010206010201009C",
+            "AAAA111D820622080004030F000602214000010110000602230D00010107000001F3",
+            "AAAA143184E61EEB0561094A11AE04A004DF01402958CBB000CE004A010000D4FF7C15641900000000492B00000000000000000000C6");
+        return harness;
     }
 
     /// <summary>Снимок таблицы <c>InMotionV2Model.CellsForWheel</c> на день подмены.</summary>

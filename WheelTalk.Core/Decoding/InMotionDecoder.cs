@@ -145,6 +145,11 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected,
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = 20,
+        PackVolts = _state.Voltage / 100.0,
+        // WheelPercent намеренно пуст: у первого поколения InMotion заряд считает наша же кривая из
+        // напряжения (BatteryFromVoltage) — колесо процента не шлёт, в отличие от второго поколения.
+        // Подать его значило бы делить напряжение на выведенное из него, и ступень подтверждала бы
+        // любую догадку, включая неверную (план 27 §27.5).
     };
 
     /// <summary>Port of InMotionAdapter.decode(byte[]).</summary>

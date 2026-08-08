@@ -11,7 +11,6 @@ public class CellCountResolverTests
     private static CellCount Resolve(
         double? volts = null,
         int? percent = null,
-        double? maxVolts = null,
         int? configured = null,
         int? bms = null,
         int? protocol = null) =>
@@ -22,7 +21,6 @@ public class CellCountResolverTests
             ProtocolCells = protocol,
             PackVolts = volts,
             WheelPercent = percent,
-            MaxPackVolts = maxVolts,
         });
 
     [Fact]
@@ -117,13 +115,17 @@ public class CellCountResolverTests
         Assert.Equal(new CellCount(expected, CellCountSource.VoltageGuess), Resolve(volts));
     }
 
-    /// <summary>Ниже излома кривой процент не значит ничего — спускаемся к максимуму напряжения.</summary>
+    /// <summary>
+    /// Ниже излома кривой процент не значит ничего — спускаемся к догадке. Она возьмёт то же
+    /// текущее напряжение и назовёт 24S, хотя перед нами почти пустой 32S: односторонняя ошибка
+    /// допущения «колесо заряжено», и до §27.5 её прятал максимум напряжения, которого больше нет.
+    /// </summary>
     [Fact]
     public void Almost_empty_percent_is_not_trusted()
     {
-        CellCount result = Resolve(volts: 100.8, percent: 5, maxVolts: 134.4);
+        CellCount result = Resolve(volts: 100.8, percent: 5);
 
-        Assert.Equal(new CellCount(32, CellCountSource.VoltageGuess), result);
+        Assert.Equal(new CellCount(24, CellCountSource.VoltageGuess), result);
     }
 
     /// <summary>

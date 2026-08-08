@@ -369,6 +369,11 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = CellsFromModel(),
+        PackVolts = _state.Voltage / 100.0,
+        // WheelPercent намеренно пуст: заряд у KingSong считает наша же кривая из напряжения
+        // (CalculateBattery), и подать его значило бы делить напряжение на выведенное из него —
+        // ступень подтверждала бы любую догадку, включая неверную (план 27 §27.5). Процент годится
+        // сюда, только когда его называет само колесо.
     };
 
     /// <summary>Port of KingsongAdapter.getCellsForWheel() (KingsongAdapter.java:494-503).</summary>

@@ -354,6 +354,11 @@ public sealed partial class VeteranDecoder : IWheelDecoder
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = CellsFromProtocolVersion(),
+        PackVolts = _state.Voltage / 100.0,
+        // WheelPercent намеренно пуст: заряд у Ветерана считает наша же кривая из напряжения
+        // (CalculateBattery), и подать его значило бы делить напряжение на выведенное из него —
+        // ступень подтверждала бы любую догадку, включая неверную (план 27 §27.5). Процент годится
+        // сюда, только когда его называет само колесо.
     };
 
     private int CellsFromProtocolVersion() => _protocolVersion switch

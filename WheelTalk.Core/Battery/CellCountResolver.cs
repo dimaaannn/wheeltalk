@@ -18,8 +18,8 @@ namespace WheelTalk.Core.Battery;
 /// <para>
 /// <b>Пока декодеры отвечают — а сегодня отвечают все, — две нижние ступени в бою не срабатывают
 /// ни разу.</b> Это не изъян, а цена безопасной подмены (§27.3): подключение не должно было
-/// сдвинуть ни одного числа у живых колёс. Ступени лежат готовыми для колеса, которое протокол не
-/// опознает, и для §27.4.
+/// сдвинуть ни одного числа у живых колёс. Кормят их с §27.5 все пять декодеров, так что ждут они
+/// одного — колеса, чей протокол ряда не знает.
 /// </para>
 /// </summary>
 public static class CellCountResolver
@@ -82,7 +82,7 @@ public static class CellCountResolver
             return new CellCount(byPair, CellCountSource.VoltageWithPercent);
         }
 
-        return SeriesFromVoltageAlone(inputs.MaxPackVolts ?? inputs.PackVolts) is { } byVoltage
+        return SeriesFromVoltageAlone(inputs.PackVolts) is { } byVoltage
             ? new CellCount(byVoltage, CellCountSource.VoltageGuess)
             : CellCount.Unknown;
     }

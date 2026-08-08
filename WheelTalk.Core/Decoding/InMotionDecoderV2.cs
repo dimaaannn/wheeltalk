@@ -69,6 +69,14 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
     private int _updateStep;
     private int _lightSwitchCounter;
 
+    /// <summary>
+    /// Процент заряда, названный <b>самим колесом</b> (<c>batLevel</c> из кадра реального времени).
+    /// Хранится ради ступени «напряжение с процентом» (план 27 §27.5): ей нужна пара, снятая в один
+    /// момент, а <see cref="WheelState.Battery"/> для этого не годится — его мог подменить режим
+    /// «свои проценты», посчитанный из напряжения.
+    /// </summary>
+    private int? _wheelPercent;
+
     public event Action<byte[]>? WriteRequested;
 
     public InMotionDecoderV2(WheelState state, IWheelConfig config, TimeProvider timeProvider, ILogger<InMotionDecoderV2> logger)
@@ -95,12 +103,32 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
     /// </summary>
     public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
 
-    /// <summary>Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.</summary>
+    /// <summary>
+    /// Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.
+    /// <para>
+    /// Единственный из пяти протоколов, кто подаёт <see cref="CellCountInputs.WheelPercent"/>:
+    /// процент здесь приходит из кадра, а не считается нашей кривой из напряжения. Оттого пара
+    /// «напряжение с процентом» тут честная, а у остальных четырёх — заколдованный круг (§27.5).
+    /// </para>
+    /// </summary>
     private CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = _model.CellsForWheel(),
+        PackVolts = _state.Voltage / 100.0,
+        WheelPercent = _wheelPercent,
     };
+
+    /// <summary>
+    /// Записать заряд, названный колесом: сперва запомнить его для каскада, потом отдать состоянию.
+    /// Порядок обязателен — <see cref="CellInputs"/> читает поле, а напряжение того же кадра уже
+    /// легло в состояние строкой выше по каждому разбору.
+    /// </summary>
+    private void SetWheelBattery(int percent)
+    {
+        _wheelPercent = percent;
+        _state.SetBatteryLevel(percent, CellInputs());
+    }
 
     /// <summary>Port of setModel(Model) (InmotionAdapterV2.java:180-182) — production code calls
     /// this from the wheel-type handshake (<see cref="DecodeMainInfo"/>); the original also uses it
@@ -296,7 +324,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round(batLevel / 100.0), CellInputs());
+        SetWheelBattery((int)Math.Round(batLevel / 100.0));
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(boardTemp * 100);
         _state.SetOutput(pwm);
@@ -349,7 +377,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round(batLevel / 100.0), CellInputs());
+        SetWheelBattery((int)Math.Round(batLevel / 100.0));
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -403,7 +431,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), CellInputs());
+        SetWheelBattery((int)Math.Round((batLevel1 + batLevel2) / 200.0));
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -456,7 +484,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), CellInputs());
+        SetWheelBattery((int)Math.Round((batLevel1 + batLevel2) / 200.0));
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -516,7 +544,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), CellInputs());
+        SetWheelBattery((int)Math.Round((batLevel1 + batLevel2) / 200.0));
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -552,7 +580,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel(batLevel, CellInputs());
+        SetWheelBattery(batLevel);
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(boardTemp * 100);
         _state.SetOutput(pwm);

@@ -463,6 +463,11 @@ public sealed partial class GotwayDecoder : IWheelDecoder
         ConfiguredCells = _config.CellsInSeries,
         SmartBmsCells = _smartBmsCells,
         ProtocolCells = CellsFromVoltageSetting(),
+        PackVolts = _state.Voltage / 100.0,
+        // WheelPercent намеренно пуст: заряд у Gotway считает наша же кривая из напряжения
+        // (CalculateBattery), и подать его значило бы делить напряжение на выведенное из него —
+        // ступень подтверждала бы любую догадку, включая неверную (план 27 §27.5). Процент годится
+        // сюда, только когда его называет само колесо.
     };
 
     /// <summary>
