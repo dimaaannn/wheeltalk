@@ -203,7 +203,11 @@ public sealed class TilesScreen : IMainScreen
     /// </summary>
     private void ApplyPadding()
     {
-        int bottom = _padding;
+        // Запас нужен ВСЕГДА, а не только в правке. Галочка стоит поверх списка и забирает себе
+        // касания в своём пятне — без запаса нижняя плитка оказывается под ней, и по ней просто не
+        // попасть. На панели такого не было: там внизу нечего нажимать, а здесь есть.
+        int bottom = _padding + _context.Dp(HintReserveDp);
+
         if (_editing) bottom += _buttons.Height + _context.Dp(SheetGestureZoneDp);
 
         _list.SetPadding(_padding, _topInset + _padding, _padding, bottom);
@@ -315,6 +319,13 @@ public sealed class TilesScreen : IMainScreen
     /// в приложении, и трогать её отсюда нельзя.
     /// </summary>
     private const int SheetGestureZoneDp = 128;
+
+    /// <summary>
+    /// Место под галочкой, точки экрана: её цель касания (32 dp) плюс отступ от неё. Список
+    /// прокручивается выше на эту величину, иначе последняя плитка живёт под знаком, который
+    /// перехватывает касания раньше неё.
+    /// </summary>
+    private const int HintReserveDp = 40;
 
     /// <summary>
     /// Корень экрана, умеющий подсказку про шторку. Отдельным типом, потому что рисовать её надо
