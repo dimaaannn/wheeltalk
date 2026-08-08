@@ -82,9 +82,31 @@ public sealed partial class ReplayTransport : ITransport
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Команду отправлять некуда, и это не событие: приложение шлёт их колесу по пять раз в секунду,
+    /// а колеса нет. Записанные подряд, они съедали журнал целиком — пятьдесят строк из шестидесяти
+    /// семи в прогоне 09.08.2026, — и всё прочее в нём тонуло. А реплей у нас основной способ
+    /// смотреть интерфейс без колеса, и журнал от него хочется читать.
+    /// <para>
+    /// Оттого пишется каждая двадцатая, но с накопленным счётом: строка говорит не «была одна
+    /// команда», а сколько их всего. Уровень оставлен прежним — понизить значило бы спрятать, а
+    /// отбрасывать команды всё-таки стоит замечать.
+    /// </para>
+    /// </summary>
+    private const int DiscardedWritesPerLine = 20;
+
+    private int _discardedWrites;
+
     public Task WriteAsync(byte[] cmd, CancellationToken ct = default)
     {
-        LogDiscardedWrite(Convert.ToHexStringLower(cmd));
+        // Считается от нуля, а не от единицы: тогда первая команда пишется всегда, и формула
+        // остаётся верной при любом шаге, включая единичный. Молчание в начале прогона читалось бы
+        // как «команд не было вовсе», а это ровно то, что здесь и проверяют.
+        if (_discardedWrites++ % DiscardedWritesPerLine == 0)
+        {
+            LogDiscardedWrite(Convert.ToHexStringLower(cmd), _discardedWrites);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -146,8 +168,8 @@ public sealed partial class ReplayTransport : ITransport
     }
 
     [LoggerMessage(EventId = 1400, EventName = "Replay.DiscardedWrite", Level = LogLevel.Information,
-        Message = "Replay.DiscardedWrite {Hex} — nothing to send to")]
-    private partial void LogDiscardedWrite(string hex);
+        Message = "Replay.DiscardedWrite {Hex} — nothing to send to; {Total} discarded so far")]
+    private partial void LogDiscardedWrite(string hex, int total);
 
     [LoggerMessage(EventId = 1401, EventName = "Replay.MalformedLine", Level = LogLevel.Warning,
         Message = "Replay.MalformedLine {Line}")]
