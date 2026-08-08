@@ -365,7 +365,7 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
 
     /// <summary>Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.</summary>
-    private CellCountInputs CellInputs() => new()
+    internal CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = CellsFromModel(),

@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
@@ -212,21 +211,25 @@ public class CellCountThroughDecodersTests
     /// <summary>
     /// Входы каскада наружу не видны и видны быть не должны: их незачем знать никому, кроме
     /// резолвера. Иначе как отсюда их не проверить — ровно потому, что ответ от них сегодня не
-    /// зависит (тест выше), а неподанное поле молча выглядит как поданное.
+    /// зависит (тест выше), а неподанное поле молча выглядит как поданное. Оттого ядро и открыто
+    /// тестам через <c>InternalsVisibleTo</c> (решение владельца 09.08.2026).
     /// <para>
-    /// Метод ищется по подписи, а не по имени: переименование его не сломает, а исчезновение или
-    /// раздвоение — сломает громко, на <c>Single</c>.
+    /// Пять ветвей поимённо, а не отражение: шестой декодер уронит этот перебор сразу и внятно, а
+    /// заодно спросит своего автора, подаёт ли он проценту то же, что и остальные.
     /// </para>
     /// </summary>
-    private static CellCountInputs CellInputsOf(DecoderHarness harness)
-    {
-        object decoder = harness.Decoder.ProtocolDecoder;
-        MethodInfo collectInputs = decoder.GetType()
-            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => method.ReturnType == typeof(CellCountInputs) && method.GetParameters().Length == 0);
-
-        return (CellCountInputs)collectInputs.Invoke(decoder, null)!;
-    }
+    private static CellCountInputs CellInputsOf(DecoderHarness harness) =>
+        harness.Decoder.ProtocolDecoder switch
+        {
+            GotwayDecoder decoder => decoder.CellInputs(),
+            VeteranDecoder decoder => decoder.CellInputs(),
+            KingsongDecoder decoder => decoder.CellInputs(),
+            InMotionDecoderV2 decoder => decoder.CellInputs(),
+            InMotionDecoder decoder => decoder.CellInputs(),
+            var other => throw new ArgumentException(
+                $"Декодер {other.GetType().Name} не перечислен здесь — подаёт ли он входы каскада?",
+                nameof(harness)),
+        };
 
     /// <summary>Кадры живой телеметрии — те же, на которых стоят фикстуры каждого декодера.</summary>
     private static DecoderHarness FedGotway()

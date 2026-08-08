@@ -350,7 +350,7 @@ public sealed partial class VeteranDecoder : IWheelDecoder
     /// протокола, и называет верно.
     /// </para>
     /// </summary>
-    private CellCountInputs CellInputs() => new()
+    internal CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = CellsFromProtocolVersion(),

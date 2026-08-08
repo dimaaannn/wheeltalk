@@ -111,7 +111,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
     /// «напряжение с процентом» тут честная, а у остальных четырёх — заколдованный круг (§27.5).
     /// </para>
     /// </summary>
-    private CellCountInputs CellInputs() => new()
+    internal CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = _model.CellsForWheel(),
