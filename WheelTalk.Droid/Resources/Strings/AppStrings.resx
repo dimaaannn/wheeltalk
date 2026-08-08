@@ -186,7 +186,7 @@
   <data name="ScanWheelInAir" xml:space="preserve"><value>в эфире</value></data>
   <data name="ScanWheelSilent" xml:space="preserve"><value>не отвечает</value></data>
   <data name="ScanForget" xml:space="preserve"><value>Забыть колесо</value></data>
-  <data name="ScanForgetConfirm" xml:space="preserve"><value>Забыть {0}? Уйдут имя, пароль и все настройки этого колеса. Поездки останутся.</value></data>
+  <data name="ScanForgetConfirm" xml:space="preserve"><value>Забыть «{0}»? Уйдут имя, пароль и все настройки этого колеса. Поездки останутся.</value></data>
   <data name="ScanForgotten" xml:space="preserve"><value>Колесо забыто: {0}</value></data>
   <data name="TelemetryTitle" xml:space="preserve"><value>Телеметрия</value></data>
   <data name="TelemetryWaiting" xml:space="preserve"><value>Ожидание данных…</value></data>
