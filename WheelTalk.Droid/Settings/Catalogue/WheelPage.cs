@@ -22,6 +22,14 @@ internal static class WheelPage
     /// </summary>
     public const string AliasKey = "Wheel:Alias";
 
+    /// <summary>
+    /// Снятый вариант напряжения пака Begode — 116,8 В, мерка номинала для того же 32-баночного
+    /// пакета, что и «4». Живёт только затем, чтобы приводить сохранённое значение к «4»: убрать
+    /// вариант из списка мало, потому что хранится он строкой (план 27, решение владельца
+    /// 09.08.2026).
+    /// </summary>
+    private const string LegacyNominalVoltage = "3";
+
     public static IReadOnlyList<SettingDescriptor> Build(
         AppWheelConfig wheel,
         WheelOptions selected,
@@ -99,25 +107,37 @@ internal static class WheelPage
                 Page = SettingsPage.Wheel,
                 SectionKey = "SectionCurrent",
                 LabelKey = "SettingGotwayVoltage",
-                // Hidden the moment the wheel is asked to work it out itself: two answers to one
-                // question, one of which is ignored, is worse than one answer.
-                IsVisible = () => IsGotway() && !wheel.AutoVoltage,
+                // Показывается и при автоопределении напряжения, хотя раньше пряталась. Прежний
+                // довод — «два ответа на один вопрос, один из которых игнорируется» — держался,
+                // пока настройка решала только показываемое напряжение. После §27.3 она решает ещё
+                // и число банок (`CellsFromVoltageSetting`), а его автоопределение не заменяет
+                // ничем: спрятанная настройка молча правила бы расчётом на банку.
+                IsVisible = IsGotway,
                 // Five and six are the wrong way round against the volts they mean. That is how
                 // the original stores them, and a stored value we renumber is a wheel that comes
                 // back configured differently.
-                Choices = ["0", "1", "2", "3", "4", "5", "6"],
-                // Третья подпись — 116,8 В, а не 117,6: столько даёт множитель настройки
-                // (67,2 × 1,7380952…), и столько же называет оригинал в своём описании —
-                // «67V/84V/100V/116V/134V/168V». Прежние 117,6 были нашей выдумкой из 28 × 4,2, и
-                // ряд оттуда не следует: 28-баночного колеса не существует, а ячеек эта настройка
-                // берёт 32. Расхождение множителя с ячейками — унаследованное, разбор в плане 27.
+                //
+                // Варианта «3» (116,8 В) здесь нет — решение владельца 09.08.2026, разбор в плане
+                // 27. Он выбивался из общей схемы: у всех прочих множитель — это ровно `ряд ÷ 16`
+                // (1,25 → 20 банок, 2,0 → 32, 2,5 → 40), а у «3» выходило 27,81, числа банок не
+                // дающее вовсе. Разгадка в арифметике: 116,8 = 32 × 3,65, то есть **тот же
+                // 32-баночный пакет, что и «4» (32 × 4,2 = 134,4)**, только меркой номинала вместо
+                // полного заряда. Оба варианта и добавлены-то одним коммитом оригинала («S20 init»,
+                // май 2022), и ячеек оба дают 32. Выбравший «3» получал напряжение заниженным на
+                // 13 % — единственный из семи вариант, который врал о любом колесе.
+                Choices = ["0", "1", "2", "4", "5", "6"],
                 ChoiceLabelKeys =
                 [
-                    "SettingVoltage672", "SettingVoltage840", "SettingVoltage1008", "SettingVoltage1168",
+                    "SettingVoltage672", "SettingVoltage840", "SettingVoltage1008",
                     "SettingVoltage1344", "SettingVoltage1680", "SettingVoltage1512",
                 ],
                 Current = () => wheel.GotwayVoltage,
-                Apply = text => wheel.GotwayVoltage = text,
+                // Убрать вариант из списка мало: значение хранится строкой, и у тех, кто успел его
+                // выбрать, «3» продолжило бы действовать — только уже невидимо и без возможности
+                // поправить. Поэтому оно приводится к «4»: пакет тот же, и человек увидит наконец
+                // правдивое напряжение вместо заниженного. Ветки `"3"` в декодере остаются — порт
+                // сверяем 1:1, а дойти до них теперь неоткуда.
+                Apply = text => wheel.GotwayVoltage = text == LegacyNominalVoltage ? "4" : text,
             },
             new()
             {
