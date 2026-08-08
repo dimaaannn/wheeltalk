@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
@@ -93,11 +93,14 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
     /// измерение, а не догадка: единственную тесную пару рядов внутри марки — V13 (30) против
     /// V14 (32) — разбирает именно она (§27.1а).
     /// </summary>
-    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
+
+    /// <summary>Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.</summary>
+    private CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = _model.CellsForWheel(),
-    });
+    };
 
     /// <summary>Port of setModel(Model) (InmotionAdapterV2.java:180-182) — production code calls
     /// this from the wheel-type handshake (<see cref="DecodeMainInfo"/>); the original also uses it
@@ -293,7 +296,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round(batLevel / 100.0), GetCellsForWheel());
+        _state.SetBatteryLevel((int)Math.Round(batLevel / 100.0), CellInputs());
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(boardTemp * 100);
         _state.SetOutput(pwm);
@@ -346,7 +349,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round(batLevel / 100.0), GetCellsForWheel());
+        _state.SetBatteryLevel((int)Math.Round(batLevel / 100.0), CellInputs());
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -400,7 +403,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), GetCellsForWheel());
+        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), CellInputs());
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -453,7 +456,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), GetCellsForWheel());
+        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), CellInputs());
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -513,7 +516,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), GetCellsForWheel());
+        _state.SetBatteryLevel((int)Math.Round((batLevel1 + batLevel2) / 200.0), CellInputs());
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(motTemp * 100);
         _state.SetOutput(pwm);
@@ -549,7 +552,7 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetSpeed(speed);
         _state.SetCurrentLimit(dynCurrentLimit / 100.0);
         _state.SetSpeedLimit(dynSpeedLimit / 100.0);
-        _state.SetBatteryLevel(batLevel, GetCellsForWheel());
+        _state.SetBatteryLevel(batLevel, CellInputs());
         _state.SetTemperature(mosTemp * 100);
         _state.SetTemperature2(boardTemp * 100);
         _state.SetOutput(pwm);

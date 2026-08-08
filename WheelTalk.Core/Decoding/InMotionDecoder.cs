@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Battery;
@@ -138,11 +138,14 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected,
     /// колёс InMotion первого поколения ряд один — 20 (порт <c>getCellsForWheel()</c>); выше него
     /// только число, заданное человеком (§27.4).
     /// </summary>
-    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
+
+    /// <summary>Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.</summary>
+    private CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = 20,
-    });
+    };
 
     /// <summary>Port of InMotionAdapter.decode(byte[]).</summary>
     public bool Decode(byte[] data)
@@ -248,7 +251,7 @@ public sealed partial class InMotionDecoder : IWheelDecoder, IPasswordProtected,
         _state.SetSpeed((int)(speed * 360.0));
         _state.SetTopSpeed(_state.Speed);
         _state.SetVoltage(voltage);
-        _state.SetBatteryLevel(battery, GetCellsForWheel());
+        _state.SetBatteryLevel(battery, CellInputs());
         _state.SetCurrent(current);
         _state.SetTotalDistance(totalDistance);
         _state.SetWheelDistance(distance);

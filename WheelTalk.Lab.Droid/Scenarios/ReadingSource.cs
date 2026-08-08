@@ -1,4 +1,4 @@
-using WheelTalk.Core.Battery;
+﻿using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Dashboard.Droid;
 
@@ -32,9 +32,6 @@ public sealed class ReadingSource
 
     /// <summary>Ток, ниже которого колесо считается разгруженным, — опора для просадки, ампер.</summary>
     private const double NoLoadCurrent = 2;
-
-    /// <summary>На сколько поддельная средняя банка ниже частного «пакет ÷ ряд», вольт. Только чтобы два режима «на ячейку» различались на глаз.</summary>
-    private const double BmsImbalanceVolts = 0.03;
 
     private readonly double[] _smoothed;
     private readonly double[] _rate;
@@ -193,32 +190,17 @@ public sealed class ReadingSource
                 MaxSagV = _maxSag[index],
                 MaxTemperatureC = _maxTemperature[index],
                 PackCells = ConfiguredCells(),
-                BmsCellVolts = FakeBmsCell(frame.Snapshot.VoltageV),
             };
     }
 
     /// <summary>
-    /// Ряд так, как его видит панель: числом человека, потому что на шкалу «по числу ячеек»
-    /// пускается только оно. Ручка стенда играет здесь ту же роль, что настройка колеса в
-    /// приложении.
+    /// Ряд так, как его видит панель: числом из настройки, потому что на ленту банки пускается
+    /// только оно. Ручка стенда играет здесь ту же роль, что настройка колеса в приложении.
     /// </summary>
     private static CellCount ConfiguredCells()
     {
         int cells = LabSettings.Current.CellsInSeries;
         return cells > 0 ? new CellCount(cells, CellCountSource.UserSetting) : CellCount.Unknown;
-    }
-
-    /// <summary>
-    /// Средняя банка, какой её отдал бы умный BMS: пакет, делённый на заданный ряд, минус небольшой
-    /// перекос — иначе два режима «на ячейку» рисовали бы одну и ту же линию и различить их было бы
-    /// нельзя. Ноль — «BMS молчит», и шкала вернётся к вольтам пакета.
-    /// </summary>
-    private static double FakeBmsCell(double packVolts)
-    {
-        var settings = LabSettings.Current;
-        if (!settings.FakeBms || settings.CellsInSeries <= 0 || packVolts <= 0) return 0;
-
-        return packVolts / settings.CellsInSeries - BmsImbalanceVolts;
     }
 
     private int IndexBefore(int index, TimeSpan window)

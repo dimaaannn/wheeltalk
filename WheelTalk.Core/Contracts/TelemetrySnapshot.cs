@@ -38,10 +38,17 @@ public sealed record TelemetrySnapshot
 
     /// <summary>
     /// Ряд ячеек, которым декодер считал заряд этого кадра, — вместе с источником (план 27).
-    /// Источник едет с числом до самого экрана: по слову человека и по догадке показывать одно и
-    /// то же число нельзя.
+    /// Источник едет с числом до самого экрана: шкала на банку делит только на число из настройки
+    /// колеса, а не на догадку.
     /// </summary>
     public Battery.CellCount PackCells { get; init; }
+
+    /// <summary>
+    /// Тот же ряд, посчитанный <b>без числа человека</b>: что приложение сказало бы, не скажи ему.
+    /// Читает его одна кнопка «рассчитать» — ей нужен именно ответ без верхней ступени, иначе она
+    /// возвращает человеку его же число.
+    /// </summary>
+    public Battery.CellCount AutoPackCells { get; init; }
 
     /// <summary>Temperature raw value as stored by WheelData.mTemperature (Veteran writes it unscaled).</summary>
     public int TemperatureRaw { get; init; }

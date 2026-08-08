@@ -74,14 +74,13 @@ internal static class DisplayPage
                 Apply = text => dashboard.PwmDpPerUnit = SettingsCatalogue.ParseNumber(text),
             },
 
-            // Чем меряет левая шкала. Заводское — вольты пакета, и сама она на ячейку не
-            // переключается никогда: пункт выбирает человек (план 27 §27.4). Два способа поделить не
-            // равны — BMS банки измеряет, а расчёт делит вольтаж пакета на введённое руками число, —
-            // поэтому три пункта, а не выключатель. Режим, которому нечем считать, мягко
-            // возвращается к пакету.
+            // Чем меряет левая шкала. Заводское — вольты пакета, и сама она на банку не
+            // переключается никогда: пункт выбирает человек (план 27 §27.4).
             //
-            // Откуда BMS берёт число банок, не спрашиваем: у Gotway его шлёт сам BMS, у Ветерана
-            // оно приходит от версии протокола. Есть число — считаем по нему (решение владельца).
+            // Пунктов два, и автоматического среди них нет намеренно (решение владельца): ряд у
+            // колеса не меняется, и решать каждый кадр то, что решается однажды, незачем. Догадка
+            // живёт за кнопкой «рассчитать» на странице колеса — она записывает ответ в настройку,
+            // а лента делит на записанное. Не задано — лента возвращается к вольтам пакета.
             new()
             {
                 Key = "Display:VoltageScale",
@@ -90,8 +89,8 @@ internal static class DisplayPage
                 SectionKey = "SectionVoltageTape",
                 LabelKey = "SettingVoltageScale",
                 HintKey = "SettingVoltageScaleHint",
-                Choices = [nameof(VoltageScaleMode.Pack), nameof(VoltageScaleMode.Bms), nameof(VoltageScaleMode.Cells)],
-                ChoiceLabelKeys = ["SettingVoltageScalePack", "SettingVoltageScaleBms", "SettingVoltageScaleCells"],
+                Choices = [nameof(VoltageScaleMode.Pack), nameof(VoltageScaleMode.Cells)],
+                ChoiceLabelKeys = ["SettingVoltageScalePack", "SettingVoltageScaleCells"],
                 Current = () => dashboard.VoltageScale.ToString(),
                 Apply = text => dashboard.VoltageScale = Enum.TryParse(text, out VoltageScaleMode mode)
                     ? mode

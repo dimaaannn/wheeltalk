@@ -217,9 +217,13 @@ internal static class WheelPage
                 // Догадка становится решением человека: он видит число в соседней строке и либо
                 // оставляет его, либо правит. Считать не по чему — сказать об этом, а не записать
                 // ноль: ноль здесь значит «не задано», и молчаливая запись отменила бы настройку.
+                //
+                // Берётся ответ **без верхней ступени**: с ней кнопка возвращала бы человеку его же
+                // число — то есть была бы бесполезна ровно тогда, когда нужна. «Рассчитать» значит
+                // «что сказало бы приложение, не скажи я ему».
                 Apply = _ =>
                 {
-                    var cells = lastFrame()?.PackCells ?? CellCount.Unknown;
+                    var cells = lastFrame()?.AutoPackCells ?? CellCount.Unknown;
                     if (!cells.IsKnown) throw new InvalidOperationException(AppStrings.SettingCellsNoData);
 
                     saveCells(cells.Cells);

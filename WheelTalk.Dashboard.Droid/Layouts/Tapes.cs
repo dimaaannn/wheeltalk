@@ -276,7 +276,7 @@ public static class Tapes
         CellDivisor(reading, options) > 1;
 
     private static double CellDivisor(DashboardReading reading, DashboardOptions options) =>
-        VoltageScale.Divisor(options.VoltageScale, reading.VoltageV, reading.BmsCellVolts, reading.PackCells);
+        VoltageScale.Divisor(options.VoltageScale, reading.VoltageV, reading.PackCells);
 
     /// <summary>
     /// Та же лента в вольтах на ячейку — <b>полная копия <see cref="ApplyVoltage"/></b> со своими

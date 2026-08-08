@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Battery;
@@ -172,7 +172,7 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
             _state.SetModeStr(((sbyte)buff[14]).ToString(CultureInfo.InvariantCulture));
         }
 
-        _state.SetBatteryLevel(CalculateBattery(voltage, _config.UseBetterPercents), GetCellsForWheel());
+        _state.SetBatteryLevel(CalculateBattery(voltage, _config.UseBetterPercents), CellInputs());
         return true;
     }
 
@@ -362,11 +362,14 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     /// Ответ идёт через общий каскад (план 27 §27.3): декодер подаёт наверх ряд, узнанный по имени
     /// модели, и число, заданное человеком (§27.4), а ответ выдаёт резолвер.
     /// </summary>
-    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
+
+    /// <summary>Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.</summary>
+    private CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         ProtocolCells = CellsFromModel(),
-    });
+    };
 
     /// <summary>Port of KingsongAdapter.getCellsForWheel() (KingsongAdapter.java:494-503).</summary>
     private int CellsFromModel()

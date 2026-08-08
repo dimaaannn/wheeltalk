@@ -99,11 +99,10 @@ public sealed class LabSettingsActivity : Activity
         Slider("Пак пуст ниже, В (0 — выкл.)", 0, 250, options.EmptyVolts, "F0", v => options.EmptyVolts = v);
 
         Group("Шкала на ячейку");
-        Note("Чем меряет левая лента. Считать нечем — вернётся к вольтам пакета: ряд не задан или BMS молчит. Записи стенда банок не несут, поэтому BMS здесь подделывается.");
+        Note("Чем меряет левая лента. Делит живое напряжение пакета на число ячеек; ноль — не задано, и лента остаётся пакетной. В приложении это число пишет кнопка «рассчитать» на странице колеса.");
         VoltageScale();
         Slider("Ячеек в ряду (0 — не задано)", 0, 60, _settings.CellsInSeries, "F0",
             v => _settings.CellsInSeries = (int)Math.Round(v));
-        Toggle("Подделать банки BMS", _settings.FakeBms, v => _settings.FakeBms = v);
         Slider("Видно на ленте, В на ячейку", 0.1, 2, options.SagWindowCellVolts, "F2",
             v => options.SagWindowCellVolts = v);
         Slider("Жёлтая ниже, В на ячейку", 0, 4.25, options.WarnCellVolts, "F2", v => options.WarnCellVolts = v);
@@ -255,11 +254,11 @@ public sealed class LabSettingsActivity : Activity
         Add(row);
     }
 
-    /// <summary>Три пункта левой шкалы: вольты пакета, на ячейку по BMS, на ячейку по заданному ряду.</summary>
+    /// <summary>Два пункта левой шкалы: вольты пакета и вольт на ячейку.</summary>
     private void VoltageScale()
     {
-        string[] labels = ["Напряжение пакета", "На ячейку, по BMS", "На ячейку, по числу ячеек"];
-        var modes = new[] { VoltageScaleMode.Pack, VoltageScaleMode.Bms, VoltageScaleMode.Cells };
+        string[] labels = ["Напряжение пакета", "Напряжение ячейки"];
+        var modes = new[] { VoltageScaleMode.Pack, VoltageScaleMode.Cells };
 
         var spinner = new Spinner(this);
         var adapter = new ArrayAdapter<string>(this, Android.Resource.Layout.SimpleSpinnerItem, labels);

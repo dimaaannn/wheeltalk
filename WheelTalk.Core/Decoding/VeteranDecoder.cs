@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Battery;
@@ -124,7 +124,7 @@ public sealed partial class VeteranDecoder : IWheelDecoder
             _state.SetTemperature(temperature);
             _state.SetPhaseCurrent(phaseCurrent);
             _state.SetVoltage(voltage);
-            _state.SetBatteryLevel(battery, GetCellsForWheel());
+            _state.SetBatteryLevel(battery, CellInputs());
             _state.SetChargingStatus(chargeMode);
             _state.SetSleepTimer(autoOffSec);
             _state.SetAngle(pitchAngle / 100.0);
@@ -339,11 +339,21 @@ public sealed partial class VeteranDecoder : IWheelDecoder
     /// Ответ идёт через общий каскад (план 27 §27.3): декодер подаёт наверх то, что знает сам, —
     /// ряд по версии протокола и число, заданное человеком (§27.4), — а ответ выдаёт резолвер.
     /// </summary>
-    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
+
+    /// <summary>
+    /// Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.
+    /// <para>
+    /// Числа банок Ветеран не сообщает, но сами банки шлёт, и счёт их выводится сверкой суммы с
+    /// напряжением (<see cref="BmsSeries"/>). Не сошлось — там ноль, и отвечает версия протокола.
+    /// </para>
+    /// </summary>
+    private CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
+        SmartBmsCells = BmsSeries.Count(_state.Bms1, _state.Bms2, _state.Voltage / 100.0, _state.Current / 100.0),
         ProtocolCells = CellsFromProtocolVersion(),
-    });
+    };
 
     private int CellsFromProtocolVersion() => _protocolVersion switch
     {

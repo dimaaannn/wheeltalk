@@ -47,10 +47,21 @@ public sealed class WheelState
 
     /// <summary>
     /// Сколько ячеек в ряду и откуда это известно — то, чем декодер считал заряд в последний раз
-    /// (план 27 §27.4). Своего счёта тут нет: число приходит готовым, вместе с источником, и едет
-    /// в снимок, чтобы шкала напряжения могла делить на него, а не гадать заново.
+    /// (план 27 §27.4). Своего счёта тут нет: считает каскад, состояние лишь хранит ответ вместе с
+    /// источником и отдаёт его в снимок.
     /// </summary>
     public CellCount PackCells { get; private set; } = CellCount.Unknown;
+
+    /// <summary>
+    /// Тот же каскад <b>без верхней ступени</b> — что приложение сказало бы, не скажи ему человек.
+    /// Второго счёта ячеек это не заводит (план 27, «Что сознательно не делаем»): резолвер тот же,
+    /// входы те же, пропущен ровно один вход.
+    /// <para>
+    /// Нужен ровно одному месту — кнопке «рассчитать». Без него она бесполезна как раз тогда, когда
+    /// нужна: число задано, человек жмёт кнопку и получает обратно своё же число.
+    /// </para>
+    /// </summary>
+    public CellCount AutoPackCells { get; private set; } = CellCount.Unknown;
 
     public int ChargingStatus { get; private set; }
     public int SleepTimer { get; private set; }
@@ -232,15 +243,16 @@ public sealed class WheelState
     /// <summary>
     /// Port of WheelData.setBatteryLevel(int) including the custom-percents branch.
     /// <para>
-    /// Ряд принимается целиком, вместе с источником (<see cref="CellCount"/>): считает по нему
-    /// по-прежнему одно только число, но дальше — в снимок и на шкалу — источник обязан доехать
-    /// живым. «24 ячейки по слову человека» и «24 по догадке» на экране расходятся (§27.4).
+    /// Принимаются <b>входы</b> каскада, а не готовое число: отсюда получаются оба ответа — тот,
+    /// которым считается заряд, и тот, что приложение дало бы без человека. Считать их порознь в
+    /// каждом декодере значило бы пять раз написать одно и то же и однажды разойтись (§27.4).
     /// </para>
     /// </summary>
-    public void SetBatteryLevel(int battery, CellCount cells)
+    public void SetBatteryLevel(int battery, CellCountInputs cellInputs)
     {
-        PackCells = cells;
-        int cellsForWheel = cells.Cells;
+        PackCells = CellCountResolver.Resolve(cellInputs);
+        AutoPackCells = CellCountResolver.Resolve(cellInputs with { ConfiguredCells = null });
+        int cellsForWheel = PackCells.Cells;
 
         if (_config.CustomPercents)
         {
@@ -268,6 +280,7 @@ public sealed class WheelState
         MaxPwm = MaxPwm * 100.0,
         Battery = Battery,
         PackCells = PackCells,
+        AutoPackCells = AutoPackCells,
         TemperatureRaw = Temperature,
         Temperature2Raw = Temperature2,
         TopSpeedRaw = TopSpeed,

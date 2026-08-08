@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Battery;
@@ -266,7 +266,7 @@ public sealed partial class GotwayDecoder : IWheelDecoder
         {
             _state.SetVoltage(voltage);
         }
-        _state.SetBatteryLevel(battery, GetCellsForWheel());
+        _state.SetBatteryLevel(battery, CellInputs());
         if (!_truePwm)
         {
             _state.SetOutput(hwPwm);
@@ -455,12 +455,15 @@ public sealed partial class GotwayDecoder : IWheelDecoder
     /// он лишь подаёт наверх то, что знает сам. Порядок ступеней повторяет прежний порядок этого
     /// метода: задал человек — берётся его число (§27.4), иначе умный BMS, иначе настройка вольтажа.
     /// </summary>
-    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(new CellCountInputs
+    public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
+
+    /// <summary>Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.</summary>
+    private CellCountInputs CellInputs() => new()
     {
         ConfiguredCells = _config.CellsInSeries,
         SmartBmsCells = _smartBmsCells,
         ProtocolCells = CellsFromVoltageSetting(),
-    });
+    };
 
     /// <summary>
     /// Port of the settings table in GotwayAdapter.getCellsForWheel() (GotwayAdapter.java:424-436).
