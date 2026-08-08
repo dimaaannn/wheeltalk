@@ -66,16 +66,6 @@ public sealed class ScanActivity : Activity
     private CancellationTokenSource? _scanCts;
     private Task? _scanTask;
 
-    /// <summary>
-    /// Колесо, за которым сессия гонялась до прихода сюда. Погоня на время поиска останавливается —
-    /// попытки подключения мешают скану, а иногда ломают его совсем, — и возобновляется при уходе с
-    /// экрана. Пусто — гнаться было не за кем (первый запуск).
-    /// </summary>
-    private string? _chased;
-
-    /// <summary>Выбрали новое колесо — старое возвращать не надо, к новому уже подключаются.</summary>
-    private bool _switched;
-
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -103,10 +93,6 @@ public sealed class ScanActivity : Activity
 
         _statusLabel.SetText(AppStrings.ScanReady);
 
-        // Запоминается до остановки: DisconnectAsync стирает адрес у сессии, и после него спросить
-        // уже не у кого.
-        _chased = _session.Address;
-
         ReloadBound();
         StartScan();
     }
@@ -114,7 +100,6 @@ public sealed class ScanActivity : Activity
     protected override void OnStop()
     {
         _ = StopScanAsync();
-        ResumeChase();
         base.OnStop();
     }
 
@@ -139,9 +124,9 @@ public sealed class ScanActivity : Activity
         {
             if (_scanCts is not null) return;
 
-            // Пока ищем — не подключаемся. Это единственный способ остановить погоню, и здесь он
-            // уместен: пришедший сюда человек выбирает колесо заново, а попытки подключиться к
-            // прежнему в это время только отбирают радио у скана.
+            // Страховка, а не приостановка: сюда приходят из уже отключённого состояния — оба входа
+            // (шторка и плашка связи) гасят сессию сами, — и тогда этот вызов выходит первой строкой.
+            // Остаётся на случай прочих путей: погоня во время скана отбирает радио у скана.
             await _session.DisconnectAsync();
 
             if (!_ble.IsBluetoothEnabled)
@@ -281,36 +266,6 @@ public sealed class ScanActivity : Activity
     }
 
     /// <summary>
-    /// Уходим с экрана — возвращаем погоню за прежним колесом. Ушли, ничего не выбрав (кнопка
-    /// «назад», погас экран), — связь должна восстанавливаться сама, как будто сюда и не заходили:
-    /// иначе заглянувший в поиск райдер остался бы и без нового колеса, и без старого.
-    /// <para>
-    /// Выбрали новое — не трогаем: к нему уже подключаются, и своим `ConnectAsync` мы бы это
-    /// подключение оборвали.
-    /// </para>
-    /// </summary>
-    private void ResumeChase()
-    {
-        if (_switched || _chased is null) return;
-
-        string address = _chased;
-        _chased = null;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _session.ConnectAsync(address);
-            }
-            catch (Exception ex)
-            {
-                // Сессия продолжит гоняться сама — здесь только первая неудача, и она не новость.
-                _logger.LogError(ex, "Scan.ResumeFailed {Mac}", address);
-            }
-        });
-    }
-
-    /// <summary>
     /// Тап по строке — обычное подключение, и для привязанного колеса оно ровно то же самое:
     /// <c>ConnectAsync</c> возвращается после первой попытки, а погоня продолжается фоном. Поэтому
     /// серая строка кликабельна, а экран после неё закрывается на главный, как при любом выборе:
@@ -344,9 +299,6 @@ public sealed class ScanActivity : Activity
                 return;
             }
 
-            // Дальше уходить с экрана можно, не возвращая прежнее колесо: за этим уже гонятся.
-            _switched = true;
-
             // Тот же вызов, что в MainActivity.Connect: связь установлена — процесс обязан пережить
             // карман. Без него подключение из поиска жило без foreground-сервиса: уведомления в
             // шторке нет, Android замораживает процесс с погашенным экраном, и погоня после обрыва
@@ -354,7 +306,9 @@ public sealed class ScanActivity : Activity
             WheelForegroundService.Start();
 
             // Колесо, выбранное вручную, становится тем, к которому приложение подключается само.
-            // Протокол не сохраняется: его больше не выбирают, а опознают на каждом подключении.
+            // Здесь же снимается «остановлено райдером» (план 24 §Б4) — той же записью, что и адрес:
+            // это единственный жест, который его снимает. Протокол не сохраняется: его больше не
+            // выбирают, а опознают на каждом подключении.
             _settings.SaveWheel(row.Address);
 
             // Назад на главный экран: он подхватит уже идущую сессию, когда снова станет видимым.
@@ -385,10 +339,6 @@ public sealed class ScanActivity : Activity
             if (!confirmed) return;
 
             await _bound.ForgetAsync(row.Address);
-
-            // Забытое колесо возвращать некуда: без этого уход с экрана воскресил бы его погоней за
-            // прежним (ResumeChase), и забывание отменилось бы само.
-            if (_chased is not null && Same(_chased, row.Address)) _chased = null;
 
             ReloadBound();
             _statusLabel.SetText(string.Format(CultureInfo.CurrentCulture, AppStrings.ScanForgotten, row.Caption));

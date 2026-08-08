@@ -23,25 +23,55 @@ public sealed class UserSettingsStore(
     /// Запоминает колесо, к которому приложение подключается само. Протокола здесь больше нет: он
     /// не выбирается человеком, а опознаётся на каждом подключении — по дереву GATT и по заголовку
     /// первого кадра. Хранить его значило бы держать копию, которая однажды разойдётся с колесом.
+    /// <para>
+    /// Заодно снимает «остановлено райдером» (план 24 §Б4): признак говорит о колесе, записанном
+    /// рядом, и пережить смену адреса не может — оставшись, он запретил бы подключаться к только что
+    /// выбранному колесу.
+    /// </para>
     /// </summary>
-    public void SaveWheel(string address, string name = "")
+    public void SaveWheel(string address)
     {
         var options = wheelOptions.Value;
         options.Address = address;
+        options.StoppedByRider = false;
 
         // Which wheel to connect to is what *defines* the scope, so it cannot live inside one —
         // it stays in the user file. Moving it does move the scope, though, and the layer under
         // every other setting has to follow before the next frame is decoded.
         settings.Scope = address;
 
+        SaveWheelSection();
+        logger.LogInformation("Settings.WheelSaved {Mac}", address);
+    }
+
+    /// <summary>
+    /// «Оставь это колесо» — райдер отключился сам, и до следующего выбора в поиске приложение к
+    /// колесу не идёт. Адрес не трогается: см. <see cref="WheelOptions.StoppedByRider"/>.
+    /// </summary>
+    public void SaveStoppedByRider()
+    {
+        wheelOptions.Value.StoppedByRider = true;
+
+        SaveWheelSection();
+        logger.LogInformation("Settings.WheelStoppedByRider {Mac}", wheelOptions.Value.Address);
+    }
+
+    /// <summary>
+    /// Единственное место, где пишется раздел <c>Wheel</c>. Раздел переписывается целиком, поэтому
+    /// здесь обязано быть <b>каждое</b> поле <see cref="WheelOptions"/>, и значения берутся из живого
+    /// объекта настроек: сохранение одного поля мимо этого метода затирало бы соседнее.
+    /// </summary>
+    private void SaveWheelSection()
+    {
+        var options = wheelOptions.Value;
         var root = Read();
         root[WheelOptions.SectionName] = new JsonObject
         {
-            [nameof(WheelOptions.Address)] = address,
+            [nameof(WheelOptions.Address)] = options.Address,
+            [nameof(WheelOptions.StoppedByRider)] = options.StoppedByRider,
         };
 
         File.WriteAllText(AppConfiguration.UserSettingsPath, root.ToJsonString(Formatting));
-        logger.LogInformation("Settings.WheelSaved {Mac}", address);
     }
 
     /// <summary>

@@ -88,6 +88,7 @@ public sealed class MainActivity : Activity
     private ITransport _transport = null!;
     private RideRecorder _recorder = null!;
     private WheelOptions _wheel = null!;
+    private UserSettingsStore _userSettings = null!;
     private WheelIdentity _identity = null!;
     private ScreenOptions _screenOptions = null!;
     private PowerOptions _power = null!;
@@ -180,6 +181,7 @@ public sealed class MainActivity : Activity
         _transport = MainApplication.Services.GetRequiredService<ITransport>();
         _recorder = MainApplication.Services.GetRequiredService<RideRecorder>();
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
+        _userSettings = MainApplication.Services.GetRequiredService<UserSettingsStore>();
         _identity = MainApplication.Services.GetRequiredService<WheelIdentity>();
         _screenOptions = MainApplication.Services.GetRequiredService<IOptions<ScreenOptions>>().Value;
         _power = MainApplication.Services.GetRequiredService<IOptions<PowerOptions>>().Value;
@@ -349,6 +351,11 @@ public sealed class MainActivity : Activity
             return;
         }
 
+        // Райдер сам сказал «оставь это колесо» (план 24 §Б2), и признак живёт в файле настроек —
+        // значит переживает и перезапуск приложения, и пересоздание экрана. Причины плашке не
+        // нужно: отключённое состояние без причины и есть покой, «Отключено».
+        if (_wheel.StoppedByRider) return;
+
         _ = AutoConnectAsync();
     }
 
@@ -441,18 +448,34 @@ public sealed class MainActivity : Activity
     /// Подключены — тап не делает ничего: обрывать связь случайным касанием посреди поездки нельзя,
     /// а отключение живёт в шторке, где спрашивает подтверждение на ходу.
     /// </para>
+    /// <para>
+    /// Всё остальное — «оставь это колесо» (план 24 §Б3): гасим сессию, ставим признак и ведём в
+    /// поиск. В <c>Reconnecting</c> подтверждения не спрашиваем — телеметрии там всё равно нет, а
+    /// поиск при живой погоне бесполезен: попытки подключения отбирают радио у скана.
+    /// </para>
     /// </summary>
-    private void OnLinkBadgeTapped()
+    private async void OnLinkBadgeTapped()
     {
-        if (_session.CurrentState == ConnectionState.Connected) return;
-
-        if (_transport.IsReplay && _session.CurrentState == ConnectionState.Disconnected)
+        try
         {
-            OnStateTapped();
-            return;
-        }
+            if (_session.CurrentState == ConnectionState.Connected) return;
 
-        OpenScreen(typeof(ScanActivity));
+            if (_transport.IsReplay && _session.CurrentState == ConnectionState.Disconnected)
+            {
+                OnStateTapped();
+                return;
+            }
+
+            await Disconnect();
+            _userSettings.SaveStoppedByRider();
+
+            OpenScreen(typeof(ScanActivity));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ui.LinkBadgeTapFailed {State}", _session.CurrentState);
+            _alertStrip.Show(AppStrings.ActionFailed, AlertStrip.Danger);
+        }
     }
 
     /// <summary>
@@ -795,6 +818,11 @@ public sealed class MainActivity : Activity
             }
 
             await Disconnect();
+
+            // «Отключить» значит «оставь это колесо», а не «прекрати сейчас» (план 24 §Б3). Признак
+            // ставится здесь, а не в Disconnect(): тот же метод останавливает и реплей, а запись
+            // дампа никакого колеса не выбирает и отказаться от него не может.
+            _userSettings.SaveStoppedByRider();
         }
         catch (Exception ex)
         {
