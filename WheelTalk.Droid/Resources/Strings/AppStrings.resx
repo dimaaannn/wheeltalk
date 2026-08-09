@@ -323,6 +323,10 @@
   <data name="SettingShowAlertBars" xml:space="preserve"><value>Полосы тревоги</value></data>
   <data name="SettingBlinkHz" xml:space="preserve"><value>Частота моргания</value></data>
   <data name="SettingBlinkHzHint" xml:space="preserve"><value>Чаще трёх вспышек в секунду не стоит — это граница безопасного моргания. Ноль — полоса горит ровно, без вспышек.</value></data>
+  <data name="SettingPanelVariant" xml:space="preserve"><value>Вид панели</value></data>
+  <data name="SettingPanelVariantHint" xml:space="preserve"><value>Какой раскладкой рисовать приборы. Общая для всех колёс.</value></data>
+  <data name="PanelVariantTwinTapes" xml:space="preserve"><value>Две ленты</value></data>
+  <data name="PanelVariantSpeedOnly" xml:space="preserve"><value>Только скорость (проверочный)</value></data>
   <data name="SettingPalette" xml:space="preserve"><value>Палитра</value></data>
   <data name="SettingPaletteHint" xml:space="preserve"><value>«Ванг» различима при дальтонизме, «WheelLog» — цвета оригинала.</value></data>
   <data name="SettingTilt" xml:space="preserve"><value>Наклон панели</value></data>

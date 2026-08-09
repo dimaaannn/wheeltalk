@@ -14,14 +14,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Alerts;
 using WheelTalk.Core.Contracts;
-using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
-using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.Ble;
@@ -88,8 +86,6 @@ public sealed class MainActivity : Activity
     /// </summary>
     private const string BatterySaverAsksKey = "Power:BatterySaverAsks";
 
-    private const string PanelChoice = "panel";
-    private const string TilesChoice = "tiles";
 
     private WheelSession _session = null!;
     private ITransport _transport = null!;
@@ -111,10 +107,19 @@ public sealed class MainActivity : Activity
     private MainScreenView _screen = null!;
     private MainScreenDriver _driver = null!;
 
-    /// <summary>Экран плиток. Собирается при первом показе: райдеру, который его не открывает, он не стоит ничего.</summary>
-    private TilesScreen? _tiles;
+    private MainScreenRegistry _screens = null!;
+    private PanelVariants _panels = null!;
 
-    private string _screenChoice = PanelChoice;
+    /// <summary>
+    /// Собранные экраны по идентификатору. Собираются при первом показе: райдеру, который плиток не
+    /// открывает, они не стоят ничего.
+    /// </summary>
+    private readonly Dictionary<string, IMainScreen> _built = new(StringComparer.Ordinal);
+
+    private string _screenChoice = "";
+
+    /// <summary>Каким вариантом собрана панель, что лежит в <see cref="_built"/>: сменили в настройках — пересобрать.</summary>
+    private string _panelVariantShown = "";
 
     private IDisposable? _telemetry;
     private IDisposable? _alertSubscription;
@@ -199,6 +204,8 @@ public sealed class MainActivity : Activity
         _dashboardOptions = MainApplication.Services.GetRequiredService<DashboardOptions>();
         _trace = MainApplication.Services.GetRequiredService<RideTrace>();
         _layers = MainApplication.Services.GetRequiredService<LayeredSettings>();
+        _screens = MainApplication.Services.GetRequiredService<MainScreenRegistry>();
+        _panels = MainApplication.Services.GetRequiredService<PanelVariants>();
         _timeProvider = MainApplication.Services.GetRequiredService<TimeProvider>();
         _logger = MainApplication.Services.GetRequiredService<ILogger<MainActivity>>();
 
@@ -329,6 +336,10 @@ public sealed class MainActivity : Activity
         base.OnStart();
 
         _logger.LogInformation("Ui.ScreenStarted");
+
+        // Вариант панели могли выбрать в настройках, пока экран стоял: пересборка здесь и есть
+        // «смена без перезапуска» (план 17 §3) — страница настроек всё равно отдельный экран.
+        ApplyPanelVariant();
 
         _telemetry = _session.Telemetry.Subscribe(s => RunOnUiThread(() => Render(s)));
 
@@ -844,10 +855,12 @@ public sealed class MainActivity : Activity
     private void Render(TelemetrySnapshot snapshot) => _trace.Push(snapshot);
 
     /// <summary>
-    /// Колесо сменилось — <see cref="WheelSession.WheelChanged"/>. Крайние значения плиток той же
-    /// природы, что след поездки: «на что колесо оказалось способно», — и максимум прежнего колеса
-    /// на плитке нового есть враньё (баг владельца 09.08.2026). Сам след и имя колеса чистятся не
-    /// здесь, а в <c>CrashGuard</c>: они переживают этот экран, а плитки — его часть.
+    /// Колесо сменилось — <see cref="WheelSession.WheelChanged"/>. Экраны копят своё («на что
+    /// колесо оказалось способно» у плиток), и накопленное про прежнее колесо к новому не
+    /// относится (баг владельца 09.08.2026). Что именно забыть, решает каждый экран сам
+    /// (<see cref="IMainScreen.WheelChanged"/>); хозяин лишь разносит весть — всем собранным, а не
+    /// одному показанному: вернуться на плитки человек может и после смены колеса. Сам след поездки
+    /// и имя колеса чистятся не здесь, а в <c>CrashGuard</c>: они переживают этот экран.
     /// <para>
     /// Через UI-поток: сессия поднимает событие на потоке подключавшегося и о потоке ничего не
     /// обещает, а сброс трогает разметку. Из главного потока это выполнится тут же, без кадра
@@ -855,7 +868,10 @@ public sealed class MainActivity : Activity
     /// </para>
     /// </summary>
     private void OnWheelChanged(string? previous, string current) =>
-        RunOnUiThread(() => _tiles?.ResetExtremes());
+        RunOnUiThread(() =>
+        {
+            foreach (var screen in _built.Values) screen.WheelChanged();
+        });
 
     private void OnBannerChanged() => RunOnUiThread(ShowWheelAlert);
 
@@ -1209,8 +1225,10 @@ public sealed class MainActivity : Activity
     /// </summary>
     private View BuildLayout()
     {
-        _screen = new MainScreenView(this, _dashboardOptions);
-        _screen.Panel.OnIntent = OnScreenIntent;
+        // Тот экран, на котором человек ушёл в прошлый раз. Умолчание — первый в реестре (панель):
+        // с неё начинали все, кто ни разу не трогал корешки. Неизвестный id — тоже он.
+        _screenChoice = _screens.Find(_layers.Get(_layers.Scope, ScreenChoiceKey).Value ?? "").Id;
+        _screen = new MainScreenView(this, _dashboardOptions, Screen(_screenChoice));
 
         // Полосы тревоги рамки — тот же источник, что у наложения прочих экранов: сила приходит из
         // общего потока тревог, вторых вычислителей нет.
@@ -1224,9 +1242,8 @@ public sealed class MainActivity : Activity
         _sheet.SetCommands(BuildWheelCommands());
         _sheet.SetScreens(BuildScreenTabs());
 
-        // Тот экран, на котором человек ушёл в прошлый раз. Умолчание — панель: с неё начинали все,
-        // кто ни разу не трогал корешки.
-        ShowScreen(_layers.Get(_layers.Scope, ScreenChoiceKey).Value ?? PanelChoice);
+        _driver.Attach(_screen.Current, BuildFrame);
+        _driver.Refresh();
 
         return _screen;
     }
@@ -1234,23 +1251,20 @@ public sealed class MainActivity : Activity
     /// <summary>
     /// Корешки экранов над рядом команд (план 23 §2.2). Это не команды: правило «позиции команд
     /// фиксированы навсегда» их не касается, и полоса у них своя.
+    /// <para>
+    /// Список — из реестра (план 17 §3): экраны здесь больше не перечислены поимённо, и шестой
+    /// корешок появится от одной записи в реестре, а не от правок в четырёх местах.
+    /// </para>
     /// </summary>
     private IReadOnlyList<QuickSheetScreen> BuildScreenTabs() =>
     [
-        new()
+        .. _screens.Screens.Select(entry => new QuickSheetScreen
         {
-            Icon = "📊",
-            Label = AppStrings.ScreenPanel,
-            IsSelected = () => _screenChoice == PanelChoice,
-            Select = () => ChooseScreen(PanelChoice),
-        },
-        new()
-        {
-            Icon = "🔢",
-            Label = AppStrings.ScreenTiles,
-            IsSelected = () => _screenChoice == TilesChoice,
-            Select = () => ChooseScreen(TilesChoice),
-        },
+            Icon = entry.Icon,
+            Label = entry.Label(),
+            IsSelected = () => _screenChoice == entry.Id,
+            Select = () => ChooseScreen(entry.Id),
+        }),
     ];
 
     /// <summary>Выбор человека: показать и запомнить. Общий слой, без «этого колеса» — план 23 §2.3.</summary>
@@ -1271,24 +1285,39 @@ public sealed class MainActivity : Activity
     private void ShowScreen(string choice)
     {
         _screenChoice = choice;
-        _screen.Show(choice == TilesChoice ? Tiles() : _screen.Panel);
+        _screen.Show(Screen(choice));
         _driver.Attach(_screen.Current, BuildFrame);
         _driver.Refresh();
     }
 
-    private TilesScreen Tiles()
+    /// <summary>
+    /// Экран по идентификатору — собранный однажды и оставленный: пересборка на каждом переключении
+    /// стоила бы плиткам их раскладки и графиков. Собирает его фабрика реестра, а здесь остаётся
+    /// проводка намерений — без неё экран нем: галочка шторки и плашка связи звали бы в пустоту.
+    /// </summary>
+    private IMainScreen Screen(string id)
     {
-        if (_tiles is not null) return _tiles;
+        if (_built.TryGetValue(id, out var known)) return known;
 
-        _tiles = new TilesScreen(this, _dashboardOptions, TranslateExtension.Get,
-            MainApplication.Services.GetRequiredService<IMetricHistory>(),
-            // Раскладка живёт в слоях настроек; экрану выдан только узкий доступ к своему ключу.
-            new TileLayoutSetting(_layers));
+        var screen = _screens.Find(id).Create(this);
+        screen.OnIntent = OnScreenIntent;
+        _built[id] = screen;
 
-        // Намерения — тому же исполнителю, что у панели. Без этой строки плитки были немы:
-        // галочка шторки и плашка связи звали в пустоту (стенд ставил своё, потому там работало).
-        _tiles.OnIntent = OnScreenIntent;
-        return _tiles;
+        if (id == MainScreenRegistry.PanelId) _panelVariantShown = _panels.CurrentId;
+        return screen;
+    }
+
+    /// <summary>
+    /// Вариант панели могли сменить в настройках, пока экран стоял (план 17 §3). Пересобираем на
+    /// месте — того же экрана, но другим вариантом; смотрит человек на плитки — панель просто
+    /// выбрасывается из собранных и родится следующей уже новой.
+    /// </summary>
+    private void ApplyPanelVariant()
+    {
+        if (_panelVariantShown == _panels.CurrentId) return;
+
+        _built.Remove(MainScreenRegistry.PanelId);
+        if (_screenChoice == MainScreenRegistry.PanelId) ShowScreen(MainScreenRegistry.PanelId);
     }
 
     private void LoadFonts()

@@ -1,8 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Alerts;
+using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Services;
+using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
+using WheelTalk.Dashboard.Droid.Screen.Tiles;
+using WheelTalk.Droid.Main;
 
 namespace WheelTalk.Droid.App.Composition;
 
@@ -25,6 +29,19 @@ public static class DashboardServiceCollectionExtensions
             return new DashboardOptions { Thresholds = new LiveThresholds(alerts) };
         });
         services.AddSingleton(sp => new RideTrace(sp.GetRequiredService<TimeProvider>()));
+
+        // Основные экраны — списком, а не по именам в MainActivity (план 17 §3). Варианты панели
+        // рядом: живой выбор (PanelVariants.CurrentId) правит строка настроек, а собирает по нему
+        // панель тот же реестр. Раскладка плиток — их зависимость, и собирает её тоже он: экрану
+        // выдан узкий доступ к своему ключу в слоях, а не сами слои.
+        services.AddSingleton(sp => new PanelVariants(sp.GetRequiredService<DashboardOptions>()));
+        services.AddSingleton<ITileLayoutStore>(sp =>
+            new TileLayoutSetting(sp.GetRequiredService<LayeredSettings>()));
+        services.AddSingleton(sp => new MainScreenRegistry(
+            sp.GetRequiredService<DashboardOptions>(),
+            sp.GetRequiredService<PanelVariants>(),
+            sp.GetRequiredService<IMetricHistory>(),
+            sp.GetRequiredService<ITileLayoutStore>()));
 
         return services;
     }

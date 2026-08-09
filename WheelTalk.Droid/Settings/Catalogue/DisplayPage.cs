@@ -1,6 +1,7 @@
 ﻿using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid.Configuration;
+using WheelTalk.Droid.Main;
 
 namespace WheelTalk.Droid.Settings.Catalogue;
 
@@ -14,7 +15,8 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// </summary>
 internal static class DisplayPage
 {
-    public static IReadOnlyList<SettingDescriptor> Build(DashboardOptions dashboard, ScreenOptions screen)
+    public static IReadOnlyList<SettingDescriptor> Build(
+        DashboardOptions dashboard, ScreenOptions screen, PanelVariants panels)
     {
         return
         [
@@ -307,6 +309,31 @@ internal static class DisplayPage
                 Maximum = 5,
                 Current = () => SettingsCatalogue.Fixed(dashboard.BlinkHz, 0),
                 Apply = text => dashboard.BlinkHz = SettingsCatalogue.ParseNumber(text),
+            },
+
+            // Вариант панели (план 17 §3). Выбор общий на приложение, не слоем колеса — решение
+            // владельца 09.08.2026: это привычка человека, а не свойство колеса.
+            //
+            // Строка показывается, только когда вариантов больше одного: в Release вариант ровно
+            // один, и строка с единственным пунктом нарушала бы правило плана 6 §0 — «настройка
+            // обязана что-то менять». Это же условие снимает вопрос «что показать, когда выбирать
+            // не из чего»: ничего.
+            new()
+            {
+                Key = "Screen:PanelVariant",
+                Kind = SettingKind.Choice,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionLook",
+                LabelKey = "SettingPanelVariant",
+                HintKey = "SettingPanelVariantHint",
+                GlobalOnly = true,
+                IsVisible = () => panels.All.Count > 1,
+                Choices = [.. panels.All.Select(variant => variant.Id)],
+                ChoiceLabelKeys = [.. panels.All.Select(variant => variant.LabelKey)],
+                Current = () => panels.CurrentId,
+                // Экран пересобирается не здесь: панель живёт у MainActivity, и та берёт выбранный
+                // вариант, когда возвращается на передний план. Настройке довольно записать выбор.
+                Apply = id => panels.CurrentId = id,
             },
 
             // «Ванг» (синий / оранжевый / киноварь) различима при дейтеранопии, а это порядка 8 %

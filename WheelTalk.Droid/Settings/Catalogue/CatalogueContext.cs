@@ -4,6 +4,7 @@ using WheelTalk.Core.Decoding;
 using WheelTalk.Core.Services;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid.Configuration;
+using WheelTalk.Droid.Main;
 
 namespace WheelTalk.Droid.Settings.Catalogue;
 
@@ -33,6 +34,10 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// Записать ряд в настройку — через <c>SettingsBinder</c>, а не мимо: слой, крючок правки и
 /// признаки у кнопки те же, что у правки руками.
 /// </param>
+/// <param name="Panels">
+/// Варианты панели и живой выбор между ними (план 17 §3). Строка выбора показывается, только когда
+/// вариантов больше одного, — в Release он один.
+/// </param>
 public sealed record CatalogueContext(
     AppWheelConfig Wheel,
     AlertOptions Alerts,
@@ -48,4 +53,5 @@ public sealed record CatalogueContext(
     Action RestartAuthentication,
     Action<double> PreviewAlarm,
     Func<TelemetrySnapshot?> LastFrame,
-    Action<int> SaveCells);
+    Action<int> SaveCells,
+    PanelVariants Panels);

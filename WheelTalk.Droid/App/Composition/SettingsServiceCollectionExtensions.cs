@@ -12,6 +12,7 @@ using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
 using WheelTalk.Droid.Logging;
+using WheelTalk.Droid.Main;
 using WheelTalk.Droid.Scan;
 using WheelTalk.Droid.Settings.Catalogue;
 using WheelTalk.Storage;
@@ -64,7 +65,8 @@ public static class SettingsServiceCollectionExtensions
             // Запись — через биндер: слой у настройки колеса свой, и знать о нём кнопке незачем.
             // Область тоже: биндер пишет по боевой, а не по той, что открыта на странице.
             cells => sp.GetRequiredService<SettingsBinder>()
-                .Set(ExperimentalPage.CellsKey, cells.ToString(CultureInfo.InvariantCulture)))));
+                .Set(ExperimentalPage.CellsKey, cells.ToString(CultureInfo.InvariantCulture)),
+            sp.GetRequiredService<PanelVariants>())));
         services.AddSingleton(sp => new LayeredSettings(
             sp.GetRequiredService<ISettingsStore>(),
             SettingsBinder.FactoryDefaults(sp.GetRequiredService<IReadOnlyList<SettingDescriptor>>()))

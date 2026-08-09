@@ -198,6 +198,9 @@ public sealed class TilesScreen : IMainScreen
     /// Смена колеса: крайние значения прежнего к новому не относятся. Зовёт хозяин экрана — только
     /// он знает, что колесо сменилось; кадр этого не несёт, в нём нет адреса.
     /// </summary>
+    public void WheelChanged() => ResetExtremes();
+
+    /// <summary>Сбросить крайние значения плиток. Своё имя у действия остаётся: стенд зовёт его кнопкой.</summary>
     public void ResetExtremes() => _adapter.ResetExtremes();
 
     /// <summary>

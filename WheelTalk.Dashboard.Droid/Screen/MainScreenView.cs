@@ -1,14 +1,13 @@
 ﻿using Android.Content;
 using Android.Views;
 using Android.Widget;
-using WheelTalk.Dashboard.Droid.Layouts;
 using WheelTalk.Dashboard.Droid.Widgets;
 
 namespace WheelTalk.Dashboard.Droid.Screen;
 
 /// <summary>
-/// Рамка хозяина главного экрана: сам экран (<see cref="Current"/> — панель
-/// <see cref="TwinTapesDashboard"/> либо плитки, см. <see cref="Show"/>), поверх него полосы тревоги
+/// Рамка хозяина главного экрана: сам экран (<see cref="Current"/> — панель либо плитки, чей —
+/// решает хозяин, см. <see cref="Show"/>), поверх него полосы тревоги
 /// (<see cref="Bars"/>) и строка слов тревоги сверху (<see cref="Alert"/>), а поверх всего — шторка
 /// быстрых команд. Всё, что поверх, — накладки: показ ни одной из них не меняет меру экрана. Живёт в
 /// библиотеке, а не в приложении, чтобы стенд показывал ровно то, что видит райдер, — тем же
@@ -30,10 +29,14 @@ public sealed class MainScreenView : FrameLayout
 {
     private readonly FrameLayout _stage;
 
-    public MainScreenView(Context context, DashboardOptions options) : base(context)
+    /// <param name="initial">
+    /// Экран, с которого рамка начинает. Приходит снаружи, и рамка ни одного экрана не строит сама
+    /// (план 17 §3): пока она собирала панель, у панели было место, которого нет у остальных, —
+    /// а вариантов панели с этого шага несколько, и выбирает их реестр, не рамка.
+    /// </param>
+    public MainScreenView(Context context, DashboardOptions options, IMainScreen initial) : base(context)
     {
-        Panel = new TwinTapesDashboard(context, options);
-        Current = Panel;
+        Current = initial;
         Alert = new AlertStrip(context);
         Sheet = new QuickSheet(context);
         Bars = new AlertBarsView(context, options);
@@ -71,12 +74,6 @@ public sealed class MainScreenView : FrameLayout
 
     /// <summary>Показанный сейчас экран — тот, которому водитель кадра носит состояние.</summary>
     public IMainScreen Current { get; private set; }
-
-    /// <summary>
-    /// Панель — экран по умолчанию, и рамка держит его сама: он есть всегда, даже пока показан
-    /// другой. Так стенд мерит её кадр (<c>LastDrawMs</c>), не спрашивая, что сейчас на экране.
-    /// </summary>
-    public DashboardView Panel { get; }
 
     public AlertStrip Alert { get; }
 

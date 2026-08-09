@@ -8,6 +8,7 @@ using Android.Views;
 using Android.Widget;
 using WheelTalk.Core.Alerts;
 using WheelTalk.Dashboard.Droid;
+using WheelTalk.Dashboard.Droid.Layouts;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
@@ -590,13 +591,17 @@ public sealed class LabActivity : Activity
     private void ShowScreen()
     {
         RemoveShown();
-        _screen = new MainScreenView(this, _settings.Options);
 
         // Стенд мерит кадр панели (LastDrawMs) — половина того, ради чего варианты вообще сравнивают
         // на устройстве, — и потому держит её отдельно от того, что показано сейчас. Приложению
         // такое знание не нужно и не выдано: у него в руках только контракт IMainScreen.
-        _dashboard = _screen.Panel;
-        _screen.Panel.OnIntent = OnScreenIntent;
+        //
+        // Панель собирает хозяин рамки, а не сама рамка (план 17 §3): приложению её выбирает реестр
+        // вариантов, стенду — эта строка, а рамка обоим достаётся одна и та же, нейтральная.
+        var panel = new TwinTapesDashboard(this, _settings.Options);
+        _dashboard = panel;
+        panel.OnIntent = OnScreenIntent;
+        _screen = new MainScreenView(this, _settings.Options, panel);
         // Источник полос рамки — тот же, что у вариант-режима: сила тревоги из показаний позиции.
         _screen.Bars.Alert = BarsAlert;
         _screen.Sheet.PinLabel = () => "Закрепить";
@@ -628,7 +633,7 @@ public sealed class LabActivity : Activity
             {
                 OnIntent = OnScreenIntent,
             }
-            : screen.Panel);
+            : _dashboard!);
 
         _driver.Attach(screen.Current, BuildFrame);
         _driver.Refresh();

@@ -35,7 +35,7 @@ public static class SettingsCatalogue
                 context.RestartAuthentication),
             .. AppPage.Build(context.Connection, context.Power, context.Share),
             .. AlertsPage.Build(context.Alerts, context.Channels),
-            .. DisplayPage.Build(context.Dashboard, context.Screen),
+            .. DisplayPage.Build(context.Dashboard, context.Screen, context.Panels),
 
             // Пятая страница собирается последней, потому что она и в списке последняя: не тема, а
             // отметка зрелости (план 28). Строки в ней — те же самые описания, что стояли выше, с
