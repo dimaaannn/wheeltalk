@@ -13,6 +13,7 @@ namespace WheelTalk.Tests.Storage;
 /// бы невидимой для обоих.
 /// </para>
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class SchemaMigrationTests
 {
     /// <summary>

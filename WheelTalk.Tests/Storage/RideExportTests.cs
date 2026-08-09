@@ -18,6 +18,7 @@ namespace WheelTalk.Tests.Storage;
 /// shows up on values someone chose to be round.
 /// </para>
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class RideExportTests
 {
     private const string Mac = "88:25:83:F5:75:4A";

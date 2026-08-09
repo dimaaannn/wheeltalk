@@ -16,6 +16,7 @@ namespace WheelTalk.Tests.Storage;
 /// закрытие поездок.
 /// </para>
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class RideStoreTests
 {
     private const string Mac = "88:25:83:F5:75:4A";

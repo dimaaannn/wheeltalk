@@ -15,6 +15,7 @@ namespace WheelTalk.Tests.Storage;
 /// станет нечем, а итоги не из чего считать, и потеряется это молча.
 /// </para>
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class TelemetryRetentionTests
 {
     private const string Mac = "88:25:83:F5:75:4A";

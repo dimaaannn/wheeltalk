@@ -9,6 +9,7 @@ namespace WheelTalk.Tests.Metrics;
 /// умеет: <b>молчание колеса не должно выглядеть нулём</b> (план 23 §3.1) и <b>обещанная колонка
 /// должна существовать</b> — иначе график шага 6 упадёт на опечатке, которую компилятор не видит.
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class MetricCatalogueTests
 {
     /// <summary>

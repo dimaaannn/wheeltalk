@@ -10,6 +10,7 @@ namespace WheelTalk.Tests.Storage;
 /// проверяется только то, за что отвечает база: значение переживает перезапуск, повторная запись
 /// не плодит строк, удаление удаляет, и области видимости не смешиваются.
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class SqliteSettingsStoreTests
 {
     private const string Mac = "88:25:83:F5:75:4A";

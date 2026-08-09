@@ -9,6 +9,7 @@ namespace WheelTalk.Tests.Storage;
 /// Проверяется то, за что отвечает база: отметка переживает перезапуск, повторное подключение не
 /// плодит строк и не трогает опознанный протокол, а забывание уносит отметку, но не поездки.
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class KnownWheelsTests
 {
     private const string Mac = "88:25:83:F5:75:4A";

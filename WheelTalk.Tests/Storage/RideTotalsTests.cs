@@ -15,6 +15,7 @@ namespace WheelTalk.Tests.Storage;
 /// that is invisible and at one second it is a tenth of these rides.
 /// </para>
 /// </summary>
+[Collection(TempDatabaseCollection.Name)]
 public class RideTotalsTests
 {
     private const string Mac = "88:25:83:F5:75:4A";

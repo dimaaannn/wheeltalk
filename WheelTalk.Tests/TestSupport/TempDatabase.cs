@@ -71,6 +71,18 @@ public sealed class TempDatabase : IDisposable
         return value is DBNull ? null : value;
     }
 
+    /// <summary>
+    /// Файл удаляется, поэтому соединения обязаны закрыться по-настоящему: <c>Dispose</c> у
+    /// соединения его не закрывает, а возвращает в пул, и удалённый при живом соединении файл
+    /// продолжает принимать записи в безымянный inode — молча (см. <c>RideDatabase.CloseAllConnections</c>).
+    /// <para>
+    /// <b>Капкан:</b> <c>ClearAllPools</c> — метод <b>процессный</b>, он чистит пулы <i>всех</i>
+    /// соединений разом, а не только своей базы. Пока классы шли параллельно, завершающийся тест
+    /// бил по соединениям соседа посреди его работы; отсюда и плавающие падения 08.08.2026. Потому
+    /// владельцы <see cref="TempDatabase"/> живут одной коллекцией —
+    /// <see cref="TempDatabaseCollection"/>, — и новый класс хранилища обязан в неё вступить.
+    /// </para>
+    /// </summary>
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
