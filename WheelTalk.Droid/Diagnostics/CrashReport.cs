@@ -53,6 +53,26 @@ public static class CrashReport
     /// </summary>
     public static Func<string>? BleFrames { get; set; }
 
+    /// <summary>
+    /// Что приложение делало в момент сбора — та же <c>CrashGuard.BuildCrashContext</c>, что уходит
+    /// в отчёт о падении (план 11 §4.2: «пункт просил оба пути», а кнопка шла без контекста).
+    /// Ставится единожды из <c>CrashGuard.SubscribeAppLevelHandlers</c>, тем же приёмом, что и
+    /// <see cref="BleFrames"/>. Не задано — раздел просто пропускается: отчёт без контекста всё ещё
+    /// отчёт.
+    /// <para>
+    /// Путь краха этим не пользуется: там контекст приходит параметром и снимается до того, как
+    /// процесс уйдёт, — трогать его нельзя.
+    /// </para>
+    /// </summary>
+    public static Func<string>? Context { get; set; }
+
+    /// <summary>
+    /// Чем настройки телефона отличаются от заводских (<c>ChangedSettings.Describe</c>). Тем же
+    /// приёмом и по той же причине, что <see cref="Context"/>: собирать их здесь нечем — каталог
+    /// живёт в контейнере.
+    /// </summary>
+    public static Func<string>? Settings { get; set; }
+
     public static string Path => System.IO.Path.Combine(RideFiles.Root, "diagnostics.log");
 
     private static string MarkerPath => System.IO.Path.Combine(RideFiles.Root, "running.marker");
@@ -109,11 +129,33 @@ public static class CrashReport
         UpdateMarker();
     }
 
-    /// <summary>Собрать по требованию — кнопкой из настроек, когда что-то ведёт себя странно.</summary>
+    /// <summary>
+    /// Собрать по требованию — кнопкой из настроек, когда что-то ведёт себя странно. Контекст
+    /// приложения и отличия настроек от заводских кладутся и сюда (план 11 §4.2): чужой файл без
+    /// них читается вслепую, а кнопка заведена ровно для чужих файлов.
+    /// </summary>
     public static string CollectOnDemand()
     {
-        Collect("собрано вручную");
+        Collect("собрано вручную", Ask(Context));
         return Path;
+    }
+
+    /// <summary>
+    /// Спросить у поставщика раздела, если он задан. Своё исключение поставщика сюда не пускается:
+    /// средство разбора поломок, падающее из-за одного раздела, — худшее из возможных.
+    /// </summary>
+    private static string? Ask(Func<string>? source)
+    {
+        if (source is null) return null;
+
+        try
+        {
+            return source();
+        }
+        catch (Exception ex)
+        {
+            return $"(раздел недоступен: {ex.Message})";
+        }
     }
 
     /// <summary>
@@ -169,9 +211,18 @@ public static class CrashReport
                 file.WriteLine(Describe());
                 if (extra is not null)
                 {
-                    file.WriteLine("----- исключение и контекст приложения -----");
+                    file.WriteLine("----- контекст приложения -----");
                     file.WriteLine(extra);
                 }
+
+                // Отличия настроек — в оба пути: на чужом телефоне их некому вычистить перед
+                // разбором, а отладочный порог тревоги объясняет добрую половину жалоб (§4.2).
+                if (Ask(Settings) is { Length: > 0 } settings)
+                {
+                    file.WriteLine("----- настройки -----");
+                    file.WriteLine(settings);
+                }
+
                 var from = since ?? DateTimeOffset.Now.AddMinutes(-WindowMinutes);
 
                 file.WriteLine("----- журнал приложения -----");

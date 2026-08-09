@@ -121,6 +121,16 @@ public sealed class MainActivity : Activity
     /// <summary>Каким вариантом собрана панель, что лежит в <see cref="_built"/>: сменили в настройках — пересобрать.</summary>
     private string _panelVariantShown = "";
 
+    /// <summary>
+    /// Погоню остановили мы сами, потому что адаптер выключен (план 11 §3.2). Признак нужен ради
+    /// <b>пути назад</b>: включили Bluetooth — приложение обязано вернуться к колесу само, а не
+    /// остаться «навсегда остановленным».
+    /// </summary>
+    private bool _chaseStoppedByAdapter;
+
+    /// <summary>Слушает включение и выключение адаптера, пока экран виден. Регистрируется в OnStart, снимается в OnStop.</summary>
+    private BluetoothStateReceiver? _adapterWatch;
+
     private IDisposable? _telemetry;
     private IDisposable? _alertSubscription;
     private IDisposable? _snapshotClock;
@@ -242,6 +252,10 @@ public sealed class MainActivity : Activity
         // максимумам прежнего.
         _session.WheelChanged += OnWheelChanged;
 
+        // Погоня забуксовала — спросить о причине (план 11 §3.2). Подписка живёт всю Activity по
+        // той же причине, что и смена колеса: буксовать погоня начинает и при остановленном экране.
+        _session.ChaseTroubled += OnChaseTroubled;
+
         // Приложение подняли самой командой — тогда extras лежат в стартовом Intent, и OnNewIntent
         // не будет вовсе.
         HandleCommand(Intent);
@@ -328,6 +342,7 @@ public sealed class MainActivity : Activity
         _snapshotClock?.Dispose();
         _snapshotClock = null;
         _session.WheelChanged -= OnWheelChanged;
+        _session.ChaseTroubled -= OnChaseTroubled;
         base.OnDestroy();
     }
 
@@ -336,6 +351,11 @@ public sealed class MainActivity : Activity
         base.OnStart();
 
         _logger.LogInformation("Ui.ScreenStarted");
+
+        // Выключение адаптера приходит событием, и это единственная причина, о которой не надо
+        // догадываться (план 11 §3.2). Слушаем, пока экран виден: приёмник, переживающий экран,
+        // — это уже служба, а её здесь не заводим.
+        _adapterWatch = BluetoothStateReceiver.Register(this, OnAdapterStateChanged);
 
         // Вариант панели могли выбрать в настройках, пока экран стоял: пересборка здесь и есть
         // «смена без перезапуска» (план 17 §3) — страница настроек всё равно отдельный экран.
@@ -393,6 +413,9 @@ public sealed class MainActivity : Activity
         _banner.Changed -= OnBannerChanged;
 
         _driver.Stop();
+
+        _adapterWatch?.Unregister(this);
+        _adapterWatch = null;
 
         _logger.LogInformation("Ui.ScreenStopped");
         base.OnStop();
@@ -872,6 +895,93 @@ public sealed class MainActivity : Activity
         {
             foreach (var screen in _built.Values) screen.WheelChanged();
         });
+
+    /// <summary>
+    /// Погоня буксует (<see cref="WheelSession.ChaseTroubled"/>, план 11 §3.2). Спрашиваем дешёвые
+    /// причины <b>молча</b> — <see cref="BleReadiness.FindProblem"/>, без диалогов: человек в этот
+    /// момент едет, а не настраивает телефон.
+    /// <para>
+    /// Найденная причина уезжает в плашку связи — туда же, где живут все прочие слова о связи.
+    /// А вот <b>останавливаем погоню только по доказанному</b>: выключенный адаптер — это факт,
+    /// проверенный опросом, гнаться при нём не за чем. «Нет разрешения» причиной названо будет, но
+    /// погоня остаётся: отозвать разрешение могли и на секунду, а ложно остановленная погоня — это
+    /// колесо, которое не вернулось само, и худший из возможных новых дефектов.
+    /// </para>
+    /// </summary>
+    private void OnChaseTroubled() => RunOnUiThread(() =>
+    {
+        // Реплей крутит записанный файл — ни адаптер, ни разрешения к нему отношения не имеют.
+        if (_transport.IsReplay) return;
+
+        if (BleReadiness.FindProblem() is not { } problem) return;
+
+        _problem = problem.Cause;
+        _problemDetail = problem.Message;
+        _logger.LogWarning("Ble.ChaseTroubled {Cause}", problem.Cause);
+
+        // Останавливаем только по доказанному: адаптер выключен, спрошен здесь же. Причина
+        // BluetoothOff приходит и от выключенной локации на старых Android — там слова показываем,
+        // а погоню оставляем.
+        if (problem.Cause == LinkProblem.BluetoothOff && BleReadiness.IsAdapterOff())
+        {
+            StopChaseUntilAdapterReturns();
+        }
+    });
+
+    /// <summary>
+    /// Адаптер выключили — гнаться не за чем. Останавливаем погоню и <b>помним, что это сделали
+    /// мы</b>: без этой памяти нет пути назад, а приложение, замолчавшее навсегда, хуже вечной
+    /// погони.
+    /// <para>
+    /// «Оставь это колесо» (<c>SaveStoppedByRider</c>) здесь не ставится намеренно: райдер ничего
+    /// не выбирал, выключился адаптер, — и следующий запуск обязан подключаться как обычно.
+    /// </para>
+    /// </summary>
+    private async void StopChaseUntilAdapterReturns()
+    {
+        if (_chaseStoppedByAdapter) return;
+
+        try
+        {
+            _chaseStoppedByAdapter = true;
+            await _session.DisconnectAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ble.StopChaseFailed");
+        }
+    }
+
+    /// <summary>
+    /// Адаптер включили или выключили. Выключение — та же остановка, что и по опросу, только без
+    /// ожидания трёх отказов. Включение — <b>путь назад</b>: возвращаемся к тому колесу, за которым
+    /// гнались, а если возвращаться некуда (колесо не выбрано или райдер сам сказал «оставь») —
+    /// снимаем слова о причине, и плашка снова становится обычным «Отключено», из которого поиск
+    /// открывается касанием.
+    /// </summary>
+    private void OnAdapterStateChanged(bool on) => RunOnUiThread(() =>
+    {
+        if (_transport.IsReplay) return;
+
+        if (!on)
+        {
+            _problem = LinkProblem.BluetoothOff;
+            _problemDetail = AppStrings.BleBluetoothDisabled;
+            StopChaseUntilAdapterReturns();
+            return;
+        }
+
+        if (!_chaseStoppedByAdapter) return;
+
+        _chaseStoppedByAdapter = false;
+        _problem = LinkProblem.None;
+        _problemDetail = "";
+
+        if (_wheel.Address.Length == 0 || _wheel.StoppedByRider) return;
+
+        _logger.LogInformation("Ble.AdapterBack {Mac}", _wheel.Address);
+        _ = Connect(_wheel.Address);
+    });
 
     private void OnBannerChanged() => RunOnUiThread(ShowWheelAlert);
 

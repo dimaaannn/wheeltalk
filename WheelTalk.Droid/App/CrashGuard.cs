@@ -7,6 +7,7 @@ using WheelTalk.Core.Alerts;
 using WheelTalk.Core.Logging;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
+using WheelTalk.Core.Settings;
 using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
@@ -117,6 +118,13 @@ public static class CrashGuard
         // its constructor, and the ring would stay empty forever.
         var bleFrames = MainApplication.Services.GetRequiredService<BleFrameTail>();
         CrashReport.BleFrames = bleFrames.FormatSection;
+
+        // Кнопка «отправить диагностику» шла без контекста и без настроек — план 11 §4.2. Оба
+        // раздела читаются лениво, в момент сбора: снятые сейчас, они устарели бы к первой же
+        // жалобе. Путь краха не трогается — там контекст приходит параметром.
+        CrashReport.Context = BuildCrashContext;
+        CrashReport.Settings = () =>
+            ChangedSettings.Describe(MainApplication.Services.GetRequiredService<SettingsBinder>());
 
         var session = MainApplication.Services.GetRequiredService<WheelSession>();
 

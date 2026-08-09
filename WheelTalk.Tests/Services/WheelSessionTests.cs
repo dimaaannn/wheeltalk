@@ -408,6 +408,59 @@ public class WheelSessionTests
         await session.DisconnectAsync();
     }
 
+    /// <summary>
+    /// План 11 §3.2: после нескольких отказов подряд стоит спросить о причине — три ситуации
+    /// («колесо выключено», «Bluetooth выключен», «разрешение отозвано») выглядят одинаково, и
+    /// вечная погоня с враньём на экране случается ровно во второй и третьей. Сессия причин не
+    /// знает и знать не может — её дело сказать «попытки идут впустую».
+    /// </summary>
+    [Fact]
+    public async Task A_chase_that_keeps_failing_says_so_once()
+    {
+        var (session, transport, time) = Build();
+        int troubles = 0;
+        session.ChaseTroubled += () => troubles++;
+        transport.RefuseConnections = true;
+
+        await session.ConnectAsync(Mac);
+        for (int second = 0; second < 20 && transport.ConnectAttempts < ChaseTrouble.Threshold + 3; second++)
+        {
+            time.Advance(TimeSpan.FromSeconds(5));
+            await Task.Delay(20);
+        }
+
+        Assert.True(transport.ConnectAttempts > ChaseTrouble.Threshold,
+            $"погоня не дошла до порога: попыток {transport.ConnectAttempts}");
+
+        // Один раз за погоню, а не на каждой попытке: спрашивать причину двести раз в час — та
+        // самая лишняя работа, ради которой порог и заведён.
+        Assert.Equal(1, troubles);
+
+        await session.DisconnectAsync();
+    }
+
+    /// <summary>Связь есть — счёт начинается заново: следующая порция неудач будет про новую беду.</summary>
+    [Fact]
+    public async Task A_link_that_comes_back_resets_the_count_of_failures()
+    {
+        var (session, transport, time) = Build();
+        int troubles = 0;
+        session.ChaseTroubled += () => troubles++;
+
+        // Два отказа, затем связь: до порога не дошло, и после успеха счёт обнулён.
+        transport.RefuseConnections = true;
+        await session.ConnectAsync(Mac);
+        time.Advance(TimeSpan.FromSeconds(5));
+        await Task.Delay(20);
+
+        transport.RefuseConnections = false;
+        await WaitForState(session, ConnectionState.Connected, time);
+
+        Assert.Equal(0, troubles);
+
+        await session.DisconnectAsync();
+    }
+
     private static (WheelSession Session, FakeTransport Transport, FakeTimeProvider Time) Build(
         ConnectionOptions? options = null)
     {

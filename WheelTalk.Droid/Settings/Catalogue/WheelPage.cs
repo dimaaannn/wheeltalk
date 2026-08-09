@@ -154,6 +154,9 @@ internal static class WheelPage
             {
                 Key = "WheelConfig:InMotionPassword",
                 Kind = SettingKind.Text,
+                // В отчёт диагностики уходит только факт «задан»: файл человек отдаёт системным
+                // диалогом кому угодно (план 11 §4.2).
+                Secret = true,
                 Page = SettingsPage.Wheel,
                 SectionKey = "SectionInMotion",
                 LabelKey = "SettingInMotionPassword",

@@ -85,6 +85,9 @@ public sealed partial class WheelSession : IDisposable
     /// </summary>
     private string? _followedWheel;
 
+    /// <summary>Отказов подряд — сбрасывается связью и новым подключением; см. <see cref="ChaseTroubled"/>.</summary>
+    private int _failuresInARow;
+
     private readonly WheelDetector _detector;
     private readonly WheelProtocol? _replayProtocolOverride;
 
@@ -142,6 +145,17 @@ public sealed partial class WheelSession : IDisposable
     public event Action<string?, string>? WheelChanged;
 
     /// <summary>
+    /// Погоня буксует: <see cref="ChaseTrouble.Threshold"/> отказов подряд, и стоит спросить о
+    /// причине (план 11 §3.2). Ровно один раз за погоню — считает <see cref="ChaseTrouble"/>.
+    /// <para>
+    /// Сессия сама причин не знает и знать не может: выключенный адаптер, отозванное разрешение и
+    /// выключенный локационный переключатель — вопросы к платформе, а не к транспорту. Её дело —
+    /// сказать «попытки идут впустую», а спрашивать будет тот, у кого есть чем.
+    /// </para>
+    /// </summary>
+    public event Action? ChaseTroubled;
+
+    /// <summary>
     /// Протокол колеса — <b>не выбранный, а опознанный</b>: до первого кадра он неизвестен, и это
     /// нормальное состояние первой доли секунды после подключения. Заполняется
     /// <see cref="AutoDecoder"/> по заголовку кадра.
@@ -164,6 +178,7 @@ public sealed partial class WheelSession : IDisposable
 
         Address = address;
         Protocol = null;
+        _failuresInARow = 0;
 
         if (!string.Equals(_followedWheel, address, StringComparison.OrdinalIgnoreCase))
         {
@@ -273,6 +288,7 @@ public sealed partial class WheelSession : IDisposable
         catch (Exception ex)
         {
             LogAttemptFailed(ex, Address!);
+            NoteFailure();
             return;
         }
 
@@ -290,8 +306,22 @@ public sealed partial class WheelSession : IDisposable
         _serviceTelemetry = service.Telemetry.Subscribe(OnSnapshot);
         Interlocked.Exchange(ref _lastDataAt, _timeProvider.GetTimestamp());
         StartWatchdog();
+
+        // Связь есть — счёт отказов начинается заново: следующая порция неудач будет уже про новую
+        // беду, а не про ту, о которой человеку однажды сказали.
+        _failuresInARow = 0;
         _state.OnNext(ConnectionState.Connected);
         LogSessionStarted(Address!);
+    }
+
+    /// <summary>
+    /// Ещё одна попытка впустую. Событие поднимается ровно на пороге и только на нём — решает
+    /// <see cref="ChaseTrouble.ShouldAskWhy"/>, чистая функция под тестом; здесь остаётся счёт.
+    /// </summary>
+    private void NoteFailure()
+    {
+        _failuresInARow++;
+        if (ChaseTrouble.ShouldAskWhy(_failuresInARow)) ChaseTroubled?.Invoke();
     }
 
     /// <summary>

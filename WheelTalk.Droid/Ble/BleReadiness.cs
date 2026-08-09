@@ -52,9 +52,36 @@ public static class BleReadiness
 
         if (OperatingSystem.IsAndroidVersionAtLeast(31))
         {
-            var granted = await RequestAsync(activity,
+            await RequestAsync(activity,
                 Manifest.Permission.BluetoothScan!, Manifest.Permission.BluetoothConnect!);
-            if (!Array.TrueForAll(granted, p => p == Permission.Granted))
+        }
+        else
+        {
+            // Android 11 and older treat a BLE scan as a way to infer location, so both the
+            // permission and the system location switch gate it. Without them startScan reports
+            // success and then silently never calls back.
+            await RequestAsync(activity, Manifest.Permission.AccessFineLocation!);
+        }
+
+        // Ответ один и тот же, спрошены разрешения или нет: решает не диалог, а нынешнее состояние.
+        return FindProblem();
+    }
+
+    /// <summary>
+    /// Та же причина, но <b>молча</b>: ничего не спрашивает у человека и не нуждается в
+    /// <see cref="Activity"/> — только читает нынешнее состояние (разрешения, адаптер, переключатель
+    /// локации). Для тех моментов, когда спрашивать нельзя: во время погони за колесом диалог
+    /// разрешений выскочил бы посреди поездки, а живого экрана может не быть вовсе (план 11 §3.2).
+    /// <para>
+    /// Второго определителя причин здесь не заводится — это он и есть: <see cref="FindProblemAsync"/>
+    /// сперва спрашивает разрешения, а ответ берёт отсюда же.
+    /// </para>
+    /// </summary>
+    public static (LinkProblem Cause, string Message)? FindProblem()
+    {
+        if (OperatingSystem.IsAndroidVersionAtLeast(31))
+        {
+            if (!IsGranted(Manifest.Permission.BluetoothScan!, Manifest.Permission.BluetoothConnect!))
             {
                 return (LinkProblem.NoPermissions, AppStrings.BleNoBluetoothPermission);
             }
@@ -64,11 +91,7 @@ public static class BleReadiness
                 : (LinkProblem.BluetoothOff, AppStrings.BleBluetoothDisabled);
         }
 
-        // Android 11 and older treat a BLE scan as a way to infer location, so both the permission
-        // and the system location switch gate it. Without them startScan reports success and then
-        // silently never calls back.
-        var location = await RequestAsync(activity, Manifest.Permission.AccessFineLocation!);
-        if (location[0] != Permission.Granted)
+        if (!IsGranted(Manifest.Permission.AccessFineLocation!))
         {
             return (LinkProblem.NoPermissions, AppStrings.BleNoLocationPermission);
         }
@@ -82,6 +105,11 @@ public static class BleReadiness
             ? null
             : (LinkProblem.BluetoothOff, AppStrings.BleLocationDisabled);
     }
+
+    /// <summary>Чтение, а не просьба: никакого диалога и никакой Activity.</summary>
+    private static bool IsGranted(params string[] permissions) =>
+        Array.TrueForAll(permissions,
+            p => ContextCompat.CheckSelfPermission(Application.Context, p) == Permission.Granted);
 
     /// <summary>Already granted short-circuits without a system dialog; otherwise asks and awaits the result.</summary>
     private static Task<Permission[]> RequestAsync(Activity activity, params string[] permissions)
@@ -108,6 +136,14 @@ public static class BleReadiness
         var manager = (LocationManager?)Application.Context.GetSystemService(Context.LocationService);
         return manager?.IsLocationEnabled ?? false;
     }
+
+    /// <summary>
+    /// Выключен ли адаптер — <b>доказательство, а не догадка</b>: по нему и только по нему
+    /// останавливается погоня (план 11 §3.2). Причина <see cref="LinkProblem.BluetoothOff"/> на
+    /// Android 11 и старше приходит и от выключенного переключателя локации, а это не тот случай,
+    /// ради которого стоит рвать живую погоню.
+    /// </summary>
+    public static bool IsAdapterOff() => !IsBluetoothOn();
 
     /// <summary>The adapter itself, distinct from the location switch that also gates scanning pre-12.</summary>
     private static bool IsBluetoothOn()
