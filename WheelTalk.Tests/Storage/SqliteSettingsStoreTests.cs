@@ -117,14 +117,14 @@ public class SqliteSettingsStoreTests
         var factory = new Dictionary<string, string> { ["PwmWarning"] = "80" };
         var settings = new LayeredSettings(Store(temp), factory) { Scope = Mac };
 
-        settings.Set("PwmWarning", "75");
-        Assert.Equal(new ResolvedSetting("75", SettingOrigin.Wheel), settings.Get("PwmWarning"));
+        settings.Set(Mac, "PwmWarning", "75");
+        Assert.Equal(new ResolvedSetting("75", SettingOrigin.Wheel), settings.Get(Mac, "PwmWarning"));
 
-        settings.PromoteToGlobal("PwmWarning");
-        Assert.Equal(new ResolvedSetting("75", SettingOrigin.Global), settings.Get("PwmWarning"));
+        settings.PromoteToGlobal(Mac, "PwmWarning");
+        Assert.Equal(new ResolvedSetting("75", SettingOrigin.Global), settings.Get(Mac, "PwmWarning"));
 
-        settings.ClearOverride("PwmWarning");
-        Assert.Equal(new ResolvedSetting("75", SettingOrigin.Global), settings.Get("PwmWarning"));
+        settings.ClearOverride(Mac, "PwmWarning");
+        Assert.Equal(new ResolvedSetting("75", SettingOrigin.Global), settings.Get(Mac, "PwmWarning"));
     }
 
     private static SqliteSettingsStore Store(TempDatabase temp) =>

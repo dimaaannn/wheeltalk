@@ -13,6 +13,7 @@ public class SettingsBinderTests
 {
     private const string Sherman = "88:25:83:F5:75:4A";
     private const string MTen3 = "88:25:83:F2:1A:98";
+    private const string Global = LayeredSettings.GlobalScope;
 
     /// <summary>Стоит вместо AppWheelConfig: важно, что это один и тот же экземпляр от начала до конца.</summary>
     private sealed class LiveOptions
@@ -48,7 +49,7 @@ public class SettingsBinderTests
         var (binder, _) = Build(options);
         var descriptor = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
 
-        binder.Set(descriptor, "70");
+        binder.Set(descriptor, "70", Global);
 
         Assert.Equal(70, options.PwmWarning);
     }
@@ -65,13 +66,13 @@ public class SettingsBinderTests
         var descriptor = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
 
         settings.Scope = Sherman;
-        binder.Set(descriptor, "75");
+        binder.Set(descriptor, "75", Sherman);
         Assert.Equal(75, options.PwmWarning);
 
         settings.Scope = MTen3;
         Assert.Equal(80, options.PwmWarning);   // своего значения нет — вернулось заводское
 
-        binder.Set(descriptor, "85");
+        binder.Set(descriptor, "85", MTen3);
         settings.Scope = Sherman;
 
         Assert.Equal(75, options.PwmWarning);
@@ -89,15 +90,15 @@ public class SettingsBinderTests
         var (binder, settings) = Build(options);
         var reported = binder.Descriptors.First(d => d.Key == "WheelConfig:HwPwm");
 
-        binder.Set(reported, "True");
-        Assert.Null(settings.Get("WheelConfig:HwPwm").Value);
+        binder.Set(reported, "True", Sherman);
+        Assert.Null(settings.Get(Sherman, "WheelConfig:HwPwm").Value);
 
         // Декодер сообщил своё — перечитывание слоёв не должно это затирать.
         options.HwPwm = true;
         settings.Scope = Sherman;
 
         Assert.True(options.HwPwm);
-        Assert.Equal("True", binder.Read(reported).Value);
+        Assert.Equal("True", binder.Read(reported, Sherman).Value);
     }
 
     /// <summary>
@@ -114,9 +115,9 @@ public class SettingsBinderTests
         var sound = binder.Descriptors.First(d => d.Key == "AlertSignals:Sound");
         settings.Scope = Sherman;
 
-        binder.Set(sound, "False");
+        binder.Set(sound, "False", Sherman);
 
-        Assert.Equal(SettingOrigin.Global, binder.Read(sound).Origin);
+        Assert.Equal(SettingOrigin.Global, binder.Read(sound, Sherman).Origin);
         Assert.False(options.Sound);
 
         settings.Scope = MTen3;
@@ -133,12 +134,12 @@ public class SettingsBinderTests
         var options = new LiveOptions();
         var (binder, _) = Build(options);
         var descriptor = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
-        binder.Set(descriptor, "70");
+        binder.Set(descriptor, "70", Global);
 
         binder.ClearGlobal(descriptor);
 
         Assert.Equal(80, options.PwmWarning);
-        Assert.Equal(SettingOrigin.Factory, binder.Read(descriptor).Origin);
+        Assert.Equal(SettingOrigin.Factory, binder.Read(descriptor, Global).Origin);
     }
 
     /// <summary>
@@ -152,13 +153,13 @@ public class SettingsBinderTests
         var (binder, _) = Build(options);
 
         Assert.Contains(
-            binder.Page(SettingsPage.Warnings).SelectMany(g => g),
+            binder.Page(SettingsPage.Warnings, Global).SelectMany(g => g),
             d => d.Key == "Alerts:PwmWarning");
 
         options.AlarmsEnabled = false;
 
         Assert.DoesNotContain(
-            binder.Page(SettingsPage.Warnings).SelectMany(g => g),
+            binder.Page(SettingsPage.Warnings, Global).SelectMany(g => g),
             d => d.Key == "Alerts:PwmWarning");
     }
 
@@ -177,13 +178,13 @@ public class SettingsBinderTests
         var edited = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
         var neighbour = binder.Descriptors.First(d => d.Key == "AlertSignals:Sound");
 
-        binder.Set(edited, "70");
+        binder.Set(edited, "70", Global);
         Assert.Equal(1, options.Edits);
 
         // Восстановление состояния — не правка. Старт приложения зовёт ровно это.
         binder.Apply();
         // Правка соседней строки прогоняет Apply по всем описаниям, включая наше.
-        binder.Set(neighbour, "False");
+        binder.Set(neighbour, "False", Global);
         // Смена колеса и смена слоя — тоже Apply, только изнутри LayeredSettings.
         settings.Scope = MTen3;
         settings.Scope = LayeredSettings.GlobalScope;
@@ -203,8 +204,8 @@ public class SettingsBinderTests
         var (binder, _) = Build(options);
         var descriptor = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
 
-        binder.Set(descriptor, "70");
-        binder.Set(descriptor, "70");
+        binder.Set(descriptor, "70", Global);
+        binder.Set(descriptor, "70", Global);
 
         Assert.Equal(2, options.Edits);
     }
@@ -221,10 +222,10 @@ public class SettingsBinderTests
         var (binder, settings) = Build(options);
         var descriptor = binder.Descriptors.First(d => d.Key == "WheelConfig:CellsInSeries");
 
-        binder.Set(descriptor, "20");
+        binder.Set(descriptor, "20", Global);
 
         // Заводское «не задано» на месте: ни один слой правку не принял, живой объект не тронут.
-        Assert.Equal(new ResolvedSetting("0", SettingOrigin.Factory), settings.Get(descriptor.Key));
+        Assert.Equal(new ResolvedSetting("0", SettingOrigin.Factory), settings.Get(Global, descriptor.Key));
         Assert.Equal(0, options.CellsInSeries);
     }
 
@@ -236,9 +237,9 @@ public class SettingsBinderTests
         var (binder, settings) = Build(options);
         var descriptor = binder.Descriptors.First(d => d.Key == "WheelConfig:CellsInSeries");
         settings.Scope = Sherman;
-        binder.Set(descriptor, "20");
+        binder.Set(descriptor, "20", Sherman);
 
-        binder.PromoteToGlobal(descriptor);
+        binder.PromoteToGlobal(descriptor, Sherman);
 
         settings.Scope = MTen3;
         Assert.Equal(0, options.CellsInSeries);
@@ -246,7 +247,8 @@ public class SettingsBinderTests
 
     /// <summary>
     /// Кнопка «рассчитать» правит соседнюю строку по ключу — и через биндер, а не мимо: слой,
-    /// крючок правки и признаки у неё те же, что у правки руками.
+    /// крючок правки и признаки у неё те же, что у правки руками. Область — боевая: ряд считается
+    /// по кадру живого колеса и принадлежит ему, куда бы ни смотрел переключатель страницы.
     /// </summary>
     [Fact]
     public void An_action_edits_its_neighbour_by_key()
@@ -258,7 +260,70 @@ public class SettingsBinderTests
         binder.Set("WheelConfig:CellsInSeries", "24");
 
         Assert.Equal(24, options.CellsInSeries);
-        Assert.Equal(new ResolvedSetting("24", SettingOrigin.Wheel), settings.Get("WheelConfig:CellsInSeries"));
+        Assert.Equal(new ResolvedSetting("24", SettingOrigin.Wheel),
+            settings.Get(Sherman, "WheelConfig:CellsInSeries"));
+    }
+
+    /// <summary>
+    /// Гейт плана 29 §29.3, первая половина. Правка в смотровом «Общем» меняет общий слой и <b>не
+    /// трогает живые объекты</b>, пока у колеса своё значение: райдер едет по своему колесу, что бы
+    /// ни было открыто в настройках. Рамка «переопределено» на строке — тот самый ответ на вопрос
+    /// «почему число на экране не дрогнуло».
+    /// </summary>
+    [Fact]
+    public void An_edit_in_the_global_view_does_not_reach_a_wheel_that_has_its_own_value()
+    {
+        var options = new LiveOptions();
+        var (binder, settings) = Build(options);
+        var descriptor = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
+        settings.Scope = Sherman;
+        binder.Set(descriptor, "75", Sherman);
+
+        binder.Set(descriptor, "70", Global);
+
+        Assert.Equal(75, options.PwmWarning);
+        Assert.Equal(new ResolvedSetting("70", SettingOrigin.Global), binder.Read(descriptor, Global));
+        Assert.Equal(new ResolvedSetting("75", SettingOrigin.Wheel), binder.Read(descriptor, Sherman));
+
+        // И боевая область осталась на колесе: страница её не двигает вовсе.
+        Assert.Equal(Sherman, settings.Scope);
+    }
+
+    /// <summary>
+    /// Вторая половина того же гейта: правка в «Колесе» видна живым объектам сразу — без ухода со
+    /// страницы, без перезапуска.
+    /// </summary>
+    [Fact]
+    public void An_edit_in_the_wheel_view_reaches_the_live_object_at_once()
+    {
+        var options = new LiveOptions();
+        var (binder, settings) = Build(options);
+        var descriptor = binder.Descriptors.First(d => d.Key == "Alerts:PwmWarning");
+        settings.Scope = Sherman;
+
+        binder.Set(descriptor, "72", Sherman);
+
+        Assert.Equal(72, options.PwmWarning);
+    }
+
+    /// <summary>
+    /// Строку, которую в этой области писать некуда, в ней и не показывают: у ряда ячеек общего
+    /// значения не бывает. Раньше это решал делегат, спрашивавший боевую область у слоёв (план 27
+    /// §27.4); теперь ответ следует из области, которую называет сама страница.
+    /// </summary>
+    [Fact]
+    public void A_wheel_only_row_is_hidden_in_the_global_view()
+    {
+        var options = new LiveOptions();
+        var (binder, _) = Build(options);
+
+        Assert.DoesNotContain(
+            binder.Page(SettingsPage.Wheel, Global).SelectMany(g => g),
+            d => d.Key == "WheelConfig:CellsInSeries");
+
+        Assert.Contains(
+            binder.Page(SettingsPage.Wheel, Sherman).SelectMany(g => g),
+            d => d.Key == "WheelConfig:CellsInSeries");
     }
 
     private static (SettingsBinder Binder, LayeredSettings Settings) Build(LiveOptions options)

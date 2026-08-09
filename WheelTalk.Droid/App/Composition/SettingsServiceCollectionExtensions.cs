@@ -62,15 +62,17 @@ public static class SettingsServiceCollectionExtensions
             // страницы настроек.
             () => sp.GetRequiredService<WheelSession>().LastSnapshot,
             // Запись — через биндер: слой у настройки колеса свой, и знать о нём кнопке незачем.
+            // Область тоже: биндер пишет по боевой, а не по той, что открыта на странице.
             cells => sp.GetRequiredService<SettingsBinder>()
-                .Set(ExperimentalPage.CellsKey, cells.ToString(CultureInfo.InvariantCulture)),
-            () => sp.GetRequiredService<LayeredSettings>().Scope.Length > 0)));
+                .Set(ExperimentalPage.CellsKey, cells.ToString(CultureInfo.InvariantCulture)))));
         services.AddSingleton(sp => new LayeredSettings(
             sp.GetRequiredService<ISettingsStore>(),
             SettingsBinder.FactoryDefaults(sp.GetRequiredService<IReadOnlyList<SettingDescriptor>>()))
         {
             // The wheel we are set to talk to owns the top layer from the first frame drawn, not
             // from the first connection: its settings have to be right before it answers.
+            // Второе и последнее место, где боевая область назначается: дальше её меняет только
+            // выбор колеса (UserSettingsStore.SaveWheel) — план 29 §29.3.
             Scope = sp.GetRequiredService<IOptions<WheelOptions>>().Value.Address,
         });
         services.AddSingleton(sp => new SettingsBinder(

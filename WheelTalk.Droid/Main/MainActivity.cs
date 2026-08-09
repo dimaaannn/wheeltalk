@@ -716,7 +716,7 @@ public sealed class MainActivity : Activity
 
         var power = (PowerManager?)GetSystemService(PowerService);
         bool isIgnoring = power is not null && power.IsIgnoringBatteryOptimizations(PackageName!);
-        int asksSoFar = int.TryParse(_layers.Get(BatterySaverAsksKey, SettingLayer.GlobalOnly).Value, out int parsed)
+        int asksSoFar = int.TryParse(_layers.Get(_layers.Scope, BatterySaverAsksKey, SettingLayer.GlobalOnly).Value, out int parsed)
             ? parsed
             : 0;
 
@@ -727,7 +727,7 @@ public sealed class MainActivity : Activity
 
         if (decision.NextAskCount != asksSoFar)
         {
-            _layers.Set(BatterySaverAsksKey, decision.NextAskCount.ToString(), SettingLayer.GlobalOnly);
+            _layers.Set(_layers.Scope, BatterySaverAsksKey, decision.NextAskCount.ToString(), SettingLayer.GlobalOnly);
         }
 
         if (!decision.ShouldAsk) return;
@@ -1226,7 +1226,7 @@ public sealed class MainActivity : Activity
 
         // Тот экран, на котором человек ушёл в прошлый раз. Умолчание — панель: с неё начинали все,
         // кто ни разу не трогал корешки.
-        ShowScreen(_layers.Get(ScreenChoiceKey).Value ?? PanelChoice);
+        ShowScreen(_layers.Get(_layers.Scope, ScreenChoiceKey).Value ?? PanelChoice);
 
         return _screen;
     }
@@ -1259,7 +1259,7 @@ public sealed class MainActivity : Activity
         if (_screenChoice == choice) return;
 
         ShowScreen(choice);
-        _layers.Set(ScreenChoiceKey, choice, SettingLayer.GlobalOnly);
+        _layers.Set(_layers.Scope, ScreenChoiceKey, choice, SettingLayer.GlobalOnly);
     }
 
     /// <summary>

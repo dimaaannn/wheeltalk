@@ -16,8 +16,8 @@ internal sealed class TileLayoutSetting(LayeredSettings layers) : ITileLayoutSto
 {
     private const string Key = "Tiles:Layout";
 
-    public IReadOnlyList<MetricTile>? Load() => TileLayoutJson.Read(layers.Get(Key).Value);
+    public IReadOnlyList<MetricTile>? Load() => TileLayoutJson.Read(layers.Get(layers.Scope, Key).Value);
 
     public void Save(IReadOnlyList<MetricTile> tiles) =>
-        layers.Set(Key, TileLayoutJson.Write(tiles), SettingLayer.GlobalOnly);
+        layers.Set(layers.Scope, Key, TileLayoutJson.Write(tiles), SettingLayer.GlobalOnly);
 }

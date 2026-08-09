@@ -32,9 +32,9 @@ namespace WheelTalk.Droid.Settings;
 /// setting does, and a partial rebuild would leave stale rows on screen.
 /// <para>
 /// Three things variant B adds over the plain list: a segmented "Общее / это колесо" switch pinned
-/// above the list (<see cref="MaterialButtonToggleGroup"/> — <see cref="LayeredSettings.Scope"/> only
-/// ever holds the global scope or the wheel already selected in <see cref="WheelOptions"/>, never an
-/// arbitrary one, so two buttons are the whole of it); quick-jump chips for "Отображение" only, the
+/// above the list (<see cref="MaterialButtonToggleGroup"/> — смотреть можно общий слой да слой
+/// колеса из <see cref="WheelOptions"/>, третьего не бывает, поэтому две кнопки и есть весь
+/// переключатель); quick-jump chips for "Отображение" only, the
 /// one page with seven sections instead of two or three; and a row layout that always shows the
 /// value's layer and, for numbers, its range — both used to live behind a menu or a dialog.
 /// </para>
@@ -58,9 +58,20 @@ public sealed class SettingsCategoryActivity : Activity
     private static readonly Color WarningColor = Color.ParseColor("#E53935");
 
     private SettingsBinder _binder = null!;
-    private LayeredSettings _settings = null!;
     private WheelOptions _wheel = null!;
     private SettingsPage _page;
+
+    /// <summary>
+    /// <b>Смотровая область</b>: какой слой страница показывает и правит. Поле страницы, а не рычаг
+    /// приложения (план 29 §29.3): переключатель «Общее / это колесо» отвечает на вопрос «что я
+    /// сейчас смотрю», а на вопрос «чем живёт приложение» отвечает выбор колеса, и трогать его
+    /// отсюда нельзя. Пока рычаг был один, райдер, открывший «Общее», ехал по общим порогам.
+    /// <para>
+    /// Открывается страница на колесе — на том же слое, по которому живут: чаще всего человек
+    /// пришёл править своё колесо, а не общее умолчание.
+    /// </para>
+    /// </summary>
+    private string _viewScope = LayeredSettings.GlobalScope;
 
     private ScrollView _scroll = null!;
     private LinearLayout _content = null!;
@@ -78,8 +89,8 @@ public sealed class SettingsCategoryActivity : Activity
         Title = string.Format(CultureInfo.CurrentCulture, AppStrings.ScreenTitleFormat, AppStrings.SettingsTitle);
 
         _binder = MainApplication.Services.GetRequiredService<SettingsBinder>();
-        _settings = MainApplication.Services.GetRequiredService<LayeredSettings>();
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
+        _viewScope = _wheel.Address;
         _page = (SettingsPage)(Intent?.GetIntExtra(ExtraPage, (int)SettingsPage.Application) ?? (int)SettingsPage.Application);
 
         Title = TranslateExtension.Get(PageTitleKey(_page));
@@ -92,6 +103,12 @@ public sealed class SettingsCategoryActivity : Activity
     protected override void OnStart()
     {
         base.OnStart();
+
+        // Смотреть можно общий слой да слой выбранного колеса, третьего не бывает: колесо сменили,
+        // пока страница лежала в стопке, — взгляд переезжает вместе с ним, а не остаётся на MAC,
+        // которого в приложении больше нет.
+        if (_viewScope.Length > 0) _viewScope = _wheel.Address;
+
         Rebuild();
     }
 
@@ -107,20 +124,6 @@ public sealed class SettingsCategoryActivity : Activity
     }
 
     /// <summary>
-    /// Область слоёв — боевой рычаг всего приложения, а не смотровая ручка этой страницы: по ней
-    /// живут лента, пороги тревог и декодер. Уйти, оставив «Общее», значило снять слой колеса со
-    /// всего живого разом — до перезапуска, который берёт область из адреса колеса заново. Ровно так
-    /// «размах шкалы не менялся до перезагрузки» у владельца 09.08.2026: правки применялись, но
-    /// разрешались без слоя колеса. Мелочь из state.md «область слоя не восстанавливается при уходе
-    /// со страницы» — закрыта этим же движением.
-    /// </summary>
-    protected override void OnStop()
-    {
-        _settings.Scope = _wheel.Address;
-        base.OnStop();
-    }
-
-    /// <summary>
     /// По всем описаниям, а не по строкам этой страницы: строка могла стать невидимой ровно тем
     /// касанием, из-за которого мы сюда попали, — выключенный звук прячет и выбор, и прослушивание.
     /// </summary>
@@ -128,7 +131,10 @@ public sealed class SettingsCategoryActivity : Activity
     {
         foreach (var descriptor in _binder.Descriptors)
         {
-            if (descriptor.Page == _page && descriptor.Kind == SettingKind.Slider) _binder.Set(descriptor, "0");
+            if (descriptor.Page == _page && descriptor.Kind == SettingKind.Slider)
+            {
+                _binder.Set(descriptor, "0", _viewScope);
+            }
         }
     }
 
@@ -158,8 +164,8 @@ public sealed class SettingsCategoryActivity : Activity
 
     /// <summary>
     /// "Общее" and the wheel already selected — not a list of every wheel ever seen (variant B's
-    /// deliberate cut from variant A, settings-redesign.md §4 "Цена"): <see cref="LayeredSettings.Scope"/>
-    /// already equals <see cref="WheelOptions.Address"/> from startup, so there is nothing to look up.
+    /// deliberate cut from variant A, settings-redesign.md §4 "Цена"): смотреть можно только общий
+    /// слой да слой выбранного колеса, и оба известны без поиска.
     /// </summary>
     private View BuildScopeRow()
     {
@@ -195,9 +201,14 @@ public sealed class SettingsCategoryActivity : Activity
         return container;
     }
 
+    /// <summary>
+    /// Переключить <b>взгляд</b>. Живым объектам от этого ни холодно ни жарко: они разрешаются по
+    /// колесу всегда, и правка, сделанная в «Общем» поверх переопределения, честно не меняет ничего
+    /// на дороге — рамка «переопределено» на строке это и объясняет (план 29 §29.3).
+    /// </summary>
     private void SetScope(string scope)
     {
-        if (_settings.Scope != scope) _settings.Scope = scope;
+        _viewScope = scope;
         ShowScope();
         Rebuild();
     }
@@ -206,7 +217,7 @@ public sealed class SettingsCategoryActivity : Activity
     {
         if (_globalButton is null || _wheelButton is null) return;
 
-        bool onWheel = _settings.Scope.Length > 0;
+        bool onWheel = _viewScope.Length > 0;
         if (_globalButton.Checked == !onWheel && _wheelButton.Checked == onWheel) return;
 
         _globalButton.Checked = !onWheel;
@@ -219,7 +230,7 @@ public sealed class SettingsCategoryActivity : Activity
     {
         if (_page != SettingsPage.Display) return null;
 
-        var sections = _binder.Page(_page).Select(section => section.Key).Distinct().ToList();
+        var sections = _binder.Page(_page, _viewScope).Select(section => section.Key).Distinct().ToList();
         if (sections.Count == 0) return null;
 
         var outer = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
@@ -288,7 +299,7 @@ public sealed class SettingsCategoryActivity : Activity
 
         bool dividedAdvanced = false;
         bool any = false;
-        foreach (var section in _binder.Page(_page))
+        foreach (var section in _binder.Page(_page, _viewScope))
         {
             any = true;
             bool advanced = section.First().Advanced;
@@ -338,7 +349,7 @@ public sealed class SettingsCategoryActivity : Activity
     /// </summary>
     private View BuildRow(SettingDescriptor descriptor)
     {
-        var resolved = _binder.Read(descriptor);
+        var resolved = _binder.Read(descriptor, _viewScope);
 
         var card = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
         card.SetPadding(0, this.Dp(8), 0, this.Dp(8));
@@ -504,7 +515,7 @@ public sealed class SettingsCategoryActivity : Activity
                 var live = new SeekBar(this) { Max = (int)descriptor.Maximum, Progress = 0 };
                 live.ProgressChanged += (_, e) =>
                 {
-                    if (e.FromUser) _binder.Set(descriptor, e.Progress.ToString(CultureInfo.InvariantCulture));
+                    if (e.FromUser) _binder.Set(descriptor, e.Progress.ToString(CultureInfo.InvariantCulture), _viewScope);
                 };
                 return live;
             }
@@ -766,9 +777,9 @@ public sealed class SettingsCategoryActivity : Activity
             .SetItems(actions, (_, e) =>
             {
                 string chosen = actions[e.Which];
-                if (chosen == restore && overridden) _binder.ClearOverride(descriptor);
+                if (chosen == restore && overridden) _binder.ClearOverride(descriptor, _viewScope);
                 else if (chosen == restore) _binder.ClearGlobal(descriptor);
-                else if (chosen == AppStrings.SettingsMakeGlobal) _binder.PromoteToGlobal(descriptor);
+                else if (chosen == AppStrings.SettingsMakeGlobal) _binder.PromoteToGlobal(descriptor, _viewScope);
                 Rebuild();
             })!
             .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!
@@ -777,7 +788,7 @@ public sealed class SettingsCategoryActivity : Activity
 
     private void Commit(SettingDescriptor descriptor, string value)
     {
-        _binder.Set(descriptor, value);
+        _binder.Set(descriptor, value, _viewScope);
         Rebuild();
     }
 

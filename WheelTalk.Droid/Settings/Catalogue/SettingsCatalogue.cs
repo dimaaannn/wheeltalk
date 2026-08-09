@@ -41,7 +41,7 @@ public static class SettingsCatalogue
             // отметка зрелости (план 28). Строки в ней — те же самые описания, что стояли выше, с
             // одним изменённым полем Page; ключи, признаки и условия переехали нетронутыми.
             .. ExperimentalPage.Build(context.Wheel, context.Dashboard, context.Channels,
-                context.PreviewAlarm, context.LastFrame, context.SaveCells, context.WheelScopeChosen),
+                context.PreviewAlarm, context.LastFrame, context.SaveCells),
         ];
     }
 

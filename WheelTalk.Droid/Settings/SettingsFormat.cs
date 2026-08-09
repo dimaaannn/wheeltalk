@@ -68,17 +68,22 @@ internal static class SettingsFormat
     /// wheel currently selected — or, with no wheel selected, how many exist at all. Picking the first
     /// two eligible descriptors rather than hand-picked ones per category keeps this generic: the
     /// catalogue already orders each page by what matters most.
+    /// <para>
+    /// Читается по <b>боевой</b> области — сводка говорит, чем приложение живёт, а не что открыто
+    /// на странице настроек (план 29 §29.3).
+    /// </para>
     /// </summary>
     public static string Summarize(SettingsBinder binder, SettingsPage page)
     {
-        var descriptors = binder.Page(page).SelectMany(section => section).ToList();
+        string scope = binder.LiveScope;
+        var descriptors = binder.Page(page, scope).SelectMany(section => section).ToList();
 
         string head = string.Join(" · ", descriptors
             .Where(d => !d.Advanced && !d.ReportedByWheel && d.Kind is SettingKind.Toggle or SettingKind.Number or SettingKind.Choice)
             .Take(2)
-            .Select(d => $"{TranslateExtension.Get(d.LabelKey)}: {ValueText(d, binder.Read(d))}"));
+            .Select(d => $"{TranslateExtension.Get(d.LabelKey)}: {ValueText(d, binder.Read(d, scope))}"));
 
-        int overridden = descriptors.Count(d => !d.ReportedByWheel && binder.Read(d).IsOverridden);
+        int overridden = descriptors.Count(d => !d.ReportedByWheel && binder.Read(d, scope).IsOverridden);
         string tail = overridden > 0
             ? string.Format(CultureInfo.CurrentCulture, AppStrings.SettingsSummaryOverrides, overridden)
             : Plural.Of(descriptors.Count,

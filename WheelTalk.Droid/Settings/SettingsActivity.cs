@@ -82,6 +82,8 @@ public sealed class SettingsActivity : Activity
     /// <summary>Summaries are recomputed on every appearance, not just once — a value changed on a category page has to show here on the way back, the same reason the MAUI root page re-read its scope label in OnAppearing.</summary>
     private void Show()
     {
+        // Боевая область, и только она: надпись отвечает «чем живёт приложение», а не «что смотрели
+        // на прошлой странице». С планом 29 §29.3 второе перестало на неё влиять вовсе.
         _scopeLabel.SetText(_settings.Scope.Length > 0
             ? string.Format(System.Globalization.CultureInfo.CurrentCulture, AppStrings.SettingsScopeWheel, _settings.Scope)
             : AppStrings.SettingsScopeGlobal);

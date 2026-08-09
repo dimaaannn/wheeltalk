@@ -33,10 +33,6 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// Записать ряд в настройку — через <c>SettingsBinder</c>, а не мимо: слой, крючок правки и
 /// признаки у кнопки те же, что у правки руками.
 /// </param>
-/// <param name="WheelScopeChosen">
-/// Выбрана ли область «это колесо». Строки, у которых общего значения не бывает, в общей области не
-/// показываются: писать их там некуда (план 27 §27.4).
-/// </param>
 public sealed record CatalogueContext(
     AppWheelConfig Wheel,
     AlertOptions Alerts,
@@ -52,5 +48,4 @@ public sealed record CatalogueContext(
     Action RestartAuthentication,
     Action<double> PreviewAlarm,
     Func<TelemetrySnapshot?> LastFrame,
-    Action<int> SaveCells,
-    Func<bool> WheelScopeChosen);
+    Action<int> SaveCells);

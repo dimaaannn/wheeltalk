@@ -47,6 +47,12 @@ public readonly record struct ResolvedSetting(string? Value, SettingOrigin Origi
 /// shows the effective value and which of the three it came from — without that, layering turns
 /// into "why is this number different here" with no answer available.
 /// </para>
+/// <para>
+/// Область у каждого действия — <b>аргументом</b> (план 29 §29.3). Спрашивающих двое, и вопросы у
+/// них разные: приложение живёт по <see cref="Scope"/> — области выбранного колеса, — а страница
+/// настроек смотрит и правит тот слой, который выбрал человек её переключателем. Пока область была
+/// одна на двоих, взгляд на «Общее» переселял туда и живые пороги.
+/// </para>
 /// </summary>
 public sealed class LayeredSettings
 {
@@ -56,8 +62,13 @@ public sealed class LayeredSettings
     private readonly ISettingsStore _store;
     private readonly IReadOnlyDictionary<string, string> _factory;
 
-    private IReadOnlyDictionary<string, string>? _global;
-    private IReadOnlyDictionary<string, string>? _wheel;
+    /// <summary>
+    /// Прочитанные слои по областям. Словарь, а не два поля: смотровая область страницы и боевая
+    /// область приложения — разные слои, и один кэш на двоих означал бы, что взгляд на общий слой
+    /// выбивает из памяти слой колеса, по которому живёт лента.
+    /// </summary>
+    private readonly Dictionary<string, IReadOnlyDictionary<string, string>> _layers = new(StringComparer.Ordinal);
+
     private string _scope = GlobalScope;
 
     public LayeredSettings(ISettingsStore store, IReadOnlyDictionary<string, string> factoryDefaults)
@@ -67,8 +78,16 @@ public sealed class LayeredSettings
     }
 
     /// <summary>
-    /// The wheel whose values are on top, by MAC. Empty means there is no wheel yet, and then
-    /// editing writes the global value — there is nothing else it could sensibly mean.
+    /// <b>Боевая область</b>: колесо, по чьему слою разрешаются пороги, ряд ячеек, пароль и палитра
+    /// — то, чем живут лента, тревоги и декодер. По MAC; пусто — колеса ещё нет, и наверху сразу
+    /// общий слой.
+    /// <para>
+    /// Отвечает ровно на один вопрос — «чем живёт приложение», — и пишет её ровно один хозяин:
+    /// выбор колеса (<c>UserSettingsStore.SaveWheel</c>) плюс сборка контейнера на старте. Страница
+    /// настроек сюда не пишет: её «Общее / это колесо» — <b>взгляд</b>, и она носит свою область
+    /// сама, аргументом (план 29 §29.3). Пока рычаг был один, взгляд на «Общее» снимал слой колеса
+    /// со всего живого разом: у стоящего у стены колеса пороги тревог в этот момент были не его.
+    /// </para>
     /// </summary>
     public string Scope
     {
@@ -78,7 +97,6 @@ public sealed class LayeredSettings
             if (_scope == value) return;
 
             _scope = value;
-            _wheel = null;
             Changed?.Invoke();
         }
     }
@@ -90,9 +108,14 @@ public sealed class LayeredSettings
     /// </summary>
     public event Action? Changed;
 
-    public ResolvedSetting Get(string key, SettingLayer layer = SettingLayer.Any)
+    /// <summary>
+    /// Значение в области <paramref name="scope"/> и слой, из которого оно пришло. Область —
+    /// аргументом, а не свойством: тем же методом страница смотрит общий слой, пока приложение
+    /// живёт по слою колеса (план 29 §29.3). Пустая область — общий слой.
+    /// </summary>
+    public ResolvedSetting Get(string scope, string key, SettingLayer layer = SettingLayer.Any)
     {
-        if (_scope.Length > 0 && Wheel().TryGetValue(key, out string? own))
+        if (scope.Length > 0 && Layer(scope).TryGetValue(key, out string? own))
         {
             return new ResolvedSetting(own, SettingOrigin.Wheel);
         }
@@ -100,7 +123,7 @@ public sealed class LayeredSettings
         // Настройка колеса общий слой не читает вовсе: колесо, которому ряд не задавали, должно
         // получить заводское «не задано», а не число соседнего колеса. Это не перестраховка от
         // собственной записи — в общем слое значение могло оказаться и другим путём.
-        if (layer != SettingLayer.WheelOnly && Global().TryGetValue(key, out string? shared))
+        if (layer != SettingLayer.WheelOnly && Layer(GlobalScope).TryGetValue(key, out string? shared))
         {
             return new ResolvedSetting(shared, SettingOrigin.Global);
         }
@@ -123,7 +146,7 @@ public sealed class LayeredSettings
     /// такой настройки там не показывают.
     /// </para>
     /// </summary>
-    public void Set(string key, string value, SettingLayer layer = SettingLayer.Any)
+    public void Set(string scope, string key, string value, SettingLayer layer = SettingLayer.Any)
     {
         if (layer == SettingLayer.GlobalOnly)
         {
@@ -131,13 +154,13 @@ public sealed class LayeredSettings
             // Переопределение у такого ключа всё же может лежать в базе — заведённое до того, как
             // признак появился. Не снять его значит писать в слой, который всё равно перекрыт:
             // правка выглядела бы не сработавшей.
-            if (_scope.Length > 0) _store.Write(_scope, key, null);
+            if (scope.Length > 0) _store.Write(scope, key, null);
         }
         else
         {
-            if (layer == SettingLayer.WheelOnly && _scope.Length == 0) return;
+            if (layer == SettingLayer.WheelOnly && scope.Length == 0) return;
 
-            Store(CurrentScope(), key, value, layer);
+            Store(scope, key, value, layer);
         }
 
         Invalidate();
@@ -148,11 +171,11 @@ public sealed class LayeredSettings
     /// again. Does nothing when there was no override, which is also when the command is not
     /// offered.
     /// </summary>
-    public void ClearOverride(string key)
+    public void ClearOverride(string scope, string key)
     {
-        if (_scope.Length == 0) return;
+        if (scope.Length == 0) return;
 
-        _store.Write(_scope, key, null);
+        _store.Write(scope, key, null);
         Invalidate();
     }
 
@@ -173,38 +196,35 @@ public sealed class LayeredSettings
     /// while doing it. Keeping both would leave a second copy of a value that is now shared, which
     /// is a disagreement waiting to happen rather than a setting.
     /// </summary>
-    public void PromoteToGlobal(string key, SettingLayer layer = SettingLayer.Any)
+    public void PromoteToGlobal(string scope, string key, SettingLayer layer = SettingLayer.Any)
     {
         // «Сделать значением по умолчанию» для настройки колеса — это и есть та самая коллизия,
         // от которой её оберегают: 20S уехали бы на все колёса разом.
         if (layer == SettingLayer.WheelOnly) return;
 
-        string? value = Get(key, layer).Value;
+        string? value = Get(scope, key, layer).Value;
         if (value is null) return;
 
         Store(GlobalScope, key, value, layer);
-        if (_scope.Length > 0) _store.Write(_scope, key, null);
+        if (scope.Length > 0) _store.Write(scope, key, null);
         Invalidate();
     }
 
     /// <summary>Every key any layer knows about — what a page needs to draw itself completely.</summary>
-    public IReadOnlyCollection<string> Keys()
+    public IReadOnlyCollection<string> Keys(string scope)
     {
         var keys = new HashSet<string>(_factory.Keys, StringComparer.Ordinal);
-        keys.UnionWith(Global().Keys);
-        if (_scope.Length > 0) keys.UnionWith(Wheel().Keys);
+        keys.UnionWith(Layer(GlobalScope).Keys);
+        if (scope.Length > 0) keys.UnionWith(Layer(scope).Keys);
         return keys;
     }
 
     /// <summary>Forces the next read to go to the store. For when someone else wrote to it.</summary>
     public void Reload()
     {
-        _global = null;
-        _wheel = null;
+        _layers.Clear();
         Changed?.Invoke();
     }
-
-    private string CurrentScope() => _scope.Length > 0 ? _scope : GlobalScope;
 
     /// <summary>
     /// Writes a value into one layer, or removes it when the layer below already says the same
@@ -222,18 +242,17 @@ public sealed class LayeredSettings
     /// правку, совпавшую с чужим числом.
     /// </summary>
     private string? Underlying(string scope, string key, SettingLayer layer) =>
-        scope.Length > 0 && layer != SettingLayer.WheelOnly && Global().TryGetValue(key, out string? shared)
+        scope.Length > 0 && layer != SettingLayer.WheelOnly && Layer(GlobalScope).TryGetValue(key, out string? shared)
             ? shared
             : _factory.GetValueOrDefault(key);
 
-    private IReadOnlyDictionary<string, string> Global() => _global ??= _store.Read(GlobalScope);
-
-    private IReadOnlyDictionary<string, string> Wheel() => _wheel ??= _store.Read(_scope);
+    /// <summary>Слой одной области, прочитанный один раз. Областей в живом приложении две — общая и колесо.</summary>
+    private IReadOnlyDictionary<string, string> Layer(string scope) =>
+        _layers.TryGetValue(scope, out var known) ? known : _layers[scope] = _store.Read(scope);
 
     private void Invalidate()
     {
-        _global = null;
-        _wheel = null;
+        _layers.Clear();
         Changed?.Invoke();
     }
 }

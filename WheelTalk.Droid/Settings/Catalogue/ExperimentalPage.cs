@@ -42,8 +42,7 @@ internal static class ExperimentalPage
         AlertSignalOptions channels,
         Action<double> previewAlarm,
         Func<TelemetrySnapshot?> lastFrame,
-        Action<int> saveCells,
-        Func<bool> wheelScopeChosen)
+        Action<int> saveCells)
     {
         // Кадр, по которому считала кнопка «рассчитать», — чтобы отчитаться ровно им. Кадры идут
         // по нескольку в секунду, и взять напряжение заново значило бы назвать вольт на банку от
@@ -116,9 +115,10 @@ internal static class ExperimentalPage
                 UnitKey = "UnitCells",
                 // Число принадлежит колесу, а не приложению: 20S у одного и 16S у другого — не
                 // разногласие, а два разных колеса. Общего значения у него не бывает вовсе, поэтому
-                // и в общей области строка не показывается: писать её там некуда.
+                // и в общей области строка не показывается: писать её там некуда. Прячет её теперь
+                // сам признак — SettingsBinder.Page смотрит на область, которую ему называет
+                // страница (план 29 §29.3), а не делегат, спрашивавший боевую область.
                 WheelOnly = true,
-                IsVisible = wheelScopeChosen,
                 Maximum = 60,
                 Current = () => SettingsCatalogue.Whole(wheel.CellsInSeries),
                 Apply = text => wheel.CellsInSeries = (int)SettingsCatalogue.ParseNumber(text),
@@ -137,7 +137,9 @@ internal static class ExperimentalPage
                 LabelKey = "SettingCellsCalculate",
                 HintKey = "SettingCellsCalculateHint",
                 ActionLabelKey = "SettingCellsCalculateAction",
-                IsVisible = wheelScopeChosen,
+                // Кнопка живёт и гаснет вместе со строкой, которую считает: считать ряд в общей
+                // области значило бы записать его некуда.
+                WheelOnly = true,
                 Current = () => "",
 
                 // Догадка становится решением человека: он видит число в соседней строке и либо
