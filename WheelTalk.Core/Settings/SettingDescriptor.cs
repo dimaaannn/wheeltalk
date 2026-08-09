@@ -58,6 +58,13 @@ public enum SettingKind
     /// </para>
     /// </summary>
     Slider,
+
+    /// <summary>
+    /// Строка-справка: показывает <see cref="SettingDescriptor.Current"/> и не правится никак.
+    /// Заведена ради номера версии — первого, что нужно разбору любой жалобы. Хранилища и меню
+    /// слоёв у неё нет; <see cref="SettingDescriptor.Apply"/> — пустой, звать его некому и незачем.
+    /// </summary>
+    Note,
 }
 
 /// <summary>

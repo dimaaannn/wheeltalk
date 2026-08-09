@@ -90,6 +90,38 @@ internal static class AppPage
                 Current = () => "",
                 Apply = _ => share(),
             },
+
+            // ---- О приложении ------------------------------------------------------------
+            // Справка, не настройка: номер сборки — первое, что нужно разбору любой жалобы, а
+            // увидеть его до сих пор было негде, кроме системных настроек Android.
+            new()
+            {
+                Key = "App:Version",
+                Kind = SettingKind.Note,
+                Page = SettingsPage.Application,
+                SectionKey = "SectionAbout",
+                LabelKey = "SettingAppVersion",
+                GlobalOnly = true,
+                Current = AppVersion,
+                Apply = _ => { },
+            },
         ];
+    }
+
+    /// <summary>
+    /// «1.4.0 (14)» — имя и код сборки из манифеста, как их видит Android. Из пакета, а не из
+    /// констант: вторая копия номера разошлась бы с манифестом при первом же выпуске.
+    /// </summary>
+    private static string AppVersion()
+    {
+        var context = Android.App.Application.Context;
+        var manager = context.PackageManager!;
+        string package = context.PackageName!;
+
+        var info = OperatingSystem.IsAndroidVersionAtLeast(33)
+            ? manager.GetPackageInfo(package, Android.Content.PM.PackageManager.PackageInfoFlags.Of(0L))!
+            : manager.GetPackageInfo(package, 0)!;
+
+        return $"{info.VersionName} ({info.LongVersionCode})";
     }
 }

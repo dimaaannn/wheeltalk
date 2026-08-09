@@ -333,6 +333,8 @@
   <data name="SettingPwmSmoothHint" xml:space="preserve"><value>Задерживает и цифру, и цвет, и стрелку тренда. Ноль — значение как есть.</value></data>
   <data name="TelemetryPackCells" xml:space="preserve"><value>Пакет {0} · {1} банок</value></data>
   <data name="SectionDiagnostics" xml:space="preserve"><value>Разбор поломок</value></data>
+  <data name="SectionAbout" xml:space="preserve"><value>О приложении</value></data>
+  <data name="SettingAppVersion" xml:space="preserve"><value>Версия</value></data>
   <data name="SettingsRun" xml:space="preserve"><value>Передать</value></data>
   <data name="SettingShareDiagnostics" xml:space="preserve"><value>Отладочная информация</value></data>
   <data name="SettingShareDiagnosticsHint" xml:space="preserve"><value>Собирает журнал приложения в файл и предлагает отправить. После падения собирается сам, при следующем запуске.</value></data>

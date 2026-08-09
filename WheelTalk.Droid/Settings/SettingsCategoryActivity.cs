@@ -430,8 +430,12 @@ public sealed class SettingsCategoryActivity : Activity
     /// <summary>Layer the value came from, plus — for numbers, always — the range: "70 % · Колесо AA:BB". Snap of МAUI's ScopeLabel/rows, minus the menu they needed a second glance to notice.</summary>
     private string? BuildMeta(SettingDescriptor descriptor, ResolvedSetting resolved)
     {
-        // У действия и у прослушивания нет ни значения, ни слоя, из которого оно пришло.
-        if (descriptor.ReportedByWheel || descriptor.Kind is SettingKind.Action or SettingKind.Slider) return null;
+        // У действия, прослушивания и справки нет ни значения в слоях, ни слоя, из которого оно пришло.
+        if (descriptor.ReportedByWheel
+            || descriptor.Kind is SettingKind.Action or SettingKind.Slider or SettingKind.Note)
+        {
+            return null;
+        }
 
         string origin = resolved.Origin switch
         {
@@ -503,6 +507,15 @@ public sealed class SettingsCategoryActivity : Activity
                     if (e.FromUser) _binder.Set(descriptor, e.Progress.ToString(CultureInfo.InvariantCulture));
                 };
                 return live;
+            }
+
+            case SettingKind.Note:
+            {
+                // Тот же вид, что у сообщённого колесом: жирная надпись без правки и без меню.
+                var note = new TextView(this) { Text = descriptor.Current() };
+                note.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+                note.SetTextSize(ComplexUnitType.Sp, 14);
+                return note;
             }
 
             case SettingKind.Action:
