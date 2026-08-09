@@ -78,6 +78,13 @@ public sealed partial class WheelSession : IDisposable
 
     private ITimer? _watchdog;
 
+    /// <summary>
+    /// За каким колесом сессия шла в последний раз — не то же, что <see cref="Address"/>: тот
+    /// обнуляется отключением. Переживает <see cref="DisconnectAsync"/> намеренно: вернуться к тому
+    /// же колесу после паузы — не смена колеса, и чистить подписчикам нечего.
+    /// </summary>
+    private string? _followedWheel;
+
     private readonly WheelDetector _detector;
     private readonly WheelProtocol? _replayProtocolOverride;
 
@@ -117,6 +124,24 @@ public sealed partial class WheelSession : IDisposable
     public string? Address { get; private set; }
 
     /// <summary>
+    /// Сессия пошла за другим колесом, чем прежде: прежний адрес и новый (прежний — <c>null</c> на
+    /// самом первом подключении за запуск). Единственное место, которое об этом <b>знает</b>, —
+    /// сессия, и потребители узнают отсюда, а не сравнением адресов у себя: каждое такое сравнение
+    /// — догадка о чужом состоянии, и четвёртый потребитель заводит четвёртую (план 29 §29.1).
+    /// <para>
+    /// Переподключение к тому же колесу сменой <b>не является</b>: адрес не менялся, поездка
+    /// продолжается, точка отсчёта «от старта» цела. Не является ею и обрыв с погоней — сессия
+    /// по-прежнему идёт за тем же колесом.
+    /// </para>
+    /// <para>
+    /// Поднимается синхронно из <see cref="ConnectAsync"/>, на потоке подключавшегося и раньше
+    /// первого кадра нового колеса: подписчик чистит своё до того, как в него польются чужие
+    /// данные. Кому нужен UI-поток — маршалит сам.
+    /// </para>
+    /// </summary>
+    public event Action<string?, string>? WheelChanged;
+
+    /// <summary>
     /// Протокол колеса — <b>не выбранный, а опознанный</b>: до первого кадра он неизвестен, и это
     /// нормальное состояние первой доли секунды после подключения. Заполняется
     /// <see cref="AutoDecoder"/> по заголовку кадра.
@@ -139,6 +164,14 @@ public sealed partial class WheelSession : IDisposable
 
         Address = address;
         Protocol = null;
+
+        if (!string.Equals(_followedWheel, address, StringComparison.OrdinalIgnoreCase))
+        {
+            var previous = _followedWheel;
+            _followedWheel = address;
+            WheelChanged?.Invoke(previous, address);
+        }
+
         _keepConnected = new CancellationTokenSource();
         _state.OnNext(ConnectionState.Connecting);
 

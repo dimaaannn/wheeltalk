@@ -123,8 +123,6 @@ public sealed class MainActivity : Activity
     private long _lastSnapshotAt;
     private long _lastBackPressAt;
 
-    /// <summary>Чей след сейчас копит <see cref="_trace"/> — см. проверку в <see cref="Render"/>.</summary>
-    private string? _tracedWheel;
     private bool _autoConnectTried;
     private bool _keepScreenOn;
     private bool _showOverLock;
@@ -232,6 +230,11 @@ public sealed class MainActivity : Activity
         _lastSnapshotAt = _timeProvider.GetTimestamp();
         _snapshotClock = _session.Telemetry.Subscribe(_ => _lastSnapshotAt = _timeProvider.GetTimestamp());
 
+        // Тоже на всю Activity, а не на видимую её часть: колесо меняют с экрана поиска (план 24
+        // §А2), когда панель остановлена, — а вернуться она должна к плиткам нового колеса, не к
+        // максимумам прежнего.
+        _session.WheelChanged += OnWheelChanged;
+
         // Приложение подняли самой командой — тогда extras лежат в стартовом Intent, и OnNewIntent
         // не будет вовсе.
         HandleCommand(Intent);
@@ -317,6 +320,7 @@ public sealed class MainActivity : Activity
         _logger.LogInformation("Ui.ScreenDestroyed IsFinishing={IsFinishing}", IsFinishing);
         _snapshotClock?.Dispose();
         _snapshotClock = null;
+        _session.WheelChanged -= OnWheelChanged;
         base.OnDestroy();
     }
 
@@ -786,11 +790,14 @@ public sealed class MainActivity : Activity
 
     private async Task Connect(string address)
     {
-        // Новое подключение — новый выезд, и следы на шкалах начинаются заново.
+        // Новое подключение — новый выезд, и следы на шкалах начинаются заново. Это шире смены
+        // колеса (её чистит событие сессии): подключение к тому же колесу с этого экрана — тоже
+        // новый выезд.
         _trace.Reset();
 
         // Имя анонса адаптер узнаёт в скане и подключении — то есть прямо сейчас. Это
-        // единственный момент, когда его стоит спросить заново (WheelIdentity.Forget).
+        // единственный момент, когда его стоит спросить заново (WheelIdentity.Forget), и здесь он
+        // о том же колесе: смену колеса, откуда бы она ни пришла, чистит подписка в CrashGuard.
         _identity.Forget();
 
         try
@@ -834,32 +841,21 @@ public sealed class MainActivity : Activity
     /// Приход очередного отсчёта. Экран здесь не трогается вовсе: он живёт на своём кадровом
     /// цикле (<see cref="MainScreenDriver"/>) и берёт то, что накопилось. Здесь только копится.
     /// </summary>
-    private void Render(TelemetrySnapshot snapshot)
-    {
-        // Смена колеса приходит и мимо Connect: экран поиска подключает сессию сам (план 24 §А2),
-        // а этот экран в тот момент остановлен и узнаёт о новом колесе только отсчётами. Пустить их
-        // в след прежнего нельзя: Max Шмелика (148 В) над Min Тенчика (76 В) растягивал
-        // автомасштаб ленты на разницу пакетов и рисовал чужие следы (баг владельца 09.08.2026).
-        // Проверка на отсчёте, а не в OnStart: первый кадр нового колеса приходит раньше OnStart.
-        // Переподключение к тому же колесу сюда не попадает — адрес не меняется, поездка
-        // продолжается, как ей и положено.
-        if (_session.Address is { } wheel && !string.Equals(wheel, _tracedWheel, StringComparison.OrdinalIgnoreCase))
-        {
-            if (_tracedWheel is not null)
-            {
-                _trace.Reset();
-                // Крайние значения плиток — той же природы, что след: «на что колесо оказалось
-                // способно». Максимум прежнего колеса на плитке нового — враньё (баг владельца
-                // 09.08.2026). Через UI-поток: отсчёт приходит с потока телеметрии, а сброс трогает
-                // разметку.
-                RunOnUiThread(() => _tiles?.ResetExtremes());
-            }
+    private void Render(TelemetrySnapshot snapshot) => _trace.Push(snapshot);
 
-            _tracedWheel = wheel;
-        }
-
-        _trace.Push(snapshot);
-    }
+    /// <summary>
+    /// Колесо сменилось — <see cref="WheelSession.WheelChanged"/>. Крайние значения плиток той же
+    /// природы, что след поездки: «на что колесо оказалось способно», — и максимум прежнего колеса
+    /// на плитке нового есть враньё (баг владельца 09.08.2026). Сам след и имя колеса чистятся не
+    /// здесь, а в <c>CrashGuard</c>: они переживают этот экран, а плитки — его часть.
+    /// <para>
+    /// Через UI-поток: сессия поднимает событие на потоке подключавшегося и о потоке ничего не
+    /// обещает, а сброс трогает разметку. Из главного потока это выполнится тут же, без кадра
+    /// задержки.
+    /// </para>
+    /// </summary>
+    private void OnWheelChanged(string? previous, string current) =>
+        RunOnUiThread(() => _tiles?.ResetExtremes());
 
     private void OnBannerChanged() => RunOnUiThread(ShowWheelAlert);
 

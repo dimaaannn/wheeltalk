@@ -27,6 +27,9 @@ public class WheelSessionTests
 
     private const string Mac = "88:25:83:F5:75:4A";
 
+    /// <summary>Второе колесо — Тенчик из той же ночи 09.08.2026, когда их впервые сменили за один запуск.</summary>
+    private const string OtherMac = "88:25:83:F2:1A:98";
+
     /// <summary>Отпечаток дерева GATT InMotion V2 (см. WheelDetectorTests) — заставляет сессию
     /// выбрать <c>InMotionDecoderV2_1</c> напрямую, а не гадать протокол по кадру: заголовок
     /// <c>AA AA</c> у V1 и V2 общий, и по кадру их не различить.</summary>
@@ -354,6 +357,54 @@ public class WheelSessionTests
         time.Advance(TimeSpan.FromMinutes(30));
 
         Assert.Equal(ConnectionState.Connected, session.CurrentState);
+        await session.DisconnectAsync();
+    }
+
+    /// <summary>
+    /// «Колесо сменилось» знает сессия, и только она (план 29 §29.1). До этого события знание
+    /// вычисляли трое — экран панели, плитки и имя колеса, — каждый своим сравнением адресов, и
+    /// ночь 09.08.2026 дала четыре бага одной природы: путь через поиск чью-нибудь из этих проверок
+    /// да минует.
+    /// </summary>
+    [Fact]
+    public async Task Going_after_another_wheel_is_announced_once()
+    {
+        var (session, _, _) = Build();
+        var changes = new List<(string? Previous, string Current)>();
+        session.WheelChanged += (previous, current) => changes.Add((previous, current));
+
+        await session.ConnectAsync(Mac);
+        await session.ConnectAsync(OtherMac);
+
+        Assert.Equal([(null, Mac), (Mac, OtherMac)], changes);
+
+        await session.DisconnectAsync();
+    }
+
+    /// <summary>
+    /// Переподключение к тому же колесу — не смена: поездка продолжается, точка отсчёта «от старта»
+    /// цела (планы 15/23), и чистить подписчикам нечего. Регистр адреса значения не имеет — тот же
+    /// порог, что был у проверки в <c>MainActivity.Render</c>.
+    /// </summary>
+    [Fact]
+    public async Task Coming_back_to_the_same_wheel_is_not_a_change()
+    {
+        var (session, transport, time) = Build();
+        int changes = 0;
+        session.WheelChanged += (_, _) => changes++;
+
+        await session.ConnectAsync(Mac);
+
+        // Три пути к тому же колесу: обрыв с погоней, «отключить» и снова подключиться, и тот же
+        // адрес другим регистром — так его отдаёт скан.
+        transport.DropLink();
+        await WaitForState(session, ConnectionState.Connected, time);
+
+        await session.DisconnectAsync();
+        await session.ConnectAsync(Mac.ToLowerInvariant());
+
+        Assert.Equal(1, changes);
+
         await session.DisconnectAsync();
     }
 
