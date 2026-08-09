@@ -319,11 +319,14 @@ public static class Tapes
         double empty = options.EmptyCellVolts;
 
         // Своё окно, а не пересчитанное из пакетного: у банки размах свой — доли вольта.
+        //
+        // Растяжка под размах поездки (SagAutoScale) сюда не действует нарочно — и была скопирована
+        // с пакетной зря. Ячейковая шкала заведена ради обратного: крупный план с фиксированным
+        // масштабом, где видно мелкие просадки. Math.Max с размахом поездки съедал ручной размах до
+        // самого перезапуска — первая же просадка растягивала шкалу, и правка настройки «ничего не
+        // меняла» (баг владельца 09.08.2026). Пакетной шкалы растяжка касается как и раньше: там
+        // это давний осознанный выбор, а не побочность копии.
         double span = options.SagWindowCellVolts;
-        if (options.SagAutoScale)
-        {
-            span = Math.Max(span, (reading.MaxVoltageV - reading.MinVoltageV) / divisor * SwingMargin);
-        }
         tape.SpanPerHeight = span;
         tape.SmoothSeconds = options.TapeSmoothSeconds;
 
