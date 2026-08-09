@@ -1,0 +1,74 @@
+# Анонс выпуска в Telegram-канал: срабатывает, когда владелец жмёт «Publish release» на
+# черновике, — событие `published` черновики не поднимают, поэтому недопубликованное бот не
+# разболтает никогда. Ручной прогон сборки (workflow_dispatch в release.yml) сюда тоже не попадает.
+#
+# Краткое описание берётся из аннотации тега — по конвенции release.md это одна строка сути
+# («Версия 1.4.0 — …»), и она уже пишется на каждый выпуск; второго текста не заводим, чтобы им
+# не расходиться. Полное описание остаётся по ссылке на релиз.
+#
+# Нужны два секрета (Settings → Secrets → Actions):
+#   TELEGRAM_BOT_TOKEN — токен бота от @BotFather;
+#   TELEGRAM_CHAT_ID   — канал: @имя_канала или числовой -100…; бот должен быть админом канала.
+# Секретов нет — шаг честно падает с подсказкой, а не молчит: анонс, который «не случился и не
+# сказал почему», хуже отсутствия анонса.
+name: Анонс в Telegram
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Строка сути из аннотации тега
+        id: summary
+        run: |
+          # subject аннотации — первая строка `git tag -a -m`. У лёгкого тега его нет — тогда
+          # берём имя релиза: анонс не должен падать из-за забытой аннотации.
+          SUBJECT=$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents:subject)')
+          if [ -z "$SUBJECT" ]; then SUBJECT="${{ github.event.release.name }}"; fi
+          {
+            echo "text<<EOF"
+            echo "$SUBJECT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: APK из релиза
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" --pattern '*.apk' --dir apk
+
+      - name: Отправка в канал
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUMMARY: ${{ steps.summary.outputs.text }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+        run: |
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
+            echo "Нет секретов TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID — анонс отправлять нечем."
+            echo "Завести: бот у @BotFather, бота админом в канал, оба значения в Secrets → Actions."
+            exit 1
+          fi
+
+          APK=$(ls apk/*.apk | head -1)
+
+          # Один sendDocument с подписью, а не текст плюс файл: два сообщения в канале — это два
+          # уведомления об одном выпуске. Подпись без parse_mode: markdown релиза телеграм всё
+          # равно не поймёт, а сломанная разметка хуже простого текста.
+          curl -sS --fail-with-body \
+            -F chat_id="$CHAT_ID" \
+            -F document=@"$APK" \
+            -F caption="$SUMMARY
+
+          $RELEASE_URL" \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendDocument"
