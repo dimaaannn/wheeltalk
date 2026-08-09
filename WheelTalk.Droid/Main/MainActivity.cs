@@ -122,6 +122,9 @@ public sealed class MainActivity : Activity
     private AlertState _alert = AlertState.Quiet;
     private long _lastSnapshotAt;
     private long _lastBackPressAt;
+
+    /// <summary>Чей след сейчас копит <see cref="_trace"/> — см. проверку в <see cref="Render"/>.</summary>
+    private string? _tracedWheel;
     private bool _autoConnectTried;
     private bool _keepScreenOn;
     private bool _showOverLock;
@@ -518,6 +521,14 @@ public sealed class MainActivity : Activity
 
         _lastBackPressAt = _timeProvider.GetTimestamp();
         _alertStrip.Show(AppStrings.StripBackAgainToExit, AlertStrip.Notice);
+
+        // Полоса живёт ровно столько, сколько действует второе «назад»: дольше она обещает выход,
+        // которого уже не будет. Прячет её возврат к слову тревоги (ShowWheelAlert) — он сам знает,
+        // что стоит показывать вместо неё: слово колеса или ничего. Без этого служебная строка
+        // висела до следующей смены тревоги, то есть на спокойном колесе — без конца (баг владельца
+        // 09.08.2026). Повторное нажатие ставит второй отложенный вызов — не страшно:
+        // ShowWheelAlert идемпотентен, а лишний вызов после выхода упирается в закрытый экран.
+        _alertStrip.PostDelayed(() => { if (!IsFinishing) ShowWheelAlert(); }, (long)DoubleBackWindow.TotalMilliseconds);
     }
 
     /// <summary>
@@ -823,7 +834,23 @@ public sealed class MainActivity : Activity
     /// Приход очередного отсчёта. Экран здесь не трогается вовсе: он живёт на своём кадровом
     /// цикле (<see cref="MainScreenDriver"/>) и берёт то, что накопилось. Здесь только копится.
     /// </summary>
-    private void Render(TelemetrySnapshot snapshot) => _trace.Push(snapshot);
+    private void Render(TelemetrySnapshot snapshot)
+    {
+        // Смена колеса приходит и мимо Connect: экран поиска подключает сессию сам (план 24 §А2),
+        // а этот экран в тот момент остановлен и узнаёт о новом колесе только отсчётами. Пустить их
+        // в след прежнего нельзя: Max Шмелика (148 В) над Min Тенчика (76 В) растягивал
+        // автомасштаб ленты на разницу пакетов и рисовал чужие следы (баг владельца 09.08.2026).
+        // Проверка на отсчёте, а не в OnStart: первый кадр нового колеса приходит раньше OnStart.
+        // Переподключение к тому же колесу сюда не попадает — адрес не меняется, поездка
+        // продолжается, как ей и положено.
+        if (_session.Address is { } wheel && !string.Equals(wheel, _tracedWheel, StringComparison.OrdinalIgnoreCase))
+        {
+            if (_tracedWheel is not null) _trace.Reset();
+            _tracedWheel = wheel;
+        }
+
+        _trace.Push(snapshot);
+    }
 
     private void OnBannerChanged() => RunOnUiThread(ShowWheelAlert);
 

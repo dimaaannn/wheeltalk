@@ -104,9 +104,16 @@ public static class SettingsServiceCollectionExtensions
 
         // История для плиток-графиков (план 23 §5.6). Колесо делегатом, а не строкой: адрес меняется
         // в живом приложении, а читатель один.
+        //
+        // Именно IOptions, а не IOptionsMonitor: живой экземпляр WheelOptions один — тот, чей адрес
+        // правит UserSettingsStore.SaveWheel, — и это экземпляр IOptions.Value. У монитора СВОЙ
+        // кэш и свой экземпляр, правок в первом он не видит, и через CurrentValue сюда приезжал
+        // адрес колеса, с которым приложение запустилось: после смены колеса в поиске все графики
+        // плиток продолжали показывать прежнее колесо (баг владельца 09.08.2026 — «Наклон» на
+        // Gotway, которого у Gotway не бывает).
         services.AddSingleton<IMetricHistory>(sp => new MetricHistoryReader(
             sp.GetRequiredService<RideDatabase>(),
-            () => sp.GetRequiredService<IOptionsMonitor<WheelOptions>>().CurrentValue.Address));
+            () => sp.GetRequiredService<IOptions<WheelOptions>>().Value.Address));
 
         return services;
     }
