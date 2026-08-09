@@ -87,13 +87,27 @@ jobs:
             exit 1
           fi
 
-          # Один sendDocument с подписью, а не текст плюс файл: два сообщения в канале — это два
-          # уведомления об одном выпуске. Подпись без parse_mode: markdown релиза телеграм всё
-          # равно не поймёт, а сломанная разметка хуже простого текста.
-          curl -sS --fail-with-body \
-            -F chat_id="$CHAT_ID" \
-            -F document=@"$APK" \
-            -F caption="$SUMMARY
+          # Файл — глазами до отправки: curl про недоступный файл говорит загадочное «(26)», и два
+          # прогона подряд ушли на перевод с его языка.
+          ls -la "$APK"
 
-          $RELEASE_URL" \
-            "https://api.telegram.org/bot$BOT_TOKEN/sendDocument"
+          CAPTION="$SUMMARY
+
+          $RELEASE_URL"
+
+          # Один sendDocument с подписью, а не текст плюс файл: два сообщения в канале — это два
+          # уведомления об одном выпуске. Текстовые поля — --form-string, а не -F: он не толкует
+          # содержимое (ни @, ни <, ни переносы строк), и подпись не может превратиться в попытку
+          # читать файл. Подпись без parse_mode: markdown релиза телеграм всё равно не поймёт.
+          if ! curl -sS --fail-with-body \
+            --form-string chat_id="$CHAT_ID" \
+            --form-string caption="$CAPTION" \
+            -F document=@"$APK" \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendDocument"; then
+
+            # Отказ раскладывается на части: жив ли токен — getMe, канал ничего не получает.
+            echo ""
+            echo "sendDocument не прошёл. Проба токена (getMe):"
+            curl -sS "https://api.telegram.org/bot$BOT_TOKEN/getMe" || true
+            exit 1
+          fi
