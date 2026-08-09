@@ -43,12 +43,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Строка сути из аннотации тега
+      - name: Подпись анонса
         id: summary
         run: |
-          # subject аннотации — первая строка `git tag -a -m`. У лёгкого тега его нет — тогда
-          # берём имя тега: анонс не должен падать из-за забытой аннотации.
-          SUBJECT=$(git for-each-ref "refs/tags/${TAG}" --format='%(contents:subject)')
+          # Подпись — из файла docs/releases/<версия>.tg.txt, если он есть и не пуст: его пишет
+          # агент при подготовке выпуска тем же коммитом, что раздел CHANGELOG и номера
+          # (docs/release.md, шаг 3), и тогда в канал уходит написанное человеком слово, а не
+          # техническая строка. Файл именной, на свою версию, — чужая подпись не подхватится.
+          #
+          # Нет файла — старая схема: subject аннотации тега (первая строка `git tag -a -m`);
+          # нет и её (лёгкий тег) — имя тега. Анонс не должен падать из-за забытого файла.
+          #
+          # Подпись Telegram ограничена 1024 знаками — файл длиннее обрезается честно, с
+          # многоточием, а не ошибкой отправки. Запас под ссылку на релиз — 100 знаков.
+          VERSION="${TAG#v}"; VERSION="${VERSION%%-b*}"
+          NOTES="docs/releases/${VERSION}.tg.txt"
+
+          if [ -s "$NOTES" ]; then
+            SUBJECT=$(head -c 900 "$NOTES")
+            if [ "$(wc -c < "$NOTES")" -gt 900 ]; then SUBJECT="${SUBJECT}…"; fi
+          else
+            SUBJECT=$(git for-each-ref "refs/tags/${TAG}" --format='%(contents:subject)')
+          fi
           if [ -z "$SUBJECT" ]; then SUBJECT="WheelTalk ${TAG}"; fi
           {
             echo "text<<EOF"
