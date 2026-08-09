@@ -104,12 +104,11 @@
   <data name="SettingsSummaryCount5" xml:space="preserve"><value>{0} настроек</value></data>
   <data name="SettingsSectionsHint" xml:space="preserve"><value>Разделы</value></data>
   <data name="SectionCurrent" xml:space="preserve"><value>Ток и напряжение</value></data>
-  <data name="SectionBattery" xml:space="preserve"><value>Батарея</value></data>
+  <data name="SectionBattery" xml:space="preserve"><value>Заряд и батарея</value></data>
   <data name="SectionReported" xml:space="preserve"><value>Сообщает колесо</value></data>
   <data name="SectionConnection" xml:space="preserve"><value>Соединение</value></data>
   <data name="SectionPwmAlarm" xml:space="preserve"><value>Тревога по ШИМ</value></data>
   <data name="SectionPwmModel" xml:space="preserve"><value>Расчёт ШИМ</value></data>
-  <data name="SectionCustomPercents" xml:space="preserve"><value>Свой расчёт заряда</value></data>
   <data name="SectionInMotion" xml:space="preserve"><value>InMotion</value></data>
   <data name="SettingsAdvanced" xml:space="preserve"><value>Дополнительно</value></data>
   <data name="SectionSpeedWarning" xml:space="preserve"><value>Предупреждение по скорости</value></data>
@@ -277,7 +276,7 @@
   <data name="UnitDegrees" xml:space="preserve"><value>°</value></data>
   <data name="SectionPwmTape" xml:space="preserve"><value>Шкала ШИМ</value></data>
   <data name="SectionVoltageTape" xml:space="preserve"><value>Шкала напряжения</value></data>
-  <data name="SectionTechniques" xml:space="preserve"><value>Что рисуется поверх шкал</value></data>
+  <data name="SectionTechniques" xml:space="preserve"><value>Поверх шкал</value></data>
   <data name="SectionDigits" xml:space="preserve"><value>Цифры</value></data>
   <data name="SectionAlertBars" xml:space="preserve"><value>Полосы тревоги</value></data>
   <data name="SectionLook" xml:space="preserve"><value>Оформление</value></data>
@@ -347,7 +346,7 @@
   <data name="ScreenTitleTelemetry" xml:space="preserve"><value>Данные</value></data>
   <data name="ScreenTitleScan" xml:space="preserve"><value>Поиск</value></data>
   <data name="SettingsTextEmpty" xml:space="preserve"><value>не задано</value></data>
-  <data name="SectionScreen" xml:space="preserve"><value>Экран</value></data>
+  <data name="SectionPhoneOnRide" xml:space="preserve"><value>Телефон в поездке</value></data>
   <data name="SettingKeepScreenOn" xml:space="preserve"><value>Не гасить экран</value></data>
   <data name="SettingKeepScreenOnHint" xml:space="preserve"><value>Пока приложение открыто, экран не гаснет по таймауту. Сбрасывается при запуске. То же — кнопкой в шторке.</value></data>
   <data name="ButtonKeepScreen" xml:space="preserve"><value>Не гасить</value></data>

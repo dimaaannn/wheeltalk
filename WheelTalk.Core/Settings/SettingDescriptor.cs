@@ -230,5 +230,20 @@ public sealed class SettingDescriptor
     /// <summary>Resource keys for those values, one per choice, in the same order.</summary>
     public IReadOnlyList<string> ChoiceLabelKeys { get; init; } = [];
 
+    /// <summary>
+    /// Связанные настройки — те, без которых эта не имеет смысла или чьё значение она меняет
+    /// (план 30 §4). Страница показывает их ссылкой под строкой: «→ Ячеек в ряду».
+    /// <para>
+    /// <b>Ключами, а не парой «страница + секция»</b>: где живёт цель, каталог знает сам, и переезд
+    /// строки на другую страницу ссылку не ломает. Ключ — единственное, что здесь устойчиво
+    /// (план 28: хранилище знает настройку только по нему).
+    /// </para>
+    /// <para>
+    /// Обе стороны связи объявляют её сами: связь не всегда взаимна — «чем меряет шкала» обязана
+    /// указать на ряд ячеек, а ряду ячеек незачем тянуть за собой все пороги шкалы.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> SeeAlso { get; init; } = [];
+
     public bool Visible => IsVisible is null || IsVisible();
 }

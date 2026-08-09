@@ -29,6 +29,9 @@ internal static class AlertsPage
                 SectionKey = "SectionPwmAlarm",
                 LabelKey = "SettingPwmWarning",
                 HintKey = "SettingPwmWarningHint",
+                // Этими порогами живут не только сигналы: по ним же красится лента ШИМ и рисуются
+                // полосы тревоги (план 30 §4.4) — второй половиной ответа заведует «Отображение».
+                SeeAlso = ["Display:ShowAlertBorder"],
                 UnitKey = "UnitPercent",
                 Maximum = 99,
                 Current = () => SettingsCatalogue.Fixed(alerts.PwmWarning, 0),
@@ -47,22 +50,9 @@ internal static class AlertsPage
                 Current = () => SettingsCatalogue.Fixed(alerts.PwmCritical, 0),
                 Apply = text => alerts.PwmCritical = SettingsCatalogue.ParseNumber(text),
             },
-            new()
-            {
-                Key = "Alerts:MaxBorderCoverage",
-                Kind = SettingKind.Number,
-                Page = SettingsPage.Warnings,
-                SectionKey = "SectionPwmAlarm",
-                LabelKey = "SettingBorderCoverage",
-                HintKey = "SettingBorderCoverageHint",
-                UnitKey = "UnitPercent",
-                // Свойство экрана, на который смотрят, а не колеса, под которым едут.
-                GlobalOnly = true,
-                Minimum = 1,
-                Maximum = 20,
-                Current = () => SettingsCatalogue.Fixed(alerts.MaxBorderCoverage * 100, 0),
-                Apply = text => alerts.MaxBorderCoverage = SettingsCatalogue.ParseNumber(text) / 100,
-            },
+            // Ширина полос тревоги уехала на «Отображение», в секцию «Полосы тревоги» (план 30
+            // §3.1, Д4): это размер полосы на экране, а не порог, при котором тревожатся. Ключ при
+            // переезде не тронут — заданное человеком значение на месте.
 
             new()
             {
@@ -116,6 +106,9 @@ internal static class AlertsPage
                 SectionKey = "SectionChannels",
                 LabelKey = "SettingChannelSound",
                 GlobalOnly = true,
+                // Каким этот звук будет — выбирают на «Тестовых функциях»: форма сигнала придумана
+                // нами и на дороге не проверена (план 28), а искать её будут здесь (план 30 §4.4).
+                SeeAlso = ["AlertSignals:Wave"],
                 Current = () => channels.Sound.ToString(),
                 Apply = text => channels.Sound = SettingsCatalogue.ParseBool(text),
             },

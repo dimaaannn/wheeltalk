@@ -1,4 +1,5 @@
-﻿using WheelTalk.Core.Settings;
+﻿using WheelTalk.Core.Alerts;
+using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Main;
@@ -16,7 +17,7 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 internal static class DisplayPage
 {
     public static IReadOnlyList<SettingDescriptor> Build(
-        DashboardOptions dashboard, ScreenOptions screen, PanelVariants panels)
+        DashboardOptions dashboard, AlertOptions alerts, PanelVariants panels)
     {
         return
         [
@@ -42,6 +43,9 @@ internal static class DisplayPage
                 HintKey = "SettingPwmGreyBelowHint",
                 UnitKey = "UnitPercent",
                 GlobalOnly = true,
+                // Своих порогов у цвета ленты нет — жёлтый и красный она берёт из «Предупреждений»
+                // (план 30 §4.4): сказать об этом на экране больше нечем.
+                SeeAlso = ["Alerts:PwmWarning"],
                 Maximum = 100,
                 Current = () => SettingsCatalogue.Fixed(dashboard.PwmGreyBelow, 0),
                 Apply = text => dashboard.PwmGreyBelow = SettingsCatalogue.ParseNumber(text),
@@ -58,10 +62,24 @@ internal static class DisplayPage
                 HintKey = "SettingBarberPolePwmHint",
                 UnitKey = "UnitPercent",
                 GlobalOnly = true,
+                SeeAlso = ["Alerts:PwmWarning"],
                 Minimum = 50,
                 Maximum = 150,
                 Current = () => SettingsCatalogue.Fixed(dashboard.BarberPolePwm, 0),
                 Apply = text => dashboard.BarberPolePwm = SettingsCatalogue.ParseNumber(text),
+            },
+            // Включатель штриховки стоит вплотную к её порогу (план 30 §3.1, Д5): раньше он жил в
+            // «Поверх шкал», и выключенная штриховка оставляла свой порог висеть в другой секции.
+            new()
+            {
+                Key = "Display:ShowBarberPole",
+                Kind = SettingKind.Toggle,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionPwmTape",
+                LabelKey = "SettingShowBarberPole",
+                GlobalOnly = true,
+                Current = () => dashboard.ShowBarberPole.ToString(),
+                Apply = text => dashboard.ShowBarberPole = SettingsCatalogue.ParseBool(text),
             },
             new()
             {
@@ -72,7 +90,8 @@ internal static class DisplayPage
                 LabelKey = "SettingPwmDpPerUnit",
                 HintKey = "SettingPwmDpPerUnitHint",
                 GlobalOnly = true,
-                Advanced = true,
+                // Признак «дополнительная» снят: секция смешанной быть не может, а он в ней и так
+                // не работал — строка все эти месяцы рисовалась обычной (план 30, Д8).
                 Minimum = 4,
                 Maximum = 30,
                 Current = () => SettingsCatalogue.Fixed(dashboard.PwmDpPerUnit, 0),
@@ -95,6 +114,9 @@ internal static class DisplayPage
                 LabelKey = "SettingSagWindow",
                 HintKey = "SettingSagWindowHint",
                 UnitKey = "UnitVolts",
+                // Пороги этой секции действуют, только пока шкала меряет пакетом: сам режим и
+                // пороги на ячейку живут на «Тестовых функциях» (план 30 §4.4).
+                SeeAlso = ["Display:VoltageScale"],
                 Minimum = 2,
                 Maximum = 40,
                 Current = () => SettingsCatalogue.Fixed(dashboard.SagWindowVolts, 0),
@@ -150,33 +172,6 @@ internal static class DisplayPage
             },
             new()
             {
-                Key = "Screen:KeepOn",
-                Kind = SettingKind.Toggle,
-                Page = SettingsPage.Display,
-                SectionKey = "SectionScreen",
-                LabelKey = "SettingKeepScreenOn",
-                HintKey = "SettingKeepScreenOnHint",
-                GlobalOnly = true,
-                Transient = true,
-                Current = () => screen.KeepOn.ToString(),
-                Apply = text => screen.KeepOn = SettingsCatalogue.ParseBool(text),
-            },
-            new()
-            {
-                Key = "Screen:ShowOverLock",
-                Kind = SettingKind.Toggle,
-                Page = SettingsPage.Display,
-                SectionKey = "SectionScreen",
-                LabelKey = "SettingShowOverLock",
-                HintKey = "SettingShowOverLockHint",
-                GlobalOnly = true,
-                Transient = true,
-                Current = () => screen.ShowOverLock.ToString(),
-                Apply = text => screen.ShowOverLock = SettingsCatalogue.ParseBool(text),
-            },
-
-            new()
-            {
                 Key = "Display:SagAutoScale",
                 Kind = SettingKind.Toggle,
                 Page = SettingsPage.Display,
@@ -184,7 +179,9 @@ internal static class DisplayPage
                 LabelKey = "SettingSagAutoScale",
                 HintKey = "SettingSagAutoScaleHint",
                 GlobalOnly = true,
-                Advanced = true,
+                // Признак «дополнительная» снят по той же причине, что у «Плотности шкалы»: в
+                // смешанной секции он терялся молча (план 30, Д8).
+
                 Current = () => dashboard.SagAutoScale.ToString(),
                 Apply = text => dashboard.SagAutoScale = SettingsCatalogue.ParseBool(text),
             },
@@ -198,6 +195,8 @@ internal static class DisplayPage
                 LabelKey = "SettingShowTrend",
                 HintKey = "SettingShowTrendHint",
                 GlobalOnly = true,
+                // Сглаживание данных задерживает и стрелку: считается она по тем же числам.
+                SeeAlso = ["Display:SmoothingSeconds"],
                 Current = () => dashboard.ShowTrend.ToString(),
                 Apply = text => dashboard.ShowTrend = SettingsCatalogue.ParseBool(text),
             },
@@ -232,18 +231,6 @@ internal static class DisplayPage
                 Current = () => dashboard.ShowBug.ToString(),
                 Apply = text => dashboard.ShowBug = SettingsCatalogue.ParseBool(text),
             },
-            new()
-            {
-                Key = "Display:ShowBarberPole",
-                Kind = SettingKind.Toggle,
-                Page = SettingsPage.Display,
-                SectionKey = "SectionTechniques",
-                LabelKey = "SettingShowBarberPole",
-                GlobalOnly = true,
-                Current = () => dashboard.ShowBarberPole.ToString(),
-                Apply = text => dashboard.ShowBarberPole = SettingsCatalogue.ParseBool(text),
-            },
-
             new()
             {
                 Key = "Display:HideTenthsAbove",
@@ -286,6 +273,8 @@ internal static class DisplayPage
                 // прибора ровно тогда, когда они нужнее всего (разбор — AGENTS.md, отклонения).
                 LabelKey = "SettingShowAlertBars",
                 GlobalOnly = true,
+                // Когда полосы загорятся — решают пороги тревог, своих у них нет (план 30 §4.4).
+                SeeAlso = ["Alerts:PwmWarning"],
                 Current = () => dashboard.ShowAlertBorder.ToString(),
                 Apply = text => dashboard.ShowAlertBorder = SettingsCatalogue.ParseBool(text),
             },
@@ -309,6 +298,28 @@ internal static class DisplayPage
                 Maximum = 5,
                 Current = () => SettingsCatalogue.Fixed(dashboard.BlinkHz, 0),
                 Apply = text => dashboard.BlinkHz = SettingsCatalogue.ParseNumber(text),
+            },
+            // Приехала с «Предупреждений» (план 30 §3.1, Д4): ширина полосы — это размер на экране,
+            // а не порог, при котором тревожатся; здесь она стоит рядом со своим включателем и
+            // частотой моргания. Ключ прежний — заданное человеком значение на месте. Живёт
+            // по-прежнему в AlertOptions: объект тот же, что читает движок тревог, и переезд строки
+            // его не касается.
+            new()
+            {
+                Key = "Alerts:MaxBorderCoverage",
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Display,
+                SectionKey = "SectionAlertBars",
+                LabelKey = "SettingBorderCoverage",
+                HintKey = "SettingBorderCoverageHint",
+                UnitKey = "UnitPercent",
+                // Свойство экрана, на который смотрят, а не колеса, под которым едут.
+                GlobalOnly = true,
+                IsVisible = () => dashboard.ShowAlertBorder,
+                Minimum = 1,
+                Maximum = 20,
+                Current = () => SettingsCatalogue.Fixed(alerts.MaxBorderCoverage * 100, 0),
+                Apply = text => alerts.MaxBorderCoverage = SettingsCatalogue.ParseNumber(text) / 100,
             },
 
             // Вариант панели (план 17 §3). Выбор общий на приложение, не слоем колеса — решение
@@ -362,7 +373,8 @@ internal static class DisplayPage
                 HintKey = "SettingTiltHint",
                 UnitKey = "UnitDegrees",
                 GlobalOnly = true,
-                Advanced = true,
+                // Признак «дополнительная» снят: в секции «Оформление» он терялся (план 30, Д8).
+
                 Minimum = -90,
                 Maximum = 90,
                 Step = 15,

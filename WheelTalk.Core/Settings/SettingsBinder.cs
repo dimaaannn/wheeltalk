@@ -132,6 +132,32 @@ public sealed class SettingsBinder
     public void PromoteToGlobal(SettingDescriptor descriptor, string scope) =>
         _settings.PromoteToGlobal(scope, descriptor.Key, descriptor.Layer);
 
+    /// <summary>
+    /// Связанные строки, на которые эта ссылается (план 30 §4), — уже разрешённые по ключу и
+    /// отсеянные ровно тем же ситом, что и сам список страницы (<see cref="Page"/>): ссылка на
+    /// строку, которой сейчас нет на экране, ведёт в пустоту. Потому и область: у настройки колеса
+    /// в общей области строки не бывает.
+    /// <para>
+    /// Ключ, которого в каталоге нет, здесь молча пропадает; ловит такие
+    /// <see cref="SettingsCatalogueRules"/> — на разборе, а не на экране.
+    /// </para>
+    /// </summary>
+    public IEnumerable<SettingDescriptor> RelatedTo(SettingDescriptor descriptor, string scope) =>
+        descriptor.SeeAlso
+            .Select(Find)
+            .Where(target => target is { Visible: true } && (scope.Length > 0 || !target.WheelOnly))
+            .Select(target => target!);
+
+    /// <summary>
+    /// Строка по ключу — то есть «где эта настройка живёт»: <see cref="SettingDescriptor.Page"/> и
+    /// <see cref="SettingDescriptor.SectionKey"/> спрашивают здесь, а не вычисляют у себя. Ссылки
+    /// (<see cref="RelatedTo"/>) ходят этим путём, и тем же путём пойдёт поиск по настройкам, когда
+    /// до него дойдёт очередь: ему нужно ровно это — от найденного ключа к месту на экране.
+    /// <para><c>null</c> — такого ключа в каталоге нет.</para>
+    /// </summary>
+    public SettingDescriptor? Find(string key) =>
+        _descriptors.FirstOrDefault(descriptor => string.Equals(descriptor.Key, key, StringComparison.Ordinal));
+
     /// <summary>Что показать в строке: значение той области, которую смотрят, и слой, из которого оно пришло.</summary>
     public ResolvedSetting Read(SettingDescriptor descriptor, string scope) =>
         descriptor.ReportedByWheel

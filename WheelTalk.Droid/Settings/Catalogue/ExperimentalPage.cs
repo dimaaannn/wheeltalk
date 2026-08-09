@@ -72,6 +72,8 @@ internal static class ExperimentalPage
                 // соседнюю строку экрана, — и продолжает работать, хотя выключатель звука остался
                 // страницей выше. Выбирать нечего, пока звук выключен.
                 IsVisible = () => channels.Sound,
+                // Выключенный звук гасит и выбор формы — ссылка ведёт к самому выключателю.
+                SeeAlso = ["AlertSignals:Sound"],
                 Choices = [nameof(AlarmWave.TwoToneStack), nameof(AlarmWave.Stack)],
                 ChoiceLabelKeys = ["SettingAlarmWaveTwoTone", "SettingAlarmWaveStack"],
                 Current = () => channels.Wave.ToString(),
@@ -119,6 +121,9 @@ internal static class ExperimentalPage
                 // сам признак — SettingsBinder.Page смотрит на область, которую ему называет
                 // страница (план 29 §29.3), а не делегат, спрашивавший боевую область.
                 WheelOnly = true,
+                // Второе число про ту же банку живёт на «Колесе» и означает другое: то про заряд,
+                // это про шкалу (план 30 §4.4).
+                SeeAlso = ["WheelConfig:CellVoltageTiltback"],
                 Maximum = 60,
                 Current = () => SettingsCatalogue.Whole(wheel.CellsInSeries),
                 Apply = text => wheel.CellsInSeries = (int)SettingsCatalogue.ParseNumber(text),
@@ -189,6 +194,10 @@ internal static class ExperimentalPage
                 SectionKey = "SectionCellVoltage",
                 LabelKey = "SettingVoltageScale",
                 HintKey = "SettingVoltageScaleHint",
+                // Обе половины ответа, до которых отсюда не дотянуться (план 30 §4.4, пример
+                // владельца): на банку шкала считается по ряду ячеек, пакетом — по порогам
+                // «Отображения».
+                SeeAlso = [CellsKey, "Display:SagWindowVolts"],
                 Choices = [nameof(VoltageScaleMode.Pack), nameof(VoltageScaleMode.Cells)],
                 ChoiceLabelKeys = ["SettingVoltageScalePack", "SettingVoltageScaleCells"],
                 Current = () => dashboard.VoltageScale.ToString(),
@@ -211,6 +220,8 @@ internal static class ExperimentalPage
                 HintKey = "SettingSagWindowCellHint",
                 UnitKey = "UnitVolts",
                 IsVisible = () => dashboard.VoltageScale != VoltageScaleMode.Pack,
+                // Действуют, только пока шкала меряет на банку, — режим строкой выше.
+                SeeAlso = ["Display:VoltageScale"],
                 Minimum = 0.1,
                 Maximum = 2,
                 Step = 0.05,

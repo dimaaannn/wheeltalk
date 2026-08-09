@@ -41,7 +41,6 @@ internal static class WheelPage
         // сохранённой копии, по которой можно было бы решить заранее, больше нет. До первого кадра
         // ответа нет вовсе — тогда настройки Begode не показываются, и это честно.
         bool IsGotway() => protocol() == WheelProtocol.Gotway;
-        bool IsInMotion() => protocol() == WheelProtocol.InMotion;
 
         return
         [
@@ -159,7 +158,13 @@ internal static class WheelPage
                 SectionKey = "SectionInMotion",
                 LabelKey = "SettingInMotionPassword",
                 HintKey = "SettingInMotionPasswordHint",
-                IsVisible = IsInMotion,
+
+                // Прячется, только когда протокол опознан и он не InMotion (план 30, решение
+                // владельца по Д1). Раньше строка появлялась лишь на опознанном InMotion, то есть
+                // при живом колесе, — а к паролю идут как раз после отказа, с колесом уже
+                // выключенным, и единственный вход к нему в этот момент пропадал. Лишняя строка у
+                // Gotway-райдера при молчащем колесе — цена, принятая владельцем.
+                IsVisible = () => protocol() is null or WheelProtocol.InMotion,
                 Current = () => wheel.InMotionPassword,
                 // Zero-padded to six digits on save, same as AppConfig.passwordForWheel's own
                 // setter — CANMessage.getPassword indexes the first six bytes unconditionally, so a
@@ -192,6 +197,9 @@ internal static class WheelPage
                 SectionKey = "SectionBattery",
                 LabelKey = "SettingUseBetterPercents",
                 HintKey = "SettingUseBetterPercentsHint",
+                // Три строки об одном вопросе — «откуда берётся процент заряда» — теперь в одной
+                // секции «Заряд и батарея» (план 30 §3.1, Д7): делил их не смысл, а признак
+                // «дополнительная». Ссылки между соседями по секции не нужны — они и так на виду.
                 Current = () => wheel.UseBetterPercents.ToString(),
                 Apply = text => wheel.UseBetterPercents = SettingsCatalogue.ParseBool(text),
             },
@@ -203,8 +211,9 @@ internal static class WheelPage
                 Key = "WheelConfig:CustomPercents",
                 Kind = SettingKind.Toggle,
                 Page = SettingsPage.Wheel,
-                SectionKey = "SectionCustomPercents",
-                Advanced = true,
+                SectionKey = "SectionBattery",
+                // Признак «дополнительная» снят вместе с переездом в общую секцию: секция обязана
+                // быть однородной, иначе он теряется молча (план 30, Д8).
                 LabelKey = "SettingCustomPercents",
                 HintKey = "SettingCustomPercentsHint",
                 Current = () => wheel.CustomPercents.ToString(),
@@ -215,11 +224,13 @@ internal static class WheelPage
                 Key = "WheelConfig:CellVoltageTiltback",
                 Kind = SettingKind.Number,
                 Page = SettingsPage.Wheel,
-                SectionKey = "SectionCustomPercents",
-                Advanced = true,
+                SectionKey = "SectionBattery",
                 LabelKey = "SettingCellVoltageTiltback",
                 HintKey = "SettingCellVoltageTiltbackHint",
                 UnitKey = "UnitVolts",
+                // Второе число про ту же банку — «Ячеек в ряду» — живёт на «Тестовых функциях», и
+                // означает оно другое: это про заряд, то про шкалу (план 30 §4.4).
+                SeeAlso = ["WheelConfig:CellsInSeries"],
                 // Volts on screen, hundredths in the object — the same split the original makes.
                 IsVisible = () => wheel.CustomPercents,
                 Minimum = 2.5,
@@ -240,6 +251,9 @@ internal static class WheelPage
                 LabelKey = "SettingHwPwm",
                 HintKey = "SettingHwPwmHint",
                 ReportedByWheel = true,
+                // Этот признак и гасит «Расчёт ШИМ»: ссылка объясняет, куда девается раздел
+                // (план 30 §4.4). Колесо считает ШИМ само — ссылки нет, потому что нет и раздела.
+                SeeAlso = ["WheelConfig:RotationSpeed"],
                 Current = () => wheel.HwPwm.ToString(),
                 Apply = text => wheel.HwPwm = SettingsCatalogue.ParseBool(text),
             },
@@ -285,6 +299,8 @@ internal static class WheelPage
                 HintKey = "SettingRotationSpeedHint",
                 UnitKey = "UnitKmh",
                 IsVisible = () => !wheel.HwPwm,
+                // Обратно к причине: раздел виден, только пока колесо не считает ШИМ само.
+                SeeAlso = ["WheelConfig:HwPwm"],
                 // Не ноль: все три числа стоят в знаменателе CalculatePwm. Ноль в скорости или
                 // множителе — деление на ноль, ноль в напряжении — вечно нулевой ШИМ, то есть
                 // тревога, которая не сработает никогда. В оригинале нижняя граница нулевая;

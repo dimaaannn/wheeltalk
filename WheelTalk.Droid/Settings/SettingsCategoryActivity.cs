@@ -51,8 +51,28 @@ public sealed class SettingsCategoryActivity : Activity
 {
     public const string ExtraPage = "page";
 
+    /// <summary>
+    /// Раздел, к которому прокрутить страницу сразу после открытия — ключ секции
+    /// (<see cref="SettingDescriptor.SectionKey"/>). Вместе с <see cref="ExtraKey"/> это
+    /// <b>общий вход «покажи вот эту строку»</b>, а не частность ссылок: тем же входом сядет
+    /// будущий поиск по настройкам (<c>docs/archive/settings-redesign.md</c>, вариант C), которому
+    /// только прокрутки и не хватало.
+    /// </summary>
+    public const string ExtraSection = "section";
+
+    /// <summary>Ключ строки, которую подсветить после прокрутки. Необязателен: без него страница просто встанет на разделе.</summary>
+    public const string ExtraKey = "key";
+
     private static readonly Color OverrideColor = Color.ParseColor("#FF8F00");
     private static readonly Color BorderColor = Color.ParseColor("#40808080");
+
+    /// <summary>Подсветка строки, к которой привели: гаснет сама через <see cref="HighlightMs"/>.</summary>
+    private static readonly Color HighlightColor = Color.ParseColor("#33FF8F00");
+
+    /// <summary>Цвет ссылки на связанную настройку. Синий: янтарь занят «переопределено», красный — предупреждением.</summary>
+    private static readonly Color LinkColor = Color.ParseColor("#4FA3E3");
+
+    private const int HighlightMs = 1200;
 
     /// <summary>Цвет предупреждения под строкой. Красный, а не янтарь переопределения: тот говорит «не заводское», это — «похоже на ошибку».</summary>
     private static readonly Color WarningColor = Color.ParseColor("#E53935");
@@ -80,6 +100,13 @@ public sealed class SettingsCategoryActivity : Activity
 
     private readonly Dictionary<string, View> _sectionAnchors = new(StringComparer.Ordinal);
 
+    /// <summary>Карточки строк по ключу — по ней находит свою цель подсветка перехода.</summary>
+    private readonly Dictionary<string, View> _rowCards = new(StringComparer.Ordinal);
+
+    /// <summary>Куда встать при открытии: раздел и строка из <see cref="ExtraSection"/>/<see cref="ExtraKey"/>. Срабатывает один раз.</summary>
+    private string? _pendingSection;
+    private string? _pendingKey;
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -92,6 +119,8 @@ public sealed class SettingsCategoryActivity : Activity
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
         _viewScope = _wheel.Address;
         _page = (SettingsPage)(Intent?.GetIntExtra(ExtraPage, (int)SettingsPage.Application) ?? (int)SettingsPage.Application);
+        _pendingSection = Intent?.GetStringExtra(ExtraSection);
+        _pendingKey = Intent?.GetStringExtra(ExtraKey);
 
         Title = TranslateExtension.Get(PageTitleKey(_page));
 
@@ -110,6 +139,57 @@ public sealed class SettingsCategoryActivity : Activity
         if (_viewScope.Length > 0) _viewScope = _wheel.Address;
 
         Rebuild();
+        RevealPending();
+    }
+
+    /// <summary>
+    /// Встать на том, ради чего страницу открыли: прокрутить к разделу и подсветить строку. Через
+    /// <c>Post</c>, потому что у только что собранной разметки координат ещё нет — якорь раздела
+    /// стоит в нуле. Срабатывает один раз: вернувшись на страницу позже, человек остаётся там, где
+    /// прокрутил сам.
+    /// </summary>
+    private void RevealPending()
+    {
+        if (_pendingSection is not { Length: > 0 } section) return;
+
+        string? key = _pendingKey;
+        _pendingSection = null;
+        _pendingKey = null;
+
+        _scroll.Post(() =>
+        {
+            ScrollToSection(section);
+            if (key is { Length: > 0 } && _rowCards.TryGetValue(key, out var card)) Highlight(card);
+        });
+    }
+
+    /// <summary>Вспышка карточки: цвет гаснет сам, чтобы подсветка не осталась вторым «переопределено».</summary>
+    private static void Highlight(View card)
+    {
+        card.SetBackgroundColor(HighlightColor);
+        card.PostDelayed(() => card.SetBackgroundColor(Color.Transparent), HighlightMs);
+    }
+
+    /// <summary>
+    /// Открыть страницу настроек на нужной строке — общий вход, которым ходят ссылки между строками
+    /// (план 30 §4) и который остаётся свободным для поиска по настройкам. Цель на этой же
+    /// странице — не новая Activity, а прокрутка на месте.
+    /// </summary>
+    private void Reveal(SettingDescriptor target)
+    {
+        if (target.Page == _page)
+        {
+            _pendingSection = target.SectionKey;
+            _pendingKey = target.Key;
+            RevealPending();
+            return;
+        }
+
+        var intent = new Intent(this, typeof(SettingsCategoryActivity));
+        intent.PutExtra(ExtraPage, (int)target.Page);
+        intent.PutExtra(ExtraSection, target.SectionKey);
+        intent.PutExtra(ExtraKey, target.Key);
+        StartActivity(intent);
     }
 
     /// <summary>
@@ -224,14 +304,22 @@ public sealed class SettingsCategoryActivity : Activity
         _wheelButton.Checked = onWheel;
     }
 
-    // ---- Quick-jump chips (только «Отображение» — 20 из 45 ручек, план B §"Отображение") -------
+    // ---- Quick-jump chips ---------------------------------------------------------------------
 
+    /// <summary>
+    /// Полоса быстрого перехода по разделам — <b>закреплённая над списком, вне прокрутки</b>
+    /// (вариант B, <c>docs/archive/settings-redesign.md</c>): её смысл в том и есть, что она
+    /// доступна из любого места длинной страницы.
+    /// <para>
+    /// Раздаётся не одному «Отображению», как раньше, а всякой странице, где разделов больше трёх
+    /// (план 30 §5): три помещаются на экран и без полосы, а на четвёртом начинается перелистывание
+    /// вслепую. Третьего уровня меню это заменяет — переход к разделу без второго нажатия.
+    /// </para>
+    /// </summary>
     private View? BuildSectionChips()
     {
-        if (_page != SettingsPage.Display) return null;
-
         var sections = _binder.Page(_page, _viewScope).Select(section => section.Key).Distinct().ToList();
-        if (sections.Count == 0) return null;
+        if (sections.Count <= 3) return null;
 
         var outer = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
         int padH = this.Dp(16);
@@ -283,6 +371,7 @@ public sealed class SettingsCategoryActivity : Activity
 
         _content.RemoveAllViews();
         _sectionAnchors.Clear();
+        _rowCards.Clear();
 
         // Внутри списка, а не над ним: прочитанное однажды пояснение должно уезжать вверх вместе с
         // прокруткой, а не занимать экран у каждой строки.
@@ -435,7 +524,41 @@ public sealed class SettingsCategoryActivity : Activity
             });
         }
 
+        if (BuildRelatedLinks(descriptor) is { } links) card.AddView(links);
+
+        _rowCards[descriptor.Key] = card;
         return card;
+    }
+
+    /// <summary>
+    /// Ссылки на связанные настройки — последней строкой карточки, ниже подсказки и предупреждения
+    /// (план 30 §4): сперва «что это», потом «что с ним связано». Отдельной строкой списка ссылка не
+    /// становится — одно значение остаётся одной строкой.
+    /// <para>
+    /// Отсеивание — на биндере (<see cref="SettingsBinder.RelatedTo"/>): ссылка на строку, которой
+    /// в этой области сейчас нет, никуда не ведёт.
+    /// </para>
+    /// </summary>
+    private View? BuildRelatedLinks(SettingDescriptor descriptor)
+    {
+        var targets = _binder.RelatedTo(descriptor, _viewScope).ToList();
+        if (targets.Count == 0) return null;
+
+        var row = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+        row.SetPadding(0, this.Dp(4), 0, 0);
+
+        foreach (var target in targets)
+        {
+            var link = new TextView(this) { Text = $"→ {TranslateExtension.Get(target.LabelKey)}" };
+            link.SetTextSize(ComplexUnitType.Sp, 12);
+            link.SetTextColor(LinkColor);
+            link.SetPadding(0, 0, this.Dp(16), 0);
+            link.Clickable = true;
+            link.Click += (_, _) => Reveal(target);
+            row.AddView(link);
+        }
+
+        return row;
     }
 
     /// <summary>Layer the value came from, plus — for numbers, always — the range: "70 % · Колесо AA:BB". Snap of МAUI's ScopeLabel/rows, minus the menu they needed a second glance to notice.</summary>

@@ -10,7 +10,8 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// </summary>
 internal static class AppPage
 {
-    public static IReadOnlyList<SettingDescriptor> Build(ConnectionOptions connection, PowerOptions power, Action share)
+    public static IReadOnlyList<SettingDescriptor> Build(
+        ConnectionOptions connection, PowerOptions power, ScreenOptions screen, Action share)
     {
         return
         [
@@ -54,14 +55,45 @@ internal static class AppPage
                 Current = () => SettingsCatalogue.Fixed(connection.RetryDelay.TotalSeconds, 0),
                 Apply = text => connection.RetryDelay = TimeSpan.FromSeconds(SettingsCatalogue.ParseNumber(text)),
             },
+
+            // ---- Телефон в поездке -------------------------------------------------------
+            //
+            // Три ручки об одном: доедет ли приложение до конца поездки живым. Экран не гаснет и
+            // ложится поверх замка — чтобы приборы было видно; экономия заряда душит фон — чтобы
+            // связь не умирала на полпути. Первые две приехали с «Отображения» (план 30 §3.1, Д6):
+            // они про телефон, а не про вид панели, и искать их будут здесь. Ключи прежние.
             new()
             {
-                // Тоже свойство приложения, а не колеса, и стоит рядом с повторами по той же
-                // причине: и то и другое — про то, доживёт ли связь до конца поездки.
+                Key = "Screen:KeepOn",
+                Kind = SettingKind.Toggle,
+                Page = SettingsPage.Application,
+                SectionKey = "SectionPhoneOnRide",
+                LabelKey = "SettingKeepScreenOn",
+                HintKey = "SettingKeepScreenOnHint",
+                GlobalOnly = true,
+                Transient = true,
+                Current = () => screen.KeepOn.ToString(),
+                Apply = text => screen.KeepOn = SettingsCatalogue.ParseBool(text),
+            },
+            new()
+            {
+                Key = "Screen:ShowOverLock",
+                Kind = SettingKind.Toggle,
+                Page = SettingsPage.Application,
+                SectionKey = "SectionPhoneOnRide",
+                LabelKey = "SettingShowOverLock",
+                HintKey = "SettingShowOverLockHint",
+                GlobalOnly = true,
+                Transient = true,
+                Current = () => screen.ShowOverLock.ToString(),
+                Apply = text => screen.ShowOverLock = SettingsCatalogue.ParseBool(text),
+            },
+            new()
+            {
                 Key = "Power:WarnAboutBatterySaver",
                 Kind = SettingKind.Toggle,
                 Page = SettingsPage.Application,
-                SectionKey = "SectionConnection",
+                SectionKey = "SectionPhoneOnRide",
                 LabelKey = "SettingWarnBatterySaver",
                 HintKey = "SettingWarnBatterySaverHint",
                 GlobalOnly = true,

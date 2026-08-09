@@ -29,13 +29,33 @@ public static class SettingsCatalogue
 {
     public static IReadOnlyList<SettingDescriptor> Build(CatalogueContext context)
     {
+        var descriptors = Describe(context);
+
+#if DEBUG
+        // Оба правила ловят то, чего не видно глазом: ссылку в никуда и потерянный признак
+        // «дополнительная» (план 30 §8). Проверка живёт здесь, потому что каталог собирается один
+        // раз при запуске, и это единственное место, где он целиком на руках. В Release её нет:
+        // райдеру от падения на старте пользы никакой, а ссылка в никуда просто не нарисуется.
+        if (SettingsCatalogueRules.Problems(descriptors) is { Count: > 0 } problems)
+        {
+            throw new InvalidOperationException(
+                "Каталог настроек нарушает свои правила:" + Environment.NewLine
+                + string.Join(Environment.NewLine, problems));
+        }
+#endif
+
+        return descriptors;
+    }
+
+    private static IReadOnlyList<SettingDescriptor> Describe(CatalogueContext context)
+    {
         return
         [
             .. WheelPage.Build(context.Wheel, context.Selected, context.Identity, context.Protocol,
                 context.RestartAuthentication),
-            .. AppPage.Build(context.Connection, context.Power, context.Share),
+            .. AppPage.Build(context.Connection, context.Power, context.Screen, context.Share),
             .. AlertsPage.Build(context.Alerts, context.Channels),
-            .. DisplayPage.Build(context.Dashboard, context.Screen, context.Panels),
+            .. DisplayPage.Build(context.Dashboard, context.Alerts, context.Panels),
 
             // Пятая страница собирается последней, потому что она и в списке последняя: не тема, а
             // отметка зрелости (план 28). Строки в ней — те же самые описания, что стояли выше, с
