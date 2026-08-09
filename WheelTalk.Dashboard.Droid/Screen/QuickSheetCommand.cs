@@ -13,6 +13,17 @@ public sealed class QuickSheetCommand
     public required string Icon { get; init; }
 
     /// <summary>
+    /// К какой смысловой стайке команда относится: колесо-сейчас, запись, связь, телефон
+    /// (план 25 §2, шаг 3). Шторка не знает, что эти слова значат, — она лишь ставит разделитель
+    /// там, где стайка сменилась: искать в группе из двух-трёх быстрее, чем в ряду из семи.
+    /// <para>
+    /// Пусто у всех — разделителей нет вовсе, и ряд выглядит как до группировки. Имена придумывает
+    /// хозяин меню: слова про колесо и телефон библиотеке не принадлежат.
+    /// </para>
+    /// </summary>
+    public string Group { get; init; } = "";
+
+    /// <summary>
     /// Read on every render rather than captured once, so a button whose wording depends on state
     /// (light "Фара"/"Фара вкл", record "Запись"/"Стоп") always shows the current word without the
     /// sheet needing to know why it changed.

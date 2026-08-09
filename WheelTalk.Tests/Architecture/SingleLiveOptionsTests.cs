@@ -1,4 +1,5 @@
 using System.Text;
+using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Architecture;
 
@@ -22,7 +23,7 @@ public class SingleLiveOptionsTests
     [Fact]
     public void No_production_source_asks_for_a_second_live_options_instance()
     {
-        var sources = ProductionSources(RepoRoot()).ToList();
+        var sources = ProductionSources(RepoFiles.Root).ToList();
 
         // Пустой обход прошёл бы «зелёным» навсегда: замок должен видеть код, а не отсутствие кода.
         Assert.True(sources.Count > 100, $"Обход исходников нашёл всего {sources.Count} файлов — ищет не там.");
@@ -120,18 +121,4 @@ public class SingleLiveOptionsTests
         }
     }
 
-    /// <summary>Корень — там, где лежит решение; путь абсолютным не хардкодится.</summary>
-    private static string RepoRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "WheelTalk.slnx")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new InvalidOperationException(
-            $"WheelTalk.slnx не найден вверх от {AppContext.BaseDirectory} — корень репозитория определить нечем.");
-    }
 }

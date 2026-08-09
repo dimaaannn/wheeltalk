@@ -86,6 +86,11 @@ public sealed class LabActivity : Activity
     private GestureDetector? _tapGesture;
     private bool _lightOn;
 
+    /// <summary>Стендовые состояния двух телефонных команд: щёлкают только сами себя — гасить и запирать стенду нечего.</summary>
+    private bool _keepOn;
+
+    private bool _overLock;
+
     /// <summary>База стенда с придуманной историей. Открывается в фоне: файл, миграции и набивка.</summary>
     private LabStore? _store;
 
@@ -604,9 +609,12 @@ public sealed class LabActivity : Activity
         _screen = new MainScreenView(this, _settings.Options, panel);
         // Источник полос рамки — тот же, что у вариант-режима: сила тревоги из показаний позиции.
         _screen.Bars.Alert = BarsAlert;
-        _screen.Sheet.PinLabel = () => "Закрепить";
+        // «Не закрывать», как в боевом: слово «Закрепить» уже занято командой с замком, и две
+        // одинаковые подписи в одной шторке — ровно та неразличимость, которую чинит план 25.
+        _screen.Sheet.PinLabel = () => "Не закрывать";
         _screen.Sheet.SetCommands(BuildFakeCommands());
         _screen.Sheet.SetScreens(BuildScreens());
+        _screen.Sheet.SetLinks(BuildFakeLinks());
         _host.AddView(_screen, 0, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         _dashboard.Rotation = (float)_settings.Options.Tilt;
@@ -692,6 +700,7 @@ public sealed class LabActivity : Activity
         new()
         {
             Icon = "💡",
+            Group = WheelNow,
             Label = () => _lightOn ? "Фара вкл" : "Фара",
             IsOn = () => _lightOn,
             Action = () =>
@@ -703,12 +712,14 @@ public sealed class LabActivity : Activity
         new()
         {
             Icon = "📢",
+            Group = WheelNow,
             Label = () => "Бип",
             Action = () => Task.CompletedTask,
         },
         new()
         {
             Icon = "🔴",
+            Group = Recording,
             Label = () => _settings.Recording ? "Стоп" : "Запись",
             IsOn = () => _settings.Recording,
             Action = () =>
@@ -720,12 +731,14 @@ public sealed class LabActivity : Activity
         new()
         {
             Icon = "🔄",
+            Group = Recording,
             Label = () => "Сброс max",
             Action = () => Task.CompletedTask,
         },
         new()
         {
             Icon = "🔌",
+            Group = Link,
             Label = () => "Связь",
             Action = () =>
             {
@@ -735,13 +748,51 @@ public sealed class LabActivity : Activity
         },
         new()
         {
-            Icon = "⚙",
-            Label = () => "Настройки",
+            // Двух телефонных команд у стенда нет: гасить ему нечего и замка у него нет. Место в
+            // ряду при этом чужое не занимается — стайка «телефон» просто пуста.
+            Icon = "☀",
+            Group = Phone,
+            Label = () => _keepOn ? "Не гаснет" : "Не гасить",
+            IsOn = () => _keepOn,
             Action = () =>
             {
-                StartActivity(new Intent(this, typeof(LabSettingsActivity)));
+                _keepOn = !_keepOn;
                 return Task.CompletedTask;
             },
+        },
+        new()
+        {
+            Icon = "🔒",
+            Group = Phone,
+            Label = () => _overLock ? "Закреплён" : "Закрепить",
+            IsOn = () => _overLock,
+            Action = () =>
+            {
+                _overLock = !_overLock;
+                return Task.CompletedTask;
+            },
+        },
+    ];
+
+    // Стайки — те же слова, что у приложения: шторка одна на двоих, и снимки со стенда должны
+    // показывать ровно тот ряд, который увидит райдер (план 25 §2, шаг 3).
+    private const string WheelNow = "wheel";
+    private const string Recording = "record";
+    private const string Link = "link";
+    private const string Phone = "phone";
+
+    /// <summary>
+    /// Переходы — та же полоса, что у корешков (план 25 §2, шаг 2). У стенда уходить некуда, кроме
+    /// собственных ручек, — они и стоят вместо трёх экранов приложения: важно, что стайка есть, за
+    /// разделителем и другого вида.
+    /// </summary>
+    private IReadOnlyList<QuickSheetLink> BuildFakeLinks() =>
+    [
+        new()
+        {
+            Icon = "⚙",
+            Label = "Настройки",
+            Open = () => StartActivity(new Intent(this, typeof(LabSettingsActivity))),
         },
     ];
 

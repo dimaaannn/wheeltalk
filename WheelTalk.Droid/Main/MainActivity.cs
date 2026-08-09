@@ -982,6 +982,23 @@ public sealed class MainActivity : Activity
     /// фиксирован на всё время жизни экрана, «прыгающего» списка нет — только подписи/подсветка
     /// команд читаются заново на каждой отрисовке шторки.
     /// </summary>
+    // ---- Стайки команд шторки (план 25 §2, шаг 3) --------------------------------------------
+    //
+    // Порода, а не частота: рука идёт к месту, глаз — к стайке из двух-трёх, а не к ряду из семи.
+    // Шторка о значении этих слов не знает — она лишь ставит черту там, где стайка сменилась.
+    private const string WheelNow = "wheel";
+    private const string Recording = "record";
+    private const string Link = "link";
+    private const string Phone = "phone";
+    private const string Replay = "replay";
+
+    /// <summary>
+    /// Семь оперативных команд — те, после которых человек продолжает ехать (план 25 §2, шаг 2:
+    /// «Данные», «Поездки» и «Настройки» ушли отсюда в полосу переходов, к корешкам экранов).
+    /// Порядок и состав закреплены: он и есть та точка отсчёта, от которой считается правило
+    /// «позиции фиксированы навсегда» (quick-commands-design.md §3), и держит его тест
+    /// <c>QuickSheetLayoutTests</c> — перестановка роняет сборку, а не всплывает жалобой.
+    /// </summary>
     private IReadOnlyList<QuickSheetCommand> BuildWheelCommands()
     {
         var commands = new List<QuickSheetCommand>
@@ -989,6 +1006,7 @@ public sealed class MainActivity : Activity
             new()
             {
                 Icon = "💡",
+                Group = WheelNow,
                 Label = () => _wheelConfig.LightEnabled ? AppStrings.ButtonLightOn : AppStrings.ButtonLight,
                 IsOn = () => _wheelConfig.LightEnabled,
                 Action = LightAsync,
@@ -996,6 +1014,7 @@ public sealed class MainActivity : Activity
             new()
             {
                 Icon = "📢",
+                Group = WheelNow,
                 Label = () => AppStrings.ButtonBeep,
                 Action = BeepAsync,
             },
@@ -1004,6 +1023,7 @@ public sealed class MainActivity : Activity
                 // Красный кружок, а не «⏺» (U+23FA) — тот из того же блока, что и символ питания
                 // выше, и с той же судьбой в системном шрифте.
                 Icon = "🔴",
+                Group = Recording,
                 Label = () => _recorder.IsRecording ? AppStrings.ButtonStopRecording : AppStrings.ButtonRecord,
                 IsOn = () => _recorder.IsRecording,
                 Action = RecordToggleAsync,
@@ -1019,6 +1039,7 @@ public sealed class MainActivity : Activity
             new()
             {
                 Icon = "🔄",
+                Group = Recording,
                 Label = () => AppStrings.ButtonResetPeaks,
                 IsEnabled = () => _trace.HasData,
                 Action = ResetPeaksAsync,
@@ -1035,6 +1056,7 @@ public sealed class MainActivity : Activity
                 // (найдено глазами на телефоне 01.08.2026). Правило простое: в шторке — только
                 // эмодзи, у них покрытие гарантировано, а знаки из Misc Technical — рулетка.
                 Icon = "🔌",
+                Group = Link,
                 Label = () => _session.CurrentState == ConnectionState.Disconnected
                     ? AppStrings.ButtonConnect
                     : AppStrings.ButtonDisconnect,
@@ -1050,6 +1072,7 @@ public sealed class MainActivity : Activity
                 // есть здесь, рядом с остальными «сейчас», а не в настройках через три экрана.
                 // Гаснет он от кнопки питания как обычно; флаг отменяет только таймаут.
                 Icon = "☀",
+                Group = Phone,
                 Label = () => _screenOptions.KeepOn ? AppStrings.ButtonKeepScreenOn : AppStrings.ButtonKeepScreen,
                 IsOn = () => _screenOptions.KeepOn,
                 Action = () =>
@@ -1065,54 +1088,12 @@ public sealed class MainActivity : Activity
                 // не требуя разблокировки (план 16 §2). Выключено по умолчанию: панель поверх
                 // замка отдаёт шторку с командами любому, кто телефон поднял.
                 Icon = "🔒",
+                Group = Phone,
                 Label = () => _screenOptions.ShowOverLock ? AppStrings.ButtonLockScreenOn : AppStrings.ButtonLockScreen,
                 IsOn = () => _screenOptions.ShowOverLock,
                 Action = () =>
                 {
                     _screenOptions.ShowOverLock = !_screenOptions.ShowOverLock;
-                    return Task.CompletedTask;
-                },
-            },
-            new()
-            {
-                // Вход на экран «Данные». Раньше туда вёл свайп влево по панели — жест убран
-                // 31.07.2026 как бесполезный, и место команды здесь: смотреть, что колесо на самом
-                // деле отдаёт, — такое же «сейчас», как фара и запись.
-                Icon = "📊",
-                Label = () => AppStrings.ButtonData,
-                Action = () =>
-                {
-                    OpenScreen(typeof(TelemetryActivity));
-                    return Task.CompletedTask;
-                },
-            },
-            new()
-            {
-                // Вход к списку поездок, а через него — к плееру (поездка → «Пуск»). Тап по точке
-                // записи остаётся, но быть единственным входом он не годится: точка — украшение в
-                // поле плашки связи, и на выезде 31.07.2026 её не нашли.
-                //
-                // Ведёт в RidesActivity, а не в RecordingActivity: та отвечает на вопрос «что
-                // пишется прямо сейчас», и попасть на неё, нажав «Поездки», — не то, зачем сюда
-                // шли. Подпись — слово самого экрана («Поездки»), иначе она путалась с соседней
-                // кнопкой «Запись», которая включает и выключает запись.
-                Icon = "📁",
-                Label = () => AppStrings.ButtonRides,
-                Action = () =>
-                {
-                    OpenScreen(typeof(RidesActivity));
-                    return Task.CompletedTask;
-                },
-            },
-            new()
-            {
-                Icon = "⚙",
-                Label = () => AppStrings.ButtonSettings,
-                Action = () =>
-                {
-                    // Через OpenScreen, как и все выходы с главного экрана: настройки поверх замка
-                    // не показываются, сперва разблокировка.
-                    OpenScreen(typeof(SettingsActivity));
                     return Task.CompletedTask;
                 },
             },
@@ -1126,6 +1107,7 @@ public sealed class MainActivity : Activity
             commands.Add(new QuickSheetCommand
             {
                 Icon = "▶",
+                Group = Replay,
                 Label = () => _session.CurrentState == ConnectionState.Disconnected
                     ? AppStrings.ReplayStart
                     : AppStrings.ReplayStop,
@@ -1135,6 +1117,42 @@ public sealed class MainActivity : Activity
 
         return commands;
     }
+
+    /// <summary>
+    /// Переходы на другие экраны — своя стайка в полосе корешков (план 25 §2, шаг 2). Оперативной
+    /// командой переход не является: после него человек уже не едет, а ищут их там же, где корешки,
+    /// — «уйти отсюда» рядом с «показать другое здесь», но за разделителем и другим видом.
+    /// <para>
+    /// Значок «Данных» — 📈, а не 📊: тем же знаком помечен корешок «Панель» в реестре экранов, и
+    /// один знак на два разных дела был готовым объяснением жалобы «какая за что — непонятно»
+    /// (план 25 §1). Уникальность знаков в шторке держит тест.
+    /// </para>
+    /// </summary>
+    private IReadOnlyList<QuickSheetLink> BuildScreenLinks() =>
+    [
+        new()
+        {
+            Icon = "📈",
+            Label = AppStrings.ButtonData,
+            Open = () => OpenScreen(typeof(TelemetryActivity)),
+        },
+        new()
+        {
+            // Ведёт в RidesActivity, а не в RecordingActivity: та отвечает на вопрос «что пишется
+            // прямо сейчас», и попасть на неё, нажав «Поездки», — не то, зачем сюда шли.
+            Icon = "📁",
+            Label = AppStrings.ButtonRides,
+            Open = () => OpenScreen(typeof(RidesActivity)),
+        },
+        new()
+        {
+            // Через OpenScreen, как и все выходы с главного экрана: настройки поверх замка не
+            // показываются, сперва разблокировка.
+            Icon = "⚙",
+            Label = AppStrings.ButtonSettings,
+            Open = () => OpenScreen(typeof(SettingsActivity)),
+        },
+    ];
 
     private Task LightAsync() => _session.SendCommand(new WheelCommand.SetLight(!_wheelConfig.LightEnabled));
 
@@ -1241,6 +1259,7 @@ public sealed class MainActivity : Activity
         _sheet.PinLabel = () => AppStrings.ButtonPin;
         _sheet.SetCommands(BuildWheelCommands());
         _sheet.SetScreens(BuildScreenTabs());
+        _sheet.SetLinks(BuildScreenLinks());
 
         _driver.Attach(_screen.Current, BuildFrame);
         _driver.Refresh();
