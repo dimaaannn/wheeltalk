@@ -123,18 +123,33 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          # Текст релиза — из docs/releases/<версия>.md, если он есть и не пуст: его пишет агент
+          # при подготовке выпуска (docs/release.md, шаг 3), и тогда черновик готов к публикации
+          # как есть. Файл именной, на свою версию, — чужой текст не подхватится никогда: нет
+          # файла или он пуст — старая схема, черновик с напоминанием дописать руками.
+          # Измеримое (файл, размер, подпись, SHA-256) машина добавляет в конце в любом случае.
+          NOTES_SRC="docs/releases/${{ steps.apk.outputs.version }}.md"
+          if [ -s "$NOTES_SRC" ]; then
+            cat "$NOTES_SRC" > "$RUNNER_TEMP/notes.md"
+            echo "" >> "$RUNNER_TEMP/notes.md"
+          else
+            cat > "$RUNNER_TEMP/notes.md" <<EOF
           Полное описание изменений — [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md).
 
+          <!-- Дописать перед публикацией: что не проверено на живых колёсах; что выглядит регрессией и почему ею не является. Или заранее положить текст в docs/releases/<версия>.md — тогда черновик приходит готовым. -->
+
+          EOF
+          fi
+
+          cat >> "$RUNNER_TEMP/notes.md" <<EOF
           **Файл.** \`${{ steps.apk.outputs.name }}\`, ${{ steps.apk.outputs.size }}, одна архитектура \`arm64-v8a\`, minSdk 28 (Android 9).
           Подпись — своим ключом, схема v3, отпечаток сертификата в [docs/release.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/release.md).
 
           \`\`\`
           SHA-256 (APK)  ${{ steps.apk.outputs.sha256 }}
           \`\`\`
-
-          <!-- Дописать перед публикацией: что не проверено на живых колёсах; что выглядит регрессией и почему ею не является. -->
           EOF
+
           gh release create "${{ github.ref_name }}" "${{ steps.apk.outputs.path }}" \
             --draft \
             --title "WheelTalk ${{ steps.apk.outputs.version }}" \
