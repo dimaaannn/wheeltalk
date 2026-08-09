@@ -122,7 +122,15 @@ public sealed class PlaybackActivity : Activity
             Window?.AddFlags(WindowManagerFlags.KeepScreenOn);
         }
 
-        SetContentView(BuildLayout());
+        var page = BuildLayout();
+        SetContentView(page);
+
+        // После SetContentView, как у всех прочих экранов, и это не вкус: до него у окна нет
+        // декора, а PhoneWindow.getInsetsController с Android 12 лезет прямо в декор — на
+        // vivo I2407 (Android 16) плеер падал на входе двойным крахом с восстановлением стека
+        // (разбор дампа 07.08.2026, найден 10.08.2026). Здесь Apply жил внутри BuildLayout —
+        // единственный из шести экранов до SetContentView.
+        EdgeToEdge.Apply(this, page);
 
         long rideId = Intent?.GetLongExtra(ExtraRideId, 0) ?? 0;
         _ = LoadAsync(rideId);
@@ -324,7 +332,6 @@ public sealed class PlaybackActivity : Activity
         var page = new FrameLayout(this);
         page.SetBackgroundColor(_options.Palette.Background);
         page.AddView(root);
-        EdgeToEdge.Apply(this, page);
         return page;
     }
 
