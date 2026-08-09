@@ -845,7 +845,16 @@ public sealed class MainActivity : Activity
         // продолжается, как ей и положено.
         if (_session.Address is { } wheel && !string.Equals(wheel, _tracedWheel, StringComparison.OrdinalIgnoreCase))
         {
-            if (_tracedWheel is not null) _trace.Reset();
+            if (_tracedWheel is not null)
+            {
+                _trace.Reset();
+                // Крайние значения плиток — той же природы, что след: «на что колесо оказалось
+                // способно». Максимум прежнего колеса на плитке нового — враньё (баг владельца
+                // 09.08.2026). Через UI-поток: отсчёт приходит с потока телеметрии, а сброс трогает
+                // разметку.
+                RunOnUiThread(() => _tiles?.ResetExtremes());
+            }
+
             _tracedWheel = wheel;
         }
 
@@ -1271,11 +1280,20 @@ public sealed class MainActivity : Activity
         _driver.Refresh();
     }
 
-    private TilesScreen Tiles() =>
-        _tiles ??= new TilesScreen(this, _dashboardOptions, TranslateExtension.Get,
+    private TilesScreen Tiles()
+    {
+        if (_tiles is not null) return _tiles;
+
+        _tiles = new TilesScreen(this, _dashboardOptions, TranslateExtension.Get,
             MainApplication.Services.GetRequiredService<IMetricHistory>(),
             // Раскладка живёт в слоях настроек; экрану выдан только узкий доступ к своему ключу.
             new TileLayoutSetting(_layers));
+
+        // Намерения — тому же исполнителю, что у панели. Без этой строки плитки были немы:
+        // галочка шторки и плашка связи звали в пустоту (стенд ставил своё, потому там работало).
+        _tiles.OnIntent = OnScreenIntent;
+        return _tiles;
+    }
 
     private void LoadFonts()
     {

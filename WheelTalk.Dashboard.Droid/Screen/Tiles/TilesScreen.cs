@@ -39,7 +39,7 @@ public sealed class TilesScreen : IMainScreen
     private readonly IMetricHistory? _history;
     private readonly DashboardOptions _options;
     private readonly DashboardPalette _palette;
-    private readonly FrameLayout _root;
+    private readonly TilesRoot _root;
     private readonly RecyclerView _list;
     private readonly View _buttons;
 
@@ -49,8 +49,20 @@ public sealed class TilesScreen : IMainScreen
     /// неё показывал только один из них.
     /// </summary>
     private readonly SheetHintDrawable _hint = new();
+
+    /// <summary>
+    /// Плашка связи — тот же рисовальщик, что у панели, по тому же прецеденту, что и галочка выше:
+    /// связь принадлежит приложению, и экран, на котором её не видно, молчит о беде (баг владельца
+    /// 09.08.2026 — «таблички не видно на плитках»). Имя колеса при живой связи плитки не рисуют —
+    /// у них наверху не пустой центр панели, а плитка с содержимым.
+    /// </summary>
+    private readonly LinkBadgeDrawable _link;
+
     private readonly TileAdapter _adapter;
     private readonly int _padding;
+
+    /// <summary>Была ли плашка на прошлом кадре: гашение — тоже перерисовка, одной последней.</summary>
+    private bool _linkShown;
 
     private int _topInset = -1;
     private bool _editing;
@@ -95,7 +107,10 @@ public sealed class TilesScreen : IMainScreen
 
         _buttons = EditButtons(context, options.Palette);
 
-        _root = new TilesRoot(context, _hint, options.Palette.Ink, () => OnIntent?.Invoke(MainScreenIntent.ShowSheet));
+        _link = new LinkBadgeDrawable { Options = options, NameOnLive = false };
+        _root = new TilesRoot(context, _hint, _link, options.Palette.Ink,
+            () => OnIntent?.Invoke(MainScreenIntent.ShowSheet),
+            () => OnIntent?.Invoke(MainScreenIntent.ShowConnection));
         _root.AddView(_list, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         _root.AddView(_buttons, new FrameLayout.LayoutParams(
@@ -118,6 +133,19 @@ public sealed class TilesScreen : IMainScreen
         // В правке галочки нет: низ экрана занят «сохранить/отменить», и подсказка про шторку там
         // спорила бы с ними и за место, и за касание.
         _hint.Visible = frame.ShowSheetHint && !_editing;
+
+        _link.Phase = frame.LinkPhase;
+        _link.StateText = frame.LinkText;
+        _link.Seconds = frame.LinkSeconds;
+        _link.WheelName = frame.WheelName;
+        _link.SpeedKmh = frame.Reading?.SpeedKmh ?? 0;
+
+        // Список сам не знает, что поверх него живёт плашка: пока она видна (и один кадр после —
+        // стереть погасшую), корень перерисовывается кадром. JustConnected не Live — зелёная
+        // плашка мигает и тает этим же путём.
+        bool linkShown = frame.LinkPhase != LinkPhase.Live;
+        if (linkShown || _linkShown) _root.Invalidate();
+        _linkShown = linkShown;
 
         _adapter.Render(frame.Snapshot);
         PollCharts();
@@ -167,6 +195,12 @@ public sealed class TilesScreen : IMainScreen
     }
 
     /// <summary>
+    /// Смена колеса: крайние значения прежнего к новому не относятся. Зовёт хозяин экрана — только
+    /// он знает, что колесо сменилось; кадр этого не несёт, в нём нет адреса.
+    /// </summary>
+    public void ResetExtremes() => _adapter.ResetExtremes();
+
+    /// <summary>
     /// «Назад» в режиме правки значит «не сохранять» — то же, что кнопка «отменить». Иначе кнопка
     /// закрывала бы приложение вместе с незакрытой правкой.
     /// </summary>
@@ -188,6 +222,7 @@ public sealed class TilesScreen : IMainScreen
         if (_topInset == top) return;
 
         _topInset = top;
+        _root.TopInset = top;
         ApplyPadding();
     }
 
@@ -328,17 +363,29 @@ public sealed class TilesScreen : IMainScreen
     private const int HintReserveDp = 40;
 
     /// <summary>
-    /// Корень экрана, умеющий подсказку про шторку. Отдельным типом, потому что рисовать её надо
-    /// **поверх** списка и ловить по ней тап раньше, чем его возьмёт список: галочка стоит у самого
-    /// низа, где под ней всегда какая-нибудь плитка.
+    /// Корень экрана, умеющий подсказку про шторку и плашку связи. Отдельным типом, потому что
+    /// рисовать их надо **поверх** списка и ловить по ним тап раньше, чем его возьмёт список:
+    /// галочка стоит у самого низа, плашка — у самого верха, и под обеими всегда какая-нибудь
+    /// плитка.
     /// </summary>
-    private sealed class TilesRoot(Context context, SheetHintDrawable hint, Color ink, Action onHintTapped)
+    private sealed class TilesRoot(
+        Context context, SheetHintDrawable hint, LinkBadgeDrawable link, Color ink,
+        Action onHintTapped, Action onLinkTapped)
         : FrameLayout(context)
     {
         private readonly RectF _bounds = new();
 
+        /// <summary>Инсет статус-бара: плашка стоит под ним, как у панели (`DashboardView.LinkArea`).</summary>
+        public int TopInset { get; set; }
+
         public override bool OnInterceptTouchEvent(MotionEvent? e)
         {
+            if (e?.Action == MotionEventActions.Down && HitsLink(e.GetX(), e.GetY()))
+            {
+                onLinkTapped();
+                return true;
+            }
+
             if (e?.Action == MotionEventActions.Down && HitsHint(e.GetX(), e.GetY()))
             {
                 onHintTapped();
@@ -352,14 +399,25 @@ public sealed class TilesScreen : IMainScreen
         {
             base.DispatchDraw(canvas);
 
+            float density = Resources!.DisplayMetrics!.Density;
             _bounds.Set(0, 0, Width, Height);
-            hint.Draw(canvas, _bounds, Resources!.DisplayMetrics!.Density, ink);
+            hint.Draw(canvas, _bounds, density, ink);
+
+            _bounds.Set(0, TopInset, Width, Height);
+            link.Draw(canvas, _bounds, density);
         }
 
         private bool HitsHint(float x, float y)
         {
             _bounds.Set(0, 0, Width, Height);
             return hint.Hits(_bounds, Resources!.DisplayMetrics!.Density, x, y);
+        }
+
+        /// <summary>Плашки нет — `Hits` сам отвечает «нет»: в Live под этим местом обычная плитка.</summary>
+        private bool HitsLink(float x, float y)
+        {
+            _bounds.Set(0, TopInset, Width, Height);
+            return link.Hits(_bounds, Resources!.DisplayMetrics!.Density, x, y);
         }
     }
 
@@ -719,6 +777,19 @@ public sealed class TilesScreen : IMainScreen
 
             _snapshot = snapshot;
             foreach (var view in _views) view.Render(snapshot);
+        }
+
+        /// <summary>
+        /// Крайние значения — с нуля: максимум прежнего колеса ничего не говорит о новом. По всем
+        /// созданным вью, а не по видимым: укатившаяся за край плитка вернётся со старым числом,
+        /// если забыть её здесь.
+        /// </summary>
+        public void ResetExtremes()
+        {
+            foreach (var view in _views)
+            {
+                if (view is ExtremumTileView extremum) extremum.Reset();
+            }
         }
 
         private sealed class TileHolder(TileView tile) : RecyclerView.ViewHolder(tile)

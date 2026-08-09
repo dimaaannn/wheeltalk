@@ -99,6 +99,13 @@ public sealed class LinkBadgeDrawable
     public double SpeedKmh { get; set; }
 
     /// <summary>
+    /// Рисовать ли имя колеса, когда связь в порядке. Панель рисует — имя стоит над цифрой скорости
+    /// на месте, отведённом ему раскладкой. Плитки — нет: у них наверху обычная плитка, и имя легло
+    /// бы поверх её содержимого. Плашка беды при этом общая: беда важнее любой плитки.
+    /// </summary>
+    public bool NameOnLive { get; set; } = true;
+
+    /// <summary>
     /// Попало ли касание в плашку. Проверка живёт рядом с рисованием по той же причине, что у точки
     /// записи: координаты плашки — здешние, и вторая их копия в экране разошлась бы с этой при
     /// первой же правке отступа.
@@ -125,7 +132,7 @@ public sealed class LinkBadgeDrawable
         var phase = Effective();
         if (phase == LinkPhase.Live)
         {
-            DrawName(canvas, rect, density);
+            if (NameOnLive) DrawName(canvas, rect, density);
             return;
         }
 
