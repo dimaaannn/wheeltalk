@@ -16,8 +16,9 @@ namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 /// жестами. Своя реализация на канве была и снята: два рисовальщика одного и того же расходятся
 /// видом, и держать их ради полутора десятков строк незачем.
 /// <para>
-/// Точки приходят готовыми (<see cref="SetPoints"/>): читает их экран у <see cref="IMetricHistory"/>
-/// по таймеру и вне потока отрисовки — запрос к SQLite на кадре это заикание (план 23 §5.6).
+/// Данные приходят <b>готовым набором</b> (<see cref="ShowData"/>): и чтение истории, и стройка
+/// набора идут вне потока отрисовки — запрос к SQLite на кадре это заикание (план 23 §5.6), а
+/// стройка тысячи точек за JNI-швом — заикание вдесятеро дороже (план 31 §3.2).
 /// </para>
 /// <para>
 /// <b>Число лежит поверх линии</b>, а не под ней: плитка мелкая, и делить её надвое значило бы
@@ -111,8 +112,19 @@ internal sealed class ChartTileView : TileView
         });
     }
 
-    /// <summary>Сколько точек просить у истории: больше, чем пикселей в ширине, рисовать некуда.</summary>
+    /// <summary>
+    /// Сколько точек влезет в линию: больше, чем пикселей в ширине, рисовать некуда.
+    /// <para>
+    /// <b>Это не то же, что число корзин запроса.</b> История отдаёт из каждой корзины минимум и
+    /// максимум (план 23 §5.6), то есть до двух точек на корзину, — и плитка шириной 700 px,
+    /// попросившая 700 корзин, получала 1334 точки (замер 10.08.2026). Пересчёт корзин делает тот,
+    /// кто спрашивает: <see cref="PointsPerBucket"/>.
+    /// </para>
+    /// </summary>
     public int Points => Math.Max(1, Width);
+
+    /// <summary>Сколько точек приходит из одной корзины истории: минимум и максимум.</summary>
+    public const int PointsPerBucket = 2;
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
         TileChart options, TileLimits? limits, bool heatBar)
@@ -150,7 +162,17 @@ internal sealed class ChartTileView : TileView
     /// правый край липнул бы к «сейчас», пока левый уползает за экран.
     /// </para>
     /// </summary>
-    public void SetPoints(IReadOnlyList<MetricPoint> points, DateTimeOffset from, DateTimeOffset to)
+    /// <summary>
+    /// Вручить <b>готовый</b> набор данных. Главному потоку здесь остаётся только то, что вне его
+    /// сделать нельзя: границы осей, подмена <c>Data</c> и перерисовка.
+    /// <para>
+    /// Стройка набора (<see cref="ChartLine.Build"/> — по объекту-точке за JNI-швом, до тысячи с
+    /// лишним точек) живёт у того, кто читал историю, и идёт вне потока отрисовки: замер на
+    /// устройстве 10.08.2026 дал 115–370 мс на главном потоке каждые полторы секунды — от семи до
+    /// двадцати пропущенных кадров подряд, и в прокрутке, и в покое (план 31 §3.2).
+    /// </para>
+    /// </summary>
+    public void ShowData(LineData? data, DateTimeOffset from, DateTimeOffset to)
     {
         // Масштаб по крайним значениям или от нуля — решает плитка (решение владельца 04.08.2026).
         // У напряжения и температуры размах мал против самого значения, и без обрезки линия у них
@@ -161,7 +183,7 @@ internal sealed class ChartTileView : TileView
         _chart.XAxis!.AxisMinimum = 0f;
         _chart.XAxis.AxisMaximum = (float)(to - from).TotalSeconds;
 
-        _chart.Data = ChartLine.Build(points, Palette, label: "", from, _options);
+        _chart.Data = data;
         _chart.Invalidate();
 
         // Зоны перерисовываются следом: шкала могла сдвинуться вместе с новыми точками.

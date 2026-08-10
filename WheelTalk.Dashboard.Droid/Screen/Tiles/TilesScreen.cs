@@ -69,6 +69,9 @@ public sealed class TilesScreen : IMainScreen
     private bool _editing;
     private long _polledAt;
 
+    /// <summary>Список едет прямо сейчас: пока едет, графики не перечитываются (план 31 §3.2).</summary>
+    private bool _scrolling;
+
     /// <summary>Раскладка на входе в режим правки: к ней возвращает «отменить» и кнопка «назад».</summary>
     private IReadOnlyList<MetricTile> _beforeEditing = [];
 
@@ -103,6 +106,10 @@ public sealed class TilesScreen : IMainScreen
         // обрезаться по краю паддинга.
         _list.SetClipToPadding(false);
         _list.AddOnItemTouchListener(new TileTouch(context, this));
+
+        // Пока список едет, чтение истории и стройка графиков ждут: их работа не срочна (окно едет
+        // само), а кадр прокрутки дорог. По остановке ближайший же кадр их и запустит.
+        _list.AddOnScrollListener(new ScrollWatch(scrolling => _scrolling = scrolling));
 
         new ItemTouchHelper(new DragCallback(this)).AttachToRecyclerView(_list);
 
@@ -148,7 +155,12 @@ public sealed class TilesScreen : IMainScreen
         if (linkShown || _linkShown) _root.Invalidate();
         _linkShown = linkShown;
 
-        _adapter.Render(frame.Snapshot);
+        // Пока список едет, снимок не разносится по плиткам: перестановка текста семнадцати плиток
+        // стоила до 20 мс и вклинивалась в кадр прокрутки (план 31 §3.1а). По остановке ближайший
+        // кадр принесёт свежий снимок сам — устареть числа успевают не больше чем на 200 мс, а на
+        // летящем экране их всё равно не читают. Плитка, въехавшая в экран во время прокрутки,
+        // получает текущий снимок при привязке — она этой стражи не ждёт.
+        if (!_scrolling) _adapter.Render(frame.Snapshot);
         PollCharts();
     }
 
@@ -165,6 +177,10 @@ public sealed class TilesScreen : IMainScreen
     {
         if (_history is null) return;
 
+        // В прокрутке не читаем и не строим: окно графика едет, секунда ожидания законна, а вот
+        // кадр, в который вклинилась стройка данных, — пропущенный кадр (план 31 §3.2).
+        if (_scrolling) return;
+
         long now = Environment.TickCount64;
         if (now - _polledAt < TilesLayout.ChartPollMs) return;
 
@@ -177,18 +193,35 @@ public sealed class TilesScreen : IMainScreen
             int position = _list.GetChildAdapterPosition(chart);
             if (position < 0 || _adapter.TileAt(position) is not { Chart: { } options } tile) continue;
 
-            _ = FillAsync(chart, tile.MetricId, options.Window);
+            _ = FillAsync(chart, tile.MetricId, options);
         }
     }
 
-    private async Task FillAsync(ChartTileView chart, string metricId, TimeSpan window)
+    /// <summary>
+    /// Прочитать историю и <b>собрать по ней набор данных — всё вне потока отрисовки</b>. Главному
+    /// потоку достаётся только вручение готового (<see cref="ChartTileView.ShowData"/>).
+    /// <para>
+    /// Корзин просим вдвое меньше, чем точек влезает в линию: из каждой история отдаёт минимум и
+    /// максимум (план 23 §5.6), и плитка в 700 px, попросившая 700 корзин, получала 1334 точки —
+    /// вдвое больше, чем можно нарисовать, и вдвое дороже по стройке.
+    /// </para>
+    /// </summary>
+    private async Task FillAsync(ChartTileView chart, string metricId, TileChart options)
     {
         var to = DateTimeOffset.Now;
-        var from = to - window;
-        var points = await _history!.ReadAsync(metricId, from, to, chart.Points, CancellationToken.None);
+        var from = to - options.Window;
+        int buckets = Math.Max(1, chart.Points / ChartTileView.PointsPerBucket);
 
-        // Читали вне потока отрисовки — возвращаемся в него: точки ставит тот, кто рисует.
-        chart.Post(() => chart.SetPoints(points, from, to));
+        // ConfigureAwait(false) здесь не украшение, а суть правки: без него продолжение вернулось бы
+        // на главный поток, и стройка набора снова считалась бы в кадре.
+        var points = await _history!
+            .ReadAsync(metricId, from, to, buckets, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        var data = ChartLine.Build(points, _options.Palette, label: "", from, options);
+
+        // Готовое вручается тому, кто рисует: подмена Data и Invalidate — работа главного потока.
+        chart.Post(() => chart.ShowData(data, from, to));
     }
 
     public void Tap(float windowX, float windowY)
@@ -505,6 +538,17 @@ public sealed class TilesScreen : IMainScreen
         button.Click += (_, _) => tapped();
 
         return button;
+    }
+
+    /// <summary>
+    /// Слушатель прокрутки: сообщает хозяину, едет список или стоит. Отдельным классом, а не
+    /// лямбдой, потому что <see cref="RecyclerView.OnScrollListener"/> — абстрактный класс
+    /// платформы, наследника ему не заменить делегатом.
+    /// </summary>
+    private sealed class ScrollWatch(Action<bool> onChanged) : RecyclerView.OnScrollListener
+    {
+        public override void OnScrollStateChanged(RecyclerView recyclerView, int newState) =>
+            onChanged(newState != RecyclerView.ScrollStateIdle);
     }
 
     /// <summary>
