@@ -394,6 +394,12 @@
   <data name="TelemetryAngle" xml:space="preserve"><value>Наклон</value></data>
   <data name="TelemetryVoltage" xml:space="preserve"><value>Напряжение</value></data>
   <data name="TelemetryCurrent" xml:space="preserve"><value>Ток</value></data>
+  <data name="TelemetryBoardTempShort" xml:space="preserve"><value>Темп.</value></data>
+  <data name="TelemetryMotorTempShort" xml:space="preserve"><value>Мотор</value></data>
+  <data name="TelemetryPhaseCurrentShort" xml:space="preserve"><value>Фазный</value></data>
+  <data name="TelemetryPowerShort" xml:space="preserve"><value>Мощн.</value></data>
+  <data name="TelemetryMaxPwmShort" xml:space="preserve"><value>Пик ШИМ</value></data>
+  <data name="TelemetryTopSpeedShort" xml:space="preserve"><value>Макс.</value></data>
   <data name="TelemetryPhaseCurrent" xml:space="preserve"><value>Фазный ток</value></data>
   <data name="TelemetryPower" xml:space="preserve"><value>Мощность</value></data>
   <data name="TelemetryBattery" xml:space="preserve"><value>Заряд</value></data>

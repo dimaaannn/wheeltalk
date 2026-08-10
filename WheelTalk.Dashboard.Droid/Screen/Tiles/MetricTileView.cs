@@ -4,6 +4,7 @@ using Android.Views;
 using Android.Widget;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Metrics;
+using WheelTalk.Core.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -26,20 +27,19 @@ internal sealed class MetricTileView : TileView
     private string _unit = "";
     private string _shown = "";
     private TileLimits? _limits;
+    private int _unitPx = 11;
 
     public MetricTileView(Context context, DashboardOptions options) : base(context, options)
     {
         _value = new TextView(context) { Gravity = GravityFlags.Center };
         _value.SetTextColor(Palette.Ink);
         _value.SetMaxLines(1);
-        // Кегль подбирает платформа (API 26+): показание занимает плитку целиком — в узкой
-        // однострочной и в широкой двухстрочной оно одно и то же, но разного размера. Своего расчёта
-        // здесь быть не должно: встроенный меряет тем же кодом, которым потом и рисует.
-        //
-        // Ширина и высота у него не WrapContent намеренно — при них автоподбору не от чего
-        // отталкиваться, и он не работает вовсе (документация Android, «Autosizing TextView»).
-        _value.SetAutoSizeTextTypeUniformWithConfiguration(
-            TilesLayout.ValueMinSp, TilesLayout.ValueMaxSp, TilesLayout.ValueStepSp, (int)ComplexUnitType.Sp);
+        _value.SetTypeface(PaintRuler.Mono, Android.Graphics.TypefaceStyle.Normal);
+
+        // Автоподбор платформы снят (план плиток §3): он считает кегль на каждую плитку отдельно, и
+        // соседние плитки одного размера читались тем мельче, чем длиннее у величины имя. Кегль
+        // теперь один на класс формы и приходит снаружи — Apply.
+        _value.SetTextSize(ComplexUnitType.Sp, TilesLayout.ValueMinSp);
 
         // Остаток плитки под показанием: подпись сверху, число — во всём, что осталось, и по центру
         // этого остатка. Отсюда и «стоит по центру плитки», и то, во что упирается автоподбор.
@@ -54,17 +54,44 @@ internal sealed class MetricTileView : TileView
     /// приложения не видит — тот же порядок, что у подписей шторки и плашки связи.
     /// </summary>
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileLimits? limits)
+        TileLimits? limits, TileTypeface face)
     {
         _metric = metric;
         _limits = limits;
         _format = "F" + metric.Decimals;
-        _unit = unit;
+
+        // Единицы на четвертной плитке нет вовсе: 25 px «км/ч» в 61 px содержимого — сорок
+        // процентов плитки, а величину называет подпись (план плиток §4).
+        _unit = TileTypography.UnitOn(new TileClass(size.Columns, size.Rows), unit);
 
         BindFrame(label, size, showLabel);
+        Apply(face, size);
 
         _shown = "";
         Render(null);
+    }
+
+    /// <summary>
+    /// Кегль и форма приходят снаружи, посчитанные на класс (<see cref="TileTypography"/>): плитка
+    /// сама себе размера не выбирает — иначе равные плитки снова читались бы неравно.
+    /// </summary>
+    private void Apply(TileTypeface face, TileSize size)
+    {
+        ApplyForm(face.Form, size);
+
+        _value.SetTextSize(ComplexUnitType.Sp, face.ValueSp);
+        _value.Gravity = face.Form == TileForm.Row ? GravityFlags.End | GravityFlags.CenterVertical : GravityFlags.Center;
+        _unitPx = (int)Math.Round((double)Context!.Dp(face.UnitSp));
+
+        if (_value.LayoutParameters is LinearLayout.LayoutParams layout)
+        {
+            layout.Width = face.Form == TileForm.Row ? 0 : ViewGroup.LayoutParams.MatchParent;
+            layout.Height = face.Form == TileForm.Row ? ViewGroup.LayoutParams.MatchParent : 0;
+            layout.Weight = 1f;
+            layout.TopMargin = face.Form == TileForm.Row ? 0 : Context.Dp(TilesLayout.ValueTopMarginDp);
+            layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : 0;
+            _value.LayoutParameters = layout;
+        }
     }
 
     protected override void ShowContent(bool visible) =>
@@ -89,7 +116,8 @@ internal sealed class MetricTileView : TileView
         if (_shown == text) return;
 
         _shown = text;
-        _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim);
+        _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim, _unitPx);
+        ShowMuted(value is null);
         ShowHeat(MetricHeat.Of(metric.Id, value, Options, _limits));
     }
 }

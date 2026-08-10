@@ -7,6 +7,7 @@ using Android.Widget;
 using AndroidX.RecyclerView.Widget;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Metrics;
+using WheelTalk.Core.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
@@ -494,7 +495,11 @@ public sealed class TilesScreen : IMainScreen
         };
 
         int pad = context.Dp(TilesLayout.ButtonPaddingDp);
-        button.SetPadding(pad, pad, pad, pad);
+        button.SetPadding(pad, 0, pad, 0);
+
+        // Полоса правки — 48 dp (план плиток §6): это и цель касания, и одинаковая высота у всех
+        // трёх кнопок, чтобы полоса читалась полосой, а не тремя разными надписями.
+        button.SetMinimumHeight(context.Dp(TilesLayout.ButtonsHeightDp));
         button.SetTextColor(palette.Ink);
         button.SetTextSize(ComplexUnitType.Sp, TilesLayout.ButtonSp);
         button.Click += (_, _) => tapped();
@@ -598,6 +603,15 @@ public sealed class TilesScreen : IMainScreen
         private TelemetrySnapshot? _snapshot;
         private bool _editing;
 
+        /// <summary>
+        /// Форма и кегль на каждый класс плиток (план плиток §2–3). Считаются один раз на раскладку,
+        /// а не на плитку и не на кадр: класс — это заявление человека, что величины равны, и ответ
+        /// у него один на всех.
+        /// </summary>
+        private IReadOnlyDictionary<TileClass, TileTypeface> _faces = new Dictionary<TileClass, TileTypeface>();
+
+        private readonly PaintRuler _ruler;
+
         public TileAdapter(Context context, DashboardOptions options, Func<string, string> translate,
             ITileLayoutStore? layoutStore, IReadOnlyList<MetricTile> layout)
         {
@@ -615,6 +629,75 @@ public sealed class TilesScreen : IMainScreen
             // разошлась бы с позицией в хранимом списке, и перенос двигал бы не ту. Но только когда
             // отсев что-то выбросил — писать настройку на каждом запуске незачем.
             if (_tiles.Count != layout.Count) Keep();
+
+            _ruler = new PaintRuler(context.Resources!.DisplayMetrics!.Density);
+            Remeasure();
+        }
+
+        /// <summary>
+        /// Пересчитать кегли по нынешней раскладке. Зовётся, когда раскладка изменилась и когда
+        /// вошли в правку: в правке место под крест, ручку и подпись размера вычитается из бюджета,
+        /// а не отнимается отступом после подбора — иначе число печатается прямо по кресту.
+        /// </summary>
+        private void Remeasure()
+        {
+            var metrics = new TileMetrics(
+                CellWidthPx: CellWidth(),
+                RowHeightPx: _context.Dp(TilesLayout.RowHeightDp),
+                GapPx: _context.Dp(TilesLayout.GapDp),
+                PaddingPx: _context.Dp(TilesLayout.PaddingDp),
+                LabelHeightPx: _context.Dp(TilesLayout.LabelSp) * TilesLayout.InkRatio,
+                HeatBarPx: _context.Dp(TilesLayout.HeatBarDp + TilesLayout.HeatBarInsetDp * 2),
+                EditReservePx: _context.Dp(TilesLayout.EditReserveDp),
+                EditFooterPx: _context.Dp(TilesLayout.EditFooterDp),
+                GapUnitPx: _context.Dp(TilesLayout.UnitGapDp),
+                GapLabelPx: _context.Dp(TilesLayout.RowGapDp),
+                MarkPx: _context.Dp(TilesLayout.MarkDp))
+            {
+                RowLabelSp = TilesLayout.RowLabelSp,
+                MinValueSp = TilesLayout.ValueMinSp,
+                MaxValueSp = TilesLayout.ValueMaxSp,
+                UnitScale = TilesLayout.UnitScale,
+                InkRatio = TilesLayout.InkRatio,
+                RowLabelShare = TilesLayout.RowLabelShare,
+            };
+
+            _faces = TileTypography.Measure(Texts(), metrics, _ruler, _editing);
+            foreach (var view in _views) view.Invalidate();
+        }
+
+        /// <summary>
+        /// Ширина одной колонки сетки. Считается по экрану, а не по измеренному списку: кегли нужны
+        /// до первой укладки, а список к этому времени ещё не мерян.
+        /// </summary>
+        private float CellWidth()
+        {
+            float screen = _context.Resources!.DisplayMetrics!.WidthPixels;
+            float gaps = _context.Dp(TilesLayout.GapDp) * (TilesLayout.Columns - 1);
+            float padding = _context.Dp(TilesLayout.PaddingDp) * 2;
+            return Math.Max(1, (screen - gaps - padding) / TilesLayout.Columns);
+        }
+
+        /// <summary>
+        /// Строки, по которым подбирается кегль: <b>худшая в классе</b> задаёт кегль всему классу.
+        /// Берётся не живое показание, а самое длинное, какое эта величина способна показать
+        /// (<see cref="MetricNumber.Widest"/>): иначе кегль скакал бы на ходу — «9.9» сменилось на
+        /// «10.0», и весь класс перерисовался мельче.
+        /// </summary>
+        private IEnumerable<TileText> Texts()
+        {
+            foreach (var (tile, metric) in _tiles)
+            {
+                if (metric is null) continue;
+
+                string unit = metric.UnitKey is { } key ? _translate(key) : "";
+                yield return new TileText(
+                    new TileClass(tile.Size.Columns, tile.Size.Rows),
+                    MetricNumber.Widest(metric),
+                    unit,
+                    Label(metric, tile.Size),
+                    tile.Kind == TileKind.Extremum);
+            }
         }
 
         public override int ItemCount => _tiles.Count;
@@ -630,7 +713,9 @@ public sealed class TilesScreen : IMainScreen
             set
             {
                 _editing = value;
+                Remeasure();
                 foreach (var view in _views) view.Editing = value;
+                NotifyDataSetChanged();
             }
         }
 
@@ -649,6 +734,7 @@ public sealed class TilesScreen : IMainScreen
             if (Entry(tile) is not { } entry) return;
 
             _tiles.Add(entry);
+            Remeasure();
             NotifyItemInserted(_tiles.Count - 1);
         }
 
@@ -657,14 +743,44 @@ public sealed class TilesScreen : IMainScreen
             if (Entry(tile) is not { } entry) return;
 
             _tiles[position] = entry;
+            Remeasure();
             NotifyItemChanged(position);
         }
 
         public void RemoveAt(int position)
         {
             _tiles.RemoveAt(position);
+            Remeasure();
             NotifyItemRemoved(position);
         }
+
+        /// <summary>
+        /// Подпись величины, а на четвертной плитке — короткая (план плиток §4): «Температура» в
+        /// 61 px содержимого не влезает ни при каком кегле, а обрезанная многоточием — та же
+        /// нечитаемость, только тихая.
+        /// <para>
+        /// Короткая живёт своим ключом рядом с полным — <c>…Short</c>. Нет её в ресурсах — остаётся
+        /// полная: словарь слов у стенда свой, и заставлять его держать вторую половину имён ради
+        /// формы плитки незачем.
+        /// </para>
+        /// </summary>
+        private string Label(MetricDescriptor metric, TileSize size)
+        {
+            string full = _translate(metric.LabelKey);
+            if (size.Columns > 3) return full;
+
+            string shortened = _translate(metric.LabelKey + "Short");
+            return shortened.Length == 0 || shortened.StartsWith('!') ? full : shortened;
+        }
+
+        /// <summary>
+        /// Набор для класса этой плитки. Класса нет в наборе только у только что добавленной плитки
+        /// — тогда столбик и пол кегля: следующий пересчёт всё расставит.
+        /// </summary>
+        private TileTypeface Face(TileSize size) =>
+            _faces.TryGetValue(new TileClass(size.Columns, size.Rows), out var face)
+                ? face
+                : new TileTypeface(TileForm.Stack, TilesLayout.ValueMinSp, TilesLayout.MinUnitSp);
 
         /// <summary>Раскладка как она есть сейчас — её запоминают на входе в режим правки.</summary>
         public IReadOnlyList<MetricTile> Snapshot() => [.. _tiles.Select(entry => entry.Tile)];
@@ -678,6 +794,7 @@ public sealed class TilesScreen : IMainScreen
                 if (Entry(tile) is { } entry) _tiles.Add(entry);
             }
 
+            Remeasure();
             NotifyDataSetChanged();
         }
 
@@ -747,7 +864,7 @@ public sealed class TilesScreen : IMainScreen
                 return;
             }
 
-            string label = _translate(metric.LabelKey);
+            string label = Label(metric, layout.Size);
             string unit = metric.UnitKey is { } key ? _translate(key) : "";
 
             if (tile.Tile is ChartTileView chart)
@@ -759,11 +876,11 @@ public sealed class TilesScreen : IMainScreen
             else if (tile.Tile is ExtremumTileView extremum)
             {
                 extremum.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
-                    layout.Extremum ?? new TileExtremum(Lowest: false), layout.Limits);
+                    layout.Extremum ?? new TileExtremum(Lowest: false), layout.Limits, Face(layout.Size));
             }
             else if (tile.Tile is MetricTileView value)
             {
-                value.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits);
+                value.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits, Face(layout.Size));
             }
 
             tile.Tile.Render(_snapshot);

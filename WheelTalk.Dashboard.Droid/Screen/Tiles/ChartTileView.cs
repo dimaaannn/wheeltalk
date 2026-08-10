@@ -187,7 +187,11 @@ internal sealed class ChartTileView : TileView
         if (_shown == text) return;
 
         _shown = text;
-        _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim);
+        // Кегль единицы у графика прежний — доля от кегля числа, которое здесь подпись к линии, а
+        // не главное на плитке (потолок ChartValueMaxSp). Пол в 11 sp сюда не приезжает: он живёт в
+        // подборе плиток значения, где за него платит число.
+        _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim,
+            (int)Math.Round((double)Context!.Dp(TilesLayout.ChartValueMaxSp * TilesLayout.UnitScale)));
     }
 
     /// <summary>Окно словами: «15 мин», «3 ч». Слов на это хватает двух, и оба уже переведены.</summary>

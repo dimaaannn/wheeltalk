@@ -85,14 +85,78 @@ public static class TilesLayout
     /// </summary>
     public static int HeatStrokeMinAlpha => 70;
 
-    /// <summary>Кегль подписи величины, sp.</summary>
+    /// <summary>Кегль подписи величины, sp. В форме «столбик» — этот, в «строке» — <see cref="RowLabelSp"/>.</summary>
     public static int LabelSp => 11;
+
+    /// <summary>Кегль подписи в форме «строка»: она стоит в одну линию с числом и читается наравне с ним.</summary>
+    public static int RowLabelSp => 13;
+
+    /// <summary>
+    /// Доля ширины плитки, дальше которой подпись «строки» обрезается многоточием. Ограничение
+    /// считается вместе с пометкой ▲▼, а не после неё: иначе одна помеченная плитка роняет кегль
+    /// всего класса.
+    /// </summary>
+    public static float RowLabelShare => 0.35f;
+
+    /// <summary>Место под пометку ▲▼ у крайних значений — внутри лимита подписи.</summary>
+    public static int MarkDp => 12;
+
+    /// <summary>Просвет между числом и единицей.</summary>
+    public static int UnitGapDp => 4;
+
+    /// <summary>Просвет между подписью и числом в форме «строка».</summary>
+    public static int RowGapDp => 12;
+
+    /// <summary>
+    /// Высота начертания к кеглю: строка занимает больше своего кегля, и без поправки цифры
+    /// срезаются сверху и снизу. Мерено на макете (план плиток §3).
+    /// </summary>
+    public static float InkRatio => 1.25f;
+
+    /// <summary>
+    /// Полоска жара по низу плитки: рамка отвечает «плохо», полоска — «насколько», и отвечает
+    /// формой, а не одним цветом (важно при дейтеранопии). Её высота вычитается из бюджета числа.
+    /// </summary>
+    public static int HeatBarDp => 3;
+
+    /// <summary>Отступ полоски жара от краёв плитки.</summary>
+    public static int HeatBarInsetDp => 2;
+
+    /// <summary>Густота дорожки под полоской жара (0…255 от основной краски).</summary>
+    public static int HeatTrackAlpha => 20;
+
+    /// <summary>
+    /// Насколько гаснет плитка молчащей величины. Прочерк наравне с живыми числами читался как
+    /// показание; гаснет она целиком — и подпись, и прочерк.
+    /// </summary>
+    public static float MutedAlpha => 0.45f;
+
+    /// <summary>Ширина, которую в режиме правки забирают крест и ручка. Вычитается из бюджета кегля.</summary>
+    public static int EditReserveDp => 22;
+
+    /// <summary>Высота, которую в режиме правки забирает подпись размера плитки. Тоже из бюджета.</summary>
+    public static int EditFooterDp => 14;
+
+    /// <summary>Кегль подписи размера плитки в режиме правки, sp.</summary>
+    public static int EditSizeSp => 11;
+
+    /// <summary>Сторона круга «убрать» в режиме правки — цель касания, а не значок.</summary>
+    public static int RemoveSizeDp => 22;
+
+    /// <summary>Высота полосы кнопок режима правки.</summary>
+    public static int ButtonsHeightDp => 48;
 
     /// <summary>
     /// Кегль единицы — долей от кегля числа, а не своим размером: число тянется автоподбором, и
     /// единица при своём размере то тонула бы в нём, то спорила с ним.
     /// </summary>
     public static float UnitScale => 0.45f;
+
+    /// <summary>
+    /// Пол кегля единицы, sp. Решение о читаемости: 7 px не читаются, и платит за пол число, а не
+    /// единица (план плиток §4). Пол участвует в подборе — иначе строка вылезет ровно на него.
+    /// </summary>
+    public static int MinUnitSp => 11;
 
     /// <summary>Отступ строки с числом от подписи.</summary>
     public static int ValueTopMarginDp => 2;
@@ -104,8 +168,12 @@ public static class TilesLayout
     /// </summary>
     public static int ValueMinSp => 12;
 
-    /// <inheritdoc cref="ValueMinSp"/>
-    public static int ValueMaxSp => 48;
+    /// <summary>
+    /// Потолок кегля числа. Прежние 48 и были причиной пустоты в крупной плитке: число упиралось в
+    /// потолок и переставало расти вместе с местом (план плиток §3). Точное число подбирается на
+    /// стенде глазами — это ручка HOTRELOAD.
+    /// </summary>
+    public static int ValueMaxSp => 96;
 
     /// <summary>Шаг подбора кегля, sp. Мельче шаг — точнее посадка числа и дороже замер.</summary>
     public static int ValueStepSp => 1;
@@ -168,8 +236,8 @@ public static class TilesLayout
     /// </summary>
     public static int ChartGapSteps => 3;
 
-    /// <summary>Кегль подписей шкалы на плитке-графике, sp.</summary>
-    public static float ChartAxisSp => 8f;
+    /// <summary>Кегль подписей шкалы на плитке-графике, sp. Восемь не читались (план плиток §5).</summary>
+    public static float ChartAxisSp => 10f;
 
     /// <summary>Сколько делений на шкале плитки. Меньше — чище, но по двум крайним трудно судить о середине.</summary>
     public static int ChartAxisLabels => 3;

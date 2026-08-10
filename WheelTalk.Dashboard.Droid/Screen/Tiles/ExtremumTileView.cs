@@ -4,6 +4,7 @@ using Android.Views;
 using Android.Widget;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Metrics;
+using WheelTalk.Core.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -33,14 +34,15 @@ internal sealed class ExtremumTileView : TileView
     private bool _lowest;
     private double? _extremum;
     private TileLimits? _limits;
+    private int _unitPx = 11;
 
     public ExtremumTileView(Context context, DashboardOptions options) : base(context, options)
     {
         _value = new TextView(context) { Gravity = GravityFlags.Center };
         _value.SetTextColor(Palette.Ink);
         _value.SetMaxLines(1);
-        _value.SetAutoSizeTextTypeUniformWithConfiguration(
-            TilesLayout.ValueMinSp, TilesLayout.ValueMaxSp, TilesLayout.ValueStepSp, (int)ComplexUnitType.Sp);
+        _value.SetTypeface(PaintRuler.Mono, Android.Graphics.TypefaceStyle.Normal);
+        _value.SetTextSize(ComplexUnitType.Sp, TilesLayout.ValueMinSp);
 
         AddView(_value, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f)
         {
@@ -49,7 +51,7 @@ internal sealed class ExtremumTileView : TileView
     }
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileExtremum options, TileLimits? limits)
+        TileExtremum options, TileLimits? limits, TileTypeface face)
     {
         // Величина или сторона сменились — прежнее крайнее к ним не относится: максимум тока не
         // может стать минимумом напряжения.
@@ -57,12 +59,31 @@ internal sealed class ExtremumTileView : TileView
 
         _metric = metric;
         _format = "F" + metric.Decimals;
-        _unit = unit;
+        _unit = TileTypography.UnitOn(new TileClass(size.Columns, size.Rows), unit);
         _lowest = options.Lowest;
         _limits = limits;
         _shown = "";
 
-        BindFrame(label, size, showLabel);
+        // Пометка ▲▼ рядом с подписью: у крайних своё поведение — тап их сбрасывает, — и выглядеть
+        // они обязаны иначе (план плиток §5). Место под неё уже учтено в подборе кегля.
+        BindFrame($"{label} {(options.Lowest ? "▼" : "▲")}", size, showLabel);
+        ApplyForm(face.Form, size);
+        _value.SetTextSize(ComplexUnitType.Sp, face.ValueSp);
+        _value.Gravity = face.Form == TileForm.Row
+            ? GravityFlags.End | GravityFlags.CenterVertical
+            : GravityFlags.Center;
+        _unitPx = (int)Math.Round((double)Context!.Dp(face.UnitSp));
+
+        if (_value.LayoutParameters is LinearLayout.LayoutParams layout)
+        {
+            layout.Width = face.Form == TileForm.Row ? 0 : ViewGroup.LayoutParams.MatchParent;
+            layout.Height = face.Form == TileForm.Row ? ViewGroup.LayoutParams.MatchParent : 0;
+            layout.Weight = 1f;
+            layout.TopMargin = face.Form == TileForm.Row ? 0 : Context.Dp(TilesLayout.ValueTopMarginDp);
+            layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : 0;
+            _value.LayoutParameters = layout;
+        }
+
         Render(null);
     }
 
@@ -97,7 +118,8 @@ internal sealed class ExtremumTileView : TileView
         if (_shown == text) return;
 
         _shown = text;
-        _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim);
+        _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim, _unitPx);
+        ShowMuted(_extremum is null);
         ShowHeat(MetricHeat.Of(metric.Id, _extremum, Options, _limits));
     }
 }
