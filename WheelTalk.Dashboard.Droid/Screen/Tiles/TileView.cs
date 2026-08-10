@@ -47,6 +47,13 @@ internal abstract class TileView : LinearLayout
     private readonly Android.Graphics.Path _frame = new();
     private readonly RectF _frameBox = new();
 
+    /// <summary>Угол под дугу — поле, а не местная переменная: путь строится в отрисовке, а мусорить в ней нельзя.</summary>
+    private readonly RectF _corner = new();
+
+    /// <summary>С каким низом собран путь сейчас, чтобы не собирать его заново на каждый кадр.</summary>
+    private bool _frameOpen;
+    private bool _frameReady;
+
     /// <summary>Метки начала и конца шкалы — на концах прямого участка низа.</summary>
     private readonly Paint _tickPaint = new() { AntiAlias = true };
 
@@ -309,6 +316,7 @@ internal abstract class TileView : LinearLayout
         _scaleY = _frameBox.Bottom;
         _scaleFrom = _frameBox.Left + _radius;
         _scaleTo = _frameBox.Right - _radius;
+        _frameReady = false;
 
         float pad = Context.Dp(TilesLayout.PaddingDp);
         float circle = Context.Dp(TilesLayout.RemoveSizeDp);
@@ -361,7 +369,10 @@ internal abstract class TileView : LinearLayout
     {
         if (_heat > 0)
         {
-            BuildFrame(_showHeatBar);
+            // Путь собирается при смене размера плитки и включении шкалы, а не в каждой отрисовке:
+            // рисуемся мы шестьдесят раз в секунду на восемнадцати плитках, и сборка пути с дугами
+            // — это пять обращений к платформе на каждую (баг 10.08.2026, ANR со 109 % CPU).
+            if (!_frameReady || _frameOpen != _showHeatBar) BuildFrame(_showHeatBar);
             canvas.DrawPath(_frame, _framePaint);
         }
 
@@ -384,6 +395,8 @@ internal abstract class TileView : LinearLayout
     private void BuildFrame(bool openBottom)
     {
         _frame.Reset();
+        _frameOpen = openBottom;
+        _frameReady = true;
 
         if (!openBottom)
         {
@@ -392,22 +405,21 @@ internal abstract class TileView : LinearLayout
         }
 
         float d = _radius * 2;
-        var corner = new RectF();
 
         _frame.MoveTo(_scaleFrom, _frameBox.Bottom);
-        corner.Set(_frameBox.Left, _frameBox.Bottom - d, _frameBox.Left + d, _frameBox.Bottom);
-        _frame.ArcTo(corner, 90, 90);
+        _corner.Set(_frameBox.Left, _frameBox.Bottom - d, _frameBox.Left + d, _frameBox.Bottom);
+        _frame.ArcTo(_corner, 90, 90);
 
-        corner.Set(_frameBox.Left, _frameBox.Top, _frameBox.Left + d, _frameBox.Top + d);
-        _frame.ArcTo(corner, 180, 90);
+        _corner.Set(_frameBox.Left, _frameBox.Top, _frameBox.Left + d, _frameBox.Top + d);
+        _frame.ArcTo(_corner, 180, 90);
 
         _frame.LineTo(_scaleTo, _frameBox.Top);
-        corner.Set(_frameBox.Right - d, _frameBox.Top, _frameBox.Right, _frameBox.Top + d);
-        _frame.ArcTo(corner, 270, 90);
+        _corner.Set(_frameBox.Right - d, _frameBox.Top, _frameBox.Right, _frameBox.Top + d);
+        _frame.ArcTo(_corner, 270, 90);
 
         _frame.LineTo(_frameBox.Right, _frameBox.Bottom - _radius);
-        corner.Set(_frameBox.Right - d, _frameBox.Bottom - d, _frameBox.Right, _frameBox.Bottom);
-        _frame.ArcTo(corner, 0, 90);
+        _corner.Set(_frameBox.Right - d, _frameBox.Bottom - d, _frameBox.Right, _frameBox.Bottom);
+        _frame.ArcTo(_corner, 0, 90);
     }
 
     /// <summary>

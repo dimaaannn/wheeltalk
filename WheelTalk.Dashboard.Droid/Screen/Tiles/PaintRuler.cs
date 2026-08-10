@@ -9,21 +9,40 @@ namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 /// ширин врёт на точке — в моноширинном начертании она шириной с цифру, — и «74.2» оказывается
 /// шире, чем считалось, ровно на краю плитки.
 /// <para>
-/// Живёт один на экран: <see cref="Paint"/> дорог не измерением, а созданием, а классов формы на
-/// экране немного и меряются они разом при сборке.
+/// <b>Каждое обращение к шрифту — это JNI</b>, и стоит оно на три порядка дороже арифметики.
+/// Подбор кегля спрашивает мерилку тысячи раз за один пересчёт раскладки (замер 10.08.2026: 846
+/// ширин и 2249 высот на восемнадцати плитках), и на телефоне это вылилось в секунду стоя́щего
+/// экрана и ANR со 109 % CPU. Поэтому здесь два кэша и ни одного лишнего вызова:
 /// </para>
+/// <list type="bullet">
+///   <item><b>Начертания — поля, а не свойства.</b> Раньше <c>Typeface.Create</c> звался на каждый
+///   замер: три тысячи созданий шрифта на пересчёт.</item>
+///   <item><b>Ширина строки меряется один раз</b> на постоянном кегле: <c>MeasureText</c> линеен по
+///   размеру, и все прочие кегли получаются умножением. Сорок разных строк вместо восьмисот
+///   замеров.</item>
+///   <item><b>Высота — один замер на кегль</b>: метрики начертания от текста не зависят.</item>
+/// </list>
 /// </summary>
 internal sealed class PaintRuler(float density) : ITextRuler
 {
-    /// <summary>Число — моноширинным: в нём цифры не пляшут по ширине, и строка не дёргается при смене показания.</summary>
-    private readonly Paint _mono = new(PaintFlags.AntiAlias) { TextSize = 100 };
+    /// <summary>Начертания те же, что ставит плитка. Созданы один раз: <c>Typeface.Create</c> — не бесплатная справка.</summary>
+    public static readonly Typeface Mono = Typeface.Create("monospace", TypefaceStyle.Normal)!;
 
-    private readonly Paint _sans = new(PaintFlags.AntiAlias) { TextSize = 100 };
+    public static readonly Typeface Sans = Typeface.Default!;
 
-    /// <summary>Начертания те же, что ставит плитка. Одно место на оба: разойтись им нельзя.</summary>
-    public static Typeface Mono => Typeface.Create("monospace", TypefaceStyle.Normal)!;
+    /// <summary>Кегль, на котором меряется ширина. Прочие получаются умножением — <c>MeasureText</c> линеен.</summary>
+    private const float MeasureAt = 100f;
 
-    public static Typeface Sans => Typeface.Default!;
+    private readonly Paint _mono = new(PaintFlags.AntiAlias) { TextSize = MeasureAt, };
+    private readonly Paint _sans = new(PaintFlags.AntiAlias) { TextSize = MeasureAt, };
+
+    /// <summary>Ширина строки на <see cref="MeasureAt"/> — по строке и начертанию.</summary>
+    private readonly Dictionary<(string Text, bool Mono), float> _widths = [];
+
+    /// <summary>Высота строки по кеглю: от начертания, а не от текста.</summary>
+    private readonly Dictionary<float, float> _heights = [];
+
+    private bool _typefacesSet;
 
     /// <summary>
     /// Высота строки — <b>по метрикам начертания</b>, а не по поправке на глазок: от подъёма до
@@ -32,20 +51,39 @@ internal sealed class PaintRuler(float density) : ITextRuler
     /// </summary>
     public float Height(float sizeSp)
     {
-        _mono.SetTypeface(Mono);
+        if (_heights.TryGetValue(sizeSp, out float known)) return known;
+
+        Prepare();
         _mono.TextSize = sizeSp * density;
         var metrics = _mono.GetFontMetrics()!;
-        return metrics.Descent - metrics.Ascent;
+        float height = metrics.Descent - metrics.Ascent;
+
+        // Кегль замера вернуть на место обязана та же рука, что его сдвинула: ширины считаются от
+        // MeasureAt, и оставленный чужой размер тихо соврал бы на них всем сразу.
+        _mono.TextSize = MeasureAt;
+        _heights[sizeSp] = height;
+        return height;
     }
 
     public float Width(string text, float sizeSp, bool mono)
     {
-        var paint = mono ? _mono : _sans;
-        paint.SetTypeface(mono ? Mono : Sans);
+        var key = (text, mono);
+        if (!_widths.TryGetValue(key, out float atHundred))
+        {
+            Prepare();
+            atHundred = (mono ? _mono : _sans).MeasureText(text);
+            _widths[key] = atHundred;
+        }
 
-        // Меряем на постоянном кегле и масштабируем: MeasureText линеен по TextSize, и так замер не
-        // зависит от того, сколько раз его позвали и с какой стороны.
-        paint.TextSize = 100;
-        return paint.MeasureText(text) * sizeSp * density / 100f;
+        return atHundred * sizeSp * density / MeasureAt;
+    }
+
+    private void Prepare()
+    {
+        if (_typefacesSet) return;
+
+        _mono.SetTypeface(Mono);
+        _sans.SetTypeface(Sans);
+        _typefacesSet = true;
     }
 }

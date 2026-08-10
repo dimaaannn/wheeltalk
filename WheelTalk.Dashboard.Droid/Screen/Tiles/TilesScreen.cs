@@ -619,6 +619,11 @@ public sealed class TilesScreen : IMainScreen
         /// </summary>
         private readonly Dictionary<string, int> _digits = new(StringComparer.Ordinal);
 
+        /// <summary>Подпись входов, под которую посчитаны нынешние кегли; и счётчики для замера.</summary>
+        private int _measuredFor;
+        private int _remeasureAsked;
+        private int _remeasureDone;
+
         public TileAdapter(Context context, DashboardOptions options, Func<string, string> translate,
             ITileLayoutStore? layoutStore, IReadOnlyList<MetricTile> layout)
         {
@@ -646,11 +651,58 @@ public sealed class TilesScreen : IMainScreen
         /// вошли в правку: в правке место под крест, ручку и подпись размера вычитается из бюджета,
         /// а не отнимается отступом после подбора — иначе число печатается прямо по кресту.
         /// </summary>
+        /// <summary>
+        /// Пересчитать кегли — <b>только если входы действительно изменились</b>. Подпись входов
+        /// (классы, разряды, режим правки, ширина колонки) считается по уже посчитанным числам, а
+        /// не по форматированным строкам: строка зависит от культуры («56,0» против «56.0»), и
+        /// сравнение строк однажды сделало бы этот пересчёт вечным.
+        /// <para>
+        /// Стража здесь не оптимизация, а страховка: пересчёт зовут семь мест, и любое из них,
+        /// позванное в кадре, превращало подбор с мерилкой в горячий цикл на главном потоке —
+        /// 109 % CPU и ANR на стенде 10.08.2026. Теперь лишний зов стоит обхода восемнадцати
+        /// плиток без единого обращения к шрифту.
+        /// </para>
+        /// </summary>
         private void Remeasure()
         {
+            _remeasureAsked++;
+
+            int signature = Signature();
+            if (signature == _measuredFor) return;
+
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             var metrics = Metrics();
             _faces = TileTypography.Measure(Texts(metrics), metrics, _ruler, _editing);
+            _measuredFor = signature;
+            _remeasureDone++;
+
+            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            Android.Util.Log.Info("WheelTalk.Tiles",
+                $"Remeasure #{_remeasureDone} за {ms:F1} мс, просили {_remeasureAsked} раз, плиток {_tiles.Count}");
+
             foreach (var view in _views) view.Invalidate();
+        }
+
+        /// <summary>
+        /// Чем определяется набор кеглей: состав классов, увиденные разряды величин, режим правки и
+        /// ширина колонки. Всё это числа — их и сравниваем.
+        /// </summary>
+        private int Signature()
+        {
+            var hash = new HashCode();
+            hash.Add(_editing);
+            hash.Add((int)CellWidth());
+
+            foreach (var (tile, metric) in _tiles)
+            {
+                hash.Add(tile.Size.Columns);
+                hash.Add(tile.Size.Rows);
+                hash.Add(tile.Kind);
+                hash.Add(metric?.Id);
+                if (metric is not null) hash.Add(_digits.GetValueOrDefault(metric.Id));
+            }
+
+            return hash.ToHashCode();
         }
 
         /// <summary>Все размеры сетки и полей — в одном месте, чтобы бюджет считался по ним, а не по памяти.</summary>
