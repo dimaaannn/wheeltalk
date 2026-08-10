@@ -1,3 +1,4 @@
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 
 namespace WheelTalk.Core.Metrics;
@@ -16,6 +17,20 @@ namespace WheelTalk.Core.Metrics;
 /// <b>Подписи — ключи ресурсов приложения</b>, а слова живут там же, где остальные: у величин,
 /// которые уже показывает экран «Данные», ключ тот же самый (<c>Telemetry*</c>). Одна величина —
 /// одно слово; два ключа на «Напряжение» разошлись бы перводом.
+/// </para>
+/// <para>
+/// <b>Знаков после запятой — столько, сколько несёт смысл при взгляде на ходу</b> (решение
+/// владельца 10.08.2026; ШИМ, скорость и напряжение названы им поимённо). Отсюда три правила, по
+/// которым назначено остальное:
+/// <list type="bullet">
+/// <item>что колесо сообщает целым (проценты, градусы) — целым и показываем: дробь там рисованная;</item>
+/// <item>дробный знак живёт, пока он меняется медленнее взгляда, — десятые у скоростей, углов,
+/// токов, напряжения пакета и пробегов; сотые остались одной величине — вольту на банку, где в
+/// целом вольте умещается весь пакет от пустого до полного;</item>
+/// <item>производная величина берёт размерность своей основной (максимум ШИМ — как ШИМ, предел
+/// скорости — как скорость): пара, читаемая рядом, не вправе разойтись видом.</item>
+/// </list>
+/// Своё число человек ставит плитке сам (<see cref="MetricRounding"/>) — здесь именно умолчание.
 /// </para>
 /// </summary>
 public static class MetricCatalogue
@@ -36,12 +51,13 @@ public static class MetricCatalogue
             Read = s => s.SpeedKmh,
             Column = "speed",
         },
+        // ШИМ — целыми (владелец, 10.08.2026): десятая доля процента не говорит ничего, а разряд
+        // ширины забирает у всего класса плиток.
         new()
         {
             Id = "pwm",
             LabelKey = "TelemetryPwm",
             UnitKey = "UnitPercent",
-            Decimals = 1,
             Read = s => s.Pwm,
             Column = "pwm",
         },
@@ -52,7 +68,6 @@ public static class MetricCatalogue
             Id = "max_pwm",
             LabelKey = "TelemetryMaxPwm",
             UnitKey = "UnitPercent",
-            Decimals = 1,
             Read = s => s.MaxPwm,
         },
         new()
@@ -74,21 +89,45 @@ public static class MetricCatalogue
         },
 
         // ---- Питание -----------------------------------------------------------------------
+        // Напряжение пакета — десятыми (владелец, 10.08.2026): сотая доля вольта на восьмидесяти
+        // вольтах — шум. Сотые отданы соседней величине — вольту на банку.
         new()
         {
             Id = "voltage",
             LabelKey = "TelemetryVoltage",
             UnitKey = "UnitVolts",
-            Decimals = 2,
+            Decimals = 1,
             Read = s => s.VoltageV,
             Column = "voltage",
         },
+        // Вольт на банку — сотыми (владелец, 10.08.2026): здесь сотая доля и есть весь разговор,
+        // от 3,20 до 4,20 В умещается всё состояние пакета.
+        //
+        // Величина <b>считается</b>, а не приходит кадром: пакет делится на ряд, которым декодер
+        // считал этот же кадр (план 27). Ряда нет — плитка молчит прочерком, и это обычный день у
+        // колеса без BMS и без числа в настройках. Неправдоподобное частное (ряд неверен) молчит
+        // тем же прочерком: печатать райдеру 4,9 В на банку нельзя — см. CellVoltageStatus.
+        //
+        // Колонки в таблице телеметрии у неё нет — значит нет и графика: база хранит напряжение
+        // пакета, а ряд к записи не приложен.
+        new()
+        {
+            Id = "cell_voltage",
+            LabelKey = "MetricCellVoltage",
+            UnitKey = "UnitVolts",
+            Decimals = 2,
+            Read = s => CellVoltageResolver.Resolve(s.PackCells, s.VoltageV) is { IsKnown: true } cell
+                ? cell.Volts
+                : null,
+        },
+        // Токи — десятыми: величина в десятках ампер, и сотая меняется быстрее, чем на неё
+        // успевают взглянуть.
         new()
         {
             Id = "current",
             LabelKey = "TelemetryCurrent",
             UnitKey = "UnitAmperes",
-            Decimals = 2,
+            Decimals = 1,
             Read = s => s.CurrentA,
             Column = "current",
         },
@@ -97,7 +136,7 @@ public static class MetricCatalogue
             Id = "phase_current",
             LabelKey = "TelemetryPhaseCurrent",
             UnitKey = "UnitAmperes",
-            Decimals = 2,
+            Decimals = 1,
             Read = s => s.PhaseCurrentA,
             Column = "phase_current",
         },
@@ -144,7 +183,9 @@ public static class MetricCatalogue
             Id = "distance",
             LabelKey = "TelemetryTrip",
             UnitKey = "UnitKm",
-            Decimals = 2,
+            // Пробег поездки — десятыми (владелец, 10.08.2026): сотня метров на плитке видна, а
+            // десяток нет. Одометру и того не надо — тысячи километров целыми.
+            Decimals = 1,
             Read = s => s.WheelDistanceKm,
             Column = "distance",
             // Пробег база держит в метрах — так его сообщает колесо.
@@ -155,7 +196,7 @@ public static class MetricCatalogue
             Id = "distance_from_start",
             LabelKey = "TelemetryFromStart",
             UnitKey = "UnitKm",
-            Decimals = 2,
+            Decimals = 1,
             Read = s => s.DistanceFromStartKm,
         },
         new()
@@ -176,7 +217,8 @@ public static class MetricCatalogue
             Id = "torque",
             LabelKey = "MetricTorque",
             UnitKey = "UnitNewtonMetres",
-            Decimals = 2,
+            // Момент считается из тока, и сотая доля Н·м дрожит вместе с ним.
+            Decimals = 1,
             Read = s => WheelReports.InMotionV2(s) ? s.Torque : null,
             Column = "torque",
         },

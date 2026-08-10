@@ -37,6 +37,7 @@ public static class LabMetricWords
         ["TelemetryPowerShort"] = "Мощн.",
         ["TelemetryMaxPwmShort"] = "Пик ШИМ",
         ["TelemetryTopSpeedShort"] = "Макс.",
+        ["MetricCellVoltageShort"] = "Банка",
 
         ["UnitKmh"] = "км/ч",
         ["UnitPercent"] = "%",
@@ -48,9 +49,10 @@ public static class LabMetricWords
         ["UnitDegrees"] = "°",
 
         // Меню плитки показывает весь каталог, а не только зашитую раскладку, — поэтому здесь
-        // лежат все двадцать шесть величин теми же словами, что и в ресурсах приложения.
+        // лежат все двадцать семь величин теми же словами, что и в ресурсах приложения.
         ["TelemetryFromStart"] = "За сеанс",
         ["TelemetrySleep"] = "Автовыкл",
+        ["MetricCellVoltage"] = "На банку",
         ["MetricTorque"] = "Момент",
         ["MetricMotorPower"] = "Мощность мотора",
         ["MetricCpuTemp"] = "Контроллер",
@@ -79,6 +81,8 @@ public static class LabMetricWords
         ["TilesTileZoom"] = "Обрезать по крайним значениям",
         ["TilesTileLabel"] = "Показывать подпись",
         ["TilesTileHeatBar"] = "Полоса жара по низу",
+        ["TilesTileRounding"] = "Знаков после запятой",
+        ["TilesRoundingDefault"] = "По умолчанию",
         ["TilesTileFill"] = "Заливка под линией",
         ["TilesTileAxis"] = "Шкала слева",
         ["TilesTileSmoothing"] = "Что показывать за период",

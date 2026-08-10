@@ -374,6 +374,8 @@
   <data name="TilesTileZoom" xml:space="preserve"><value>Обрезать по крайним значениям</value></data>
   <data name="TilesTileHeatBar" xml:space="preserve"><value>Полоса жара по низу</value></data>
   <data name="TilesTileLabel" xml:space="preserve"><value>Показывать подпись</value></data>
+  <data name="TilesTileRounding" xml:space="preserve"><value>Знаков после запятой</value></data>
+  <data name="TilesRoundingDefault" xml:space="preserve"><value>По умолчанию</value></data>
   <data name="TilesTileFill" xml:space="preserve"><value>Заливка под линией</value></data>
   <data name="TilesTileAxis" xml:space="preserve"><value>Шкала слева</value></data>
   <data name="TilesTileSmoothing" xml:space="preserve"><value>Что показывать за период</value></data>
@@ -434,6 +436,8 @@
   <data name="RidesDeleteSelectedConfirm" xml:space="preserve"><value>Удалить выбранные поездки ({0})? Их итоги пропадут — восстановить будет неоткуда.</value></data>
   <data name="UnitCelsius" xml:space="preserve"><value>°C</value></data>
   <data name="UnitNewtonMetres" xml:space="preserve"><value>Н·м</value></data>
+  <data name="MetricCellVoltage" xml:space="preserve"><value>На банку</value></data>
+  <data name="MetricCellVoltageShort" xml:space="preserve"><value>Банка</value></data>
   <data name="MetricTorque" xml:space="preserve"><value>Момент</value></data>
   <data name="MetricMotorPower" xml:space="preserve"><value>Мощность мотора</value></data>
   <data name="MetricCpuTemp" xml:space="preserve"><value>Контроллер</value></data>

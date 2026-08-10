@@ -89,9 +89,16 @@ public enum TileKind
 /// тревоге взяться неоткуда, она лишняя строка внимания. Включена по умолчанию, и старая
 /// сохранённая раскладка, где поля нет вовсе, читается именно так.
 /// </param>
+/// <param name="Decimals">
+/// Своё число знаков после запятой. <c>null</c> — умолчание типа величины
+/// (<c>MetricRounding</c>), и старая сохранённая раскладка, где поля нет вовсе, читается
+/// именно так. Своё нужно затем, что одну и ту же величину человек ставит и крупной плиткой, на
+/// которую смотрит, и справочной четвертной: подробность у них разная, а величина одна.
+/// </param>
 public sealed record MetricTile(
     string MetricId, TileKind Kind, TileSize Size, bool ShowLabel = true, TileChart? Chart = null,
-    TileLimits? Limits = null, TileExtremum? Extremum = null, bool ShowHeatBar = true)
+    TileLimits? Limits = null, TileExtremum? Extremum = null, bool ShowHeatBar = true,
+    int? Decimals = null)
 {
     /// <summary>Пустое место заданного размера.</summary>
     public static MetricTile Empty(TileSize size) => new("", TileKind.Empty, size);

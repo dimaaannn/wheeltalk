@@ -127,10 +127,10 @@ internal sealed class ChartTileView : TileView
     public const int PointsPerBucket = 2;
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileChart options, TileLimits? limits, bool heatBar)
+        TileChart options, TileLimits? limits, bool heatBar, int? decimals)
     {
         _metric = metric;
-        _format = "F" + metric.Decimals;
+        _format = MetricRounding.Format(metric, decimals);
         _unit = unit;
         _shown = "";
         _options = options;

@@ -53,12 +53,16 @@ internal sealed class MetricTileView : TileView
     /// Чью величину показывать. Слова приходят готовыми, а не ключами: библиотека ресурсов
     /// приложения не видит — тот же порядок, что у подписей шторки и плашки связи.
     /// </summary>
+    /// <param name="decimals">
+    /// Округление этой плитки: <c>null</c> — умолчание величины. Показа это касается целиком —
+    /// в базу и в историю по-прежнему идёт сырое число.
+    /// </param>
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileLimits? limits, TileTypeface face, bool heatBar)
+        TileLimits? limits, TileTypeface face, bool heatBar, int? decimals)
     {
         _metric = metric;
         _limits = limits;
-        _format = "F" + metric.Decimals;
+        _format = MetricRounding.Format(metric, decimals);
 
         // Единицы на четвертной плитке нет вовсе: 25 px «км/ч» в 61 px содержимого — сорок
         // процентов плитки, а величину называет подпись (план плиток §4).

@@ -114,6 +114,11 @@ internal static class TileEditor
             Checked = tile?.ShowHeatBar != false,
         };
 
+        // Округление — своё у каждой плитки, тем же правом, что пороги и полоса жара: одну и ту же
+        // величину ставят и крупной, и справочной, и подробность у них разная. Первый пункт — «по
+        // умолчанию», то есть размерность типа величины; он же стоит у новой плитки.
+        var roundingPick = Pick(context, Roundings(translate), RoundingIndex(tile?.Decimals));
+
         Select(metricPick, empty ? 0 : IndexOfMetric(chart ? charted : all, tile!.MetricId));
 
         // Окно и наложение числа — свойства одного только графика: у плитки значения их нет, и
@@ -139,6 +144,11 @@ internal static class TileEditor
         metricLine.AddView(Caption(context, translate("TilesTileMetric")));
         metricLine.AddView(metricPick);
         metricLine.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
+
+        var roundingLine = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
+        roundingLine.AddView(Caption(context, translate("TilesTileRounding")));
+        roundingLine.AddView(roundingPick);
+        roundingLine.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
 
         var limitsLine = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
         limitsLine.AddView(Caption(context, translate("TilesTileLimits")));
@@ -170,6 +180,7 @@ internal static class TileEditor
             metricLine.Visibility = forFilled;
             showLabel.Visibility = forFilled;
             heatBar.Visibility = forFilled;
+            roundingLine.Visibility = forFilled;
             limitsLine.Visibility = forFilled;
 
             if (wantEmpty) return;
@@ -197,6 +208,7 @@ internal static class TileEditor
         content.AddView(showLabel);
         content.AddView(heatBar);
         content.AddView(lowest);
+        content.AddView(roundingLine);
         content.AddView(chartOptions);
         content.AddView(limitsLine);
 
@@ -217,7 +229,8 @@ internal static class TileEditor
                 new TileChart(windows[windowPick.SelectedItemPosition], overlay.Checked, zoom.Checked,
                     fill.Checked, axis.Checked, (ChartSmoothing)smoothingPick.SelectedItemPosition),
                 Limits(warn, danger, falling.Checked),
-                new TileExtremum(lowest.Checked))))!
+                new TileExtremum(lowest.Checked),
+                Rounding(roundingPick.SelectedItemPosition))))!
             .SetNegativeButton(Android.Resource.String.Cancel, (_, _) => { })!;
 
         if (remove is not null) dialog.SetNeutralButton(translate("TilesTileRemove"), (_, _) => remove());
@@ -227,7 +240,7 @@ internal static class TileEditor
 
     private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, int kind, int chosen,
         TileSize size, bool showLabel, bool heatBar, TileChart options, TileLimits? limits,
-        TileExtremum extremum)
+        TileExtremum extremum, int? decimals)
     {
         if (kind == 3 || chosen < 0 || chosen >= metrics.Count) return MetricTile.Empty(size);
 
@@ -235,12 +248,33 @@ internal static class TileEditor
 
         return kind switch
         {
-            1 => new MetricTile(id, TileKind.Chart, size, showLabel, options, limits, ShowHeatBar: heatBar),
+            1 => new MetricTile(id, TileKind.Chart, size, showLabel, options, limits, ShowHeatBar: heatBar,
+                Decimals: decimals),
             2 => new MetricTile(id, TileKind.Extremum, size, showLabel, Limits: limits, Extremum: extremum,
-                ShowHeatBar: heatBar),
-            _ => new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits, ShowHeatBar: heatBar),
+                ShowHeatBar: heatBar, Decimals: decimals),
+            _ => new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits, ShowHeatBar: heatBar,
+                Decimals: decimals),
         };
     }
+
+    /// <summary>
+    /// Пункты выбора округления: «по умолчанию» и сами числа. Числа переводить нечего — цифра
+    /// читается на любом языке, как и доли в подписи размера.
+    /// </summary>
+    private static string[] Roundings(Func<string, string> translate) =>
+        [translate("TilesRoundingDefault"),
+            .. MetricRounding.Choices.Select(digits => digits.ToString(CultureInfo.InvariantCulture))];
+
+    /// <summary>
+    /// Какой пункт списка стоит против сохранённого числа. Нулевой — «по умолчанию», и им же
+    /// оборачивается число, которого в списке нет: <c>IndexOf</c> отвечает на такое −1.
+    /// </summary>
+    private static int RoundingIndex(int? decimals) =>
+        decimals is { } chosen ? MetricRounding.Choices.ToList().IndexOf(chosen) + 1 : 0;
+
+    /// <summary>Что выбрано в списке: первый пункт — «по умолчанию», остальные — сами числа.</summary>
+    private static int? Rounding(int position) =>
+        position >= 1 && position <= MetricRounding.Choices.Count ? MetricRounding.Choices[position - 1] : null;
 
     /// <summary>
     /// Свои пороги плитки. Пустое поле — не ноль, а «нет своего»: ноль в настройках тревог означает

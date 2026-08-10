@@ -7,7 +7,8 @@ namespace WheelTalk.Tests.Tiles;
 /// <summary>
 /// Старая сохранённая раскладка обязана читаться. Полоса жара по низу плитки появилась полем
 /// <c>heatBar</c>, которого в сохранённых до неё файлах нет вовсе, — и отсутствие поля значит
-/// «включена», а не «выключена»: человек ничего не выключал.
+/// «включена», а не «выключена»: человек ничего не выключал. Тем же порядком заведено округление
+/// (<c>decimals</c>): нет поля — размерность типа величины, а не ноль знаков.
 /// <para>
 /// <b>Чем проверяется.</b> Разбор раскладки живёт в android-библиотеке, и поднять его отсюда
 /// нельзя. Гарантия держится на двух вещах, и обе проверены здесь: <c>System.Text.Json</c>
@@ -28,6 +29,9 @@ public class TileLayoutCompatibilityTests
         public int Rows { get; set; }
         public bool Label { get; set; } = true;
         public bool HeatBar { get; set; } = true;
+
+        /// <summary>Своё округление плитки. Пусто — «по умолчанию»; ноль — «показывать целыми».</summary>
+        public int? Decimals { get; set; }
     }
 
     /// <summary>Те же настройки разбора, что у боевого контекста (<c>TileLayoutJson.TileLayoutContext</c>).</summary>
@@ -68,8 +72,44 @@ public class TileLayoutCompatibilityTests
     }
 
     /// <summary>
+    /// Округление появилось полем <c>decimals</c>, и его отсутствие значит «по умолчанию» —
+    /// умолчание типа величины, а не ноль знаков. Разница не косметическая: ноль огрубил бы старой
+    /// раскладке все числа разом, включая скорость и напряжение.
+    /// </summary>
+    [Fact]
+    public void A_layout_saved_before_rounding_existed_keeps_the_metric_default()
+    {
+        const string saved = """
+            [{"kind":"value","metric":"speed","columns":12,"rows":2,"label":true,"heatBar":true}]
+            """;
+
+        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
+
+        Assert.NotNull(tiles);
+        Assert.Null(tiles[0].Decimals);
+    }
+
+    /// <summary>
+    /// А заданный ноль — это выбор «показывать целыми», и от «поля нет» он обязан отличаться:
+    /// ради этого различия поле и объявлено <c>int?</c>, а не <c>int</c> с умолчанием.
+    /// </summary>
+    [Fact]
+    public void A_tile_told_to_show_whole_numbers_keeps_that()
+    {
+        const string saved = """
+            [{"kind":"value","metric":"pwm","columns":6,"rows":2,"decimals":0}]
+            """;
+
+        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
+
+        Assert.NotNull(tiles);
+        Assert.Equal(0, tiles[0].Decimals);
+    }
+
+    /// <summary>
     /// Замок на само объявление: без инициализатора отсутствующее поле прочтётся как <c>false</c>,
-    /// и старая раскладка потеряет полосы молча — ни исключения, ни строки в журнале.
+    /// и старая раскладка потеряет полосы молча — ни исключения, ни строки в журнале. У округления
+    /// та же беда с другой стороны: не-<c>null</c>-тип превратил бы «не задано» в «целыми».
     /// </summary>
     [Fact]
     public void The_real_dto_declares_the_bar_as_on_by_default()
@@ -78,5 +118,6 @@ public class TileLayoutCompatibilityTests
 
         Assert.Contains("public bool HeatBar { get; set; } = true;", source);
         Assert.Contains("public bool Label { get; set; } = true;", source);
+        Assert.Contains("public int? Decimals { get; set; }", source);
     }
 }

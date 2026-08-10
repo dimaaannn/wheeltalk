@@ -1,3 +1,4 @@
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Metrics;
 using WheelTalk.Tests.TestSupport;
@@ -54,6 +55,32 @@ public class MetricCatalogueTests
             Assert.Equal(84.5, Read("voltage", type));
         }
     }
+
+    /// <summary>
+    /// Вольт на банку считается из ряда ячеек, а не приходит кадром (план 27). Ряда нет — плитка
+    /// молчит прочерком: колесо без BMS и без числа в настройках — обычный день, а не поломка.
+    /// Неправдоподобное частное молчит тем же прочерком — 4,9 В на банку значат неверный ряд, и
+    /// печатать такое райдеру нельзя.
+    /// </summary>
+    [Fact]
+    public void Volts_per_cell_speak_only_when_the_series_is_known()
+    {
+        var metric = MetricCatalogue.Find("cell_voltage");
+        Assert.NotNull(metric);
+
+        // 84,5 В на 24 ячейки — 3,52 В, живая банка.
+        Assert.Equal(3.52, metric.Read(Frame(new CellCount(24, CellCountSource.UserSetting))) ?? 0, 2);
+
+        Assert.Null(metric.Read(Frame(CellCount.Unknown)));
+        Assert.Null(metric.Read(Frame(new CellCount(16, CellCountSource.VoltageGuess))));
+    }
+
+    private static TelemetrySnapshot Frame(CellCount cells) => new()
+    {
+        WheelType = WheelType.Veteran,
+        VoltageRaw = 8450,
+        PackCells = cells,
+    };
 
     /// <summary>
     /// Колонка в описании — обещание, что по величине можно построить график (план 23 §3.2). Пустая

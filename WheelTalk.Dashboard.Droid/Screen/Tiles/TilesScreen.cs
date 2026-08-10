@@ -332,7 +332,7 @@ public sealed class TilesScreen : IMainScreen
             && MetricCatalogue.Find(tile.MetricId) is { } metric)
         {
             ChartViewer.Show(_context, _options, history, metric, _translate(metric.LabelKey),
-                metric.UnitKey is { } unit ? _translate(unit) : "", options, tile.Limits);
+                metric.UnitKey is { } unit ? _translate(unit) : "", options, tile.Limits, tile.Decimals);
         }
     }
 
@@ -743,6 +743,9 @@ public sealed class TilesScreen : IMainScreen
                 hash.Add(tile.Size.Rows);
                 hash.Add(tile.Kind);
                 hash.Add(metric?.Id);
+                // Округление меняет ширину худшей строки — значит и кегль класса: без него правка
+                // «показывать целыми» не доехала бы до подбора вовсе.
+                hash.Add(tile.Decimals);
                 if (metric is not null) hash.Add(_digits.GetValueOrDefault(metric.Id));
             }
 
@@ -817,7 +820,10 @@ public sealed class TilesScreen : IMainScreen
 
                 yield return new TileText(
                     shape,
-                    MetricNumber.Widest(metric, digits),
+                    // Знаки после запятой — этой плитки, а не величины: округление задаётся плиткой,
+                    // и мерить надо ту строку, которая на ней окажется. Класс, как и прежде, садится
+                    // по худшей строке — плитка с сотыми опустит кегль соседке с целыми.
+                    MetricNumber.Widest(MetricRounding.Decimals(metric, tile.Decimals), digits),
                     unit,
                     Label(metric, tile.Size),
                     tile.Kind == TileKind.Extremum);
@@ -1002,18 +1008,18 @@ public sealed class TilesScreen : IMainScreen
             {
                 chart.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
                     layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false),
-                    layout.Limits, layout.ShowHeatBar);
+                    layout.Limits, layout.ShowHeatBar, layout.Decimals);
             }
             else if (tile.Tile is ExtremumTileView extremum)
             {
                 extremum.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
                     layout.Extremum ?? new TileExtremum(Lowest: false), layout.Limits, Face(layout.Size),
-                    layout.ShowHeatBar);
+                    layout.ShowHeatBar, layout.Decimals);
             }
             else if (tile.Tile is MetricTileView value)
             {
                 value.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits, Face(layout.Size),
-                    layout.ShowHeatBar);
+                    layout.ShowHeatBar, layout.Decimals);
             }
 
             tile.Tile.Render(_snapshot);

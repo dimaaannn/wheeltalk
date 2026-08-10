@@ -30,7 +30,11 @@ public sealed class MetricDescriptor
     /// <summary>Ключ ресурса единицы. <c>null</c> — величина безразмерная (код режима, статус).</summary>
     public string? UnitKey { get; init; }
 
-    /// <summary>Знаков после запятой при показе.</summary>
+    /// <summary>
+    /// Знаков после запятой при показе — <b>умолчание типа величины</b>, а не потолок: плитка вправе
+    /// назначить своё число (<see cref="MetricRounding"/>). Показа это касается целиком: в базу и в
+    /// историю идёт сырое значение.
+    /// </summary>
     public int Decimals { get; init; }
 
     /// <summary>

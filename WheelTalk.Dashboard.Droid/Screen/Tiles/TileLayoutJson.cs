@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using WheelTalk.Core.Metrics;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -73,6 +74,7 @@ public static partial class TileLayoutJson
         Rows = tile.Size.Rows,
         Label = tile.ShowLabel,
         HeatBar = tile.ShowHeatBar,
+        Decimals = tile.Decimals,
         Chart = tile.Chart is { } chart
             ? new ChartDto
             {
@@ -106,6 +108,10 @@ public static partial class TileLayoutJson
 
         var size = new TileSize(dto.Columns, dto.Rows);
 
+        // Число знаков вне предложенного — та же «чужая новизна», что и незнакомая сторона
+        // прореживания: плитка живёт, округление берётся от величины.
+        int? decimals = MetricRounding.Chosen(dto.Decimals);
+
         switch (dto.Kind)
         {
             case "empty":
@@ -113,16 +119,17 @@ public static partial class TileLayoutJson
 
             case "value" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Value, size, dto.Label,
-                    Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar);
+                    Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals);
 
             case "chart" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Chart, size, dto.Label,
-                    ToChart(dto.Chart), ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar);
+                    ToChart(dto.Chart), ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar,
+                    Decimals: decimals);
 
             case "extremum" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Extremum, size, dto.Label,
                     Limits: ToLimits(dto.Limits), Extremum: new TileExtremum(dto.Lowest),
-                    ShowHeatBar: dto.HeatBar);
+                    ShowHeatBar: dto.HeatBar, Decimals: decimals);
 
             default:
                 // Незнакомый вид или величина без имени: строить нечего.
@@ -161,6 +168,15 @@ public static partial class TileLayoutJson
         /// до правки.
         /// </summary>
         public bool HeatBar { get; set; } = true;
+
+        /// <summary>
+        /// Своё число знаков после запятой. <b>Поле необязательное, и его отсутствие — не ноль, а
+        /// «по умолчанию»</b>: старые раскладки поля не содержат вовсе, а ноль тут означал бы
+        /// «целыми» и молча огрубил бы им все числа. Отсюда <c>int?</c>, а не <c>int</c> с
+        /// умолчанием, — у нуля в этом поле есть свой смысл, и отличить его от «не задано» умеет
+        /// только пустота.
+        /// </summary>
+        public int? Decimals { get; set; }
         public ChartDto? Chart { get; set; }
         public LimitsDto? Limits { get; set; }
 

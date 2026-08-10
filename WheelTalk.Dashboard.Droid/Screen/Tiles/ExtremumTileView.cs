@@ -51,14 +51,14 @@ internal sealed class ExtremumTileView : TileView
     }
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileExtremum options, TileLimits? limits, TileTypeface face, bool heatBar)
+        TileExtremum options, TileLimits? limits, TileTypeface face, bool heatBar, int? decimals)
     {
         // Величина или сторона сменились — прежнее крайнее к ним не относится: максимум тока не
         // может стать минимумом напряжения.
         if (_metric?.Id != metric.Id || _lowest != options.Lowest) _extremum = null;
 
         _metric = metric;
-        _format = "F" + metric.Decimals;
+        _format = MetricRounding.Format(metric, decimals);
         _unit = TileTypography.UnitOn(new TileClass(size.Columns, size.Rows), unit);
         _lowest = options.Lowest;
         _limits = limits;

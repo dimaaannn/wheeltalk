@@ -30,9 +30,16 @@ namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 /// </summary>
 internal static class ChartViewer
 {
+    /// <param name="decimals">
+    /// Округление той плитки, с которой сюда пришли: просмотр открыт по ней, и показывать в нём
+    /// величину подробнее, чем на самой плитке, значило бы дать два ответа на один вопрос.
+    /// </param>
     public static void Show(Context context, DashboardOptions dashboard, IMetricHistory history,
-        MetricDescriptor metric, string label, string unit, TileChart options, TileLimits? limits)
+        MetricDescriptor metric, string label, string unit, TileChart options, TileLimits? limits,
+        int? decimals)
     {
+        string format = MetricRounding.Format(metric, decimals);
+
         var palette = dashboard.Palette;
         var to = DateTimeOffset.Now;
         var from = to - options.Window;
@@ -52,7 +59,7 @@ internal static class ChartViewer
         var chart = BuildChart(context, palette, from, options.Window);
         chart.SetOnChartValueSelectedListener(new Selection(entry =>
             picked.Text = $"{from.AddSeconds(entry.GetX()):HH:mm:ss} · "
-                + $"{entry.GetY().ToString("F" + metric.Decimals, CultureInfo.InvariantCulture)} {unit}"));
+                + $"{entry.GetY().ToString(format, CultureInfo.InvariantCulture)} {unit}"));
 
         int pad = context.Dp(TilesLayout.ViewerPaddingDp);
         var root = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };

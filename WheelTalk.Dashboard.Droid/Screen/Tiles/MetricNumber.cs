@@ -49,10 +49,15 @@ internal static class MetricNumber
     /// садится под то, что колесо действительно показывает.
     /// </para>
     /// </summary>
-    public static string Widest(MetricDescriptor metric, int digits)
+    /// <param name="decimals">
+    /// Знаков после запятой у <b>этой плитки</b>, а не у величины: округление задаётся плиткой
+    /// (<see cref="MetricRounding"/>), и мерить надо ту строку, которая попадёт на экран, — иначе
+    /// плитка, которой велели показывать целые, села бы под ширину сотых.
+    /// </param>
+    public static string Widest(int decimals, int digits)
     {
         string whole = new('8', System.Math.Max(SeedDigits, digits));
-        return metric.Decimals > 0 ? whole + "." + new string('8', metric.Decimals) : whole;
+        return decimals > 0 ? whole + "." + new string('8', decimals) : whole;
     }
 
     /// <summary>
