@@ -72,6 +72,7 @@ public static partial class TileLayoutJson
         Columns = tile.Size.Columns,
         Rows = tile.Size.Rows,
         Label = tile.ShowLabel,
+        HeatBar = tile.ShowHeatBar,
         Chart = tile.Chart is { } chart
             ? new ChartDto
             {
@@ -111,15 +112,17 @@ public static partial class TileLayoutJson
                 return MetricTile.Empty(size);
 
             case "value" when dto.Metric is { Length: > 0 }:
-                return new MetricTile(dto.Metric, TileKind.Value, size, dto.Label, Limits: ToLimits(dto.Limits));
+                return new MetricTile(dto.Metric, TileKind.Value, size, dto.Label,
+                    Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar);
 
             case "chart" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Chart, size, dto.Label,
-                    ToChart(dto.Chart), ToLimits(dto.Limits));
+                    ToChart(dto.Chart), ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar);
 
             case "extremum" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Extremum, size, dto.Label,
-                    Limits: ToLimits(dto.Limits), Extremum: new TileExtremum(dto.Lowest));
+                    Limits: ToLimits(dto.Limits), Extremum: new TileExtremum(dto.Lowest),
+                    ShowHeatBar: dto.HeatBar);
 
             default:
                 // Незнакомый вид или величина без имени: строить нечего.
@@ -151,6 +154,13 @@ public static partial class TileLayoutJson
         public int Columns { get; set; }
         public int Rows { get; set; }
         public bool Label { get; set; } = true;
+
+        /// <summary>
+        /// Полоска жара по низу плитки. <b>Умолчание — включена</b>, и это не вкус: старые
+        /// сохранённые раскладки поля не содержат вовсе, а прочитаться обязаны так, как выглядели
+        /// до правки.
+        /// </summary>
+        public bool HeatBar { get; set; } = true;
         public ChartDto? Chart { get; set; }
         public LimitsDto? Limits { get; set; }
 

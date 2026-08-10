@@ -28,6 +28,16 @@ public static class LabMetricWords
         ["TelemetryTrip"] = "За поездку",
         ["TelemetryTotal"] = "Одометр",
 
+        // Короткие подписи четвертных плиток (план плиток §4): полное имя в 61 px содержимого не
+        // влезает ни при каком кегле. Ключ у них тот же, что у полного, плюс «Short» — и стенд
+        // обязан знать их наравне с приложением, иначе на четвертных стоит сырой ключ.
+        ["TelemetryBoardTempShort"] = "Темп.",
+        ["TelemetryMotorTempShort"] = "Мотор",
+        ["TelemetryPhaseCurrentShort"] = "Фазный",
+        ["TelemetryPowerShort"] = "Мощн.",
+        ["TelemetryMaxPwmShort"] = "Пик ШИМ",
+        ["TelemetryTopSpeedShort"] = "Макс.",
+
         ["UnitKmh"] = "км/ч",
         ["UnitPercent"] = "%",
         ["UnitVolts"] = "В",
@@ -68,6 +78,7 @@ public static class LabMetricWords
         ["TilesTileOverlay"] = "Число поверх графика",
         ["TilesTileZoom"] = "Обрезать по крайним значениям",
         ["TilesTileLabel"] = "Показывать подпись",
+        ["TilesTileHeatBar"] = "Полоса жара по низу",
         ["TilesTileFill"] = "Заливка под линией",
         ["TilesTileAxis"] = "Шкала слева",
         ["TilesTileSmoothing"] = "Что показывать за период",

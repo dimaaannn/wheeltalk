@@ -104,6 +104,16 @@ internal static class TileEditor
             Checked = tile?.ShowLabel != false,
         };
 
+        // Полоска жара — своя у каждой плитки, тем же правом, что и пороги: она отвечает «насколько
+        // близко к тревоге», и там, где тревоге взяться неоткуда (одометр, пробег), это лишняя
+        // строка внимания. Включена по умолчанию — и у новой плитки, и у старой сохранённой
+        // раскладки, где поля нет вовсе.
+        var heatBar = new CheckBox(context)
+        {
+            Text = translate("TilesTileHeatBar"),
+            Checked = tile?.ShowHeatBar != false,
+        };
+
         Select(metricPick, empty ? 0 : IndexOfMetric(chart ? charted : all, tile!.MetricId));
 
         // Окно и наложение числа — свойства одного только графика: у плитки значения их нет, и
@@ -138,6 +148,7 @@ internal static class TileEditor
         limitsLine.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
 
         showLabel.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
+        heatBar.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
 
         // Какой список величин лежит в спиннере прямо сейчас. Держим его сами, а не выводим из вида:
         // `Spinner` стреляет `ItemSelected` вхолостую сразу после раскладки, ещё до всякого выбора, и
@@ -158,6 +169,7 @@ internal static class TileEditor
             var forFilled = wantEmpty ? ViewStates.Gone : ViewStates.Visible;
             metricLine.Visibility = forFilled;
             showLabel.Visibility = forFilled;
+            heatBar.Visibility = forFilled;
             limitsLine.Visibility = forFilled;
 
             if (wantEmpty) return;
@@ -183,6 +195,7 @@ internal static class TileEditor
         content.AddView(Caption(context, translate("TilesTileSize")));
         content.AddView(sizePick);
         content.AddView(showLabel);
+        content.AddView(heatBar);
         content.AddView(lowest);
         content.AddView(chartOptions);
         content.AddView(limitsLine);
@@ -200,6 +213,7 @@ internal static class TileEditor
                 metricPick.SelectedItemPosition,
                 sizes[sizePick.SelectedItemPosition],
                 showLabel.Checked,
+                heatBar.Checked,
                 new TileChart(windows[windowPick.SelectedItemPosition], overlay.Checked, zoom.Checked,
                     fill.Checked, axis.Checked, (ChartSmoothing)smoothingPick.SelectedItemPosition),
                 Limits(warn, danger, falling.Checked),
@@ -212,7 +226,8 @@ internal static class TileEditor
     }
 
     private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, int kind, int chosen,
-        TileSize size, bool showLabel, TileChart options, TileLimits? limits, TileExtremum extremum)
+        TileSize size, bool showLabel, bool heatBar, TileChart options, TileLimits? limits,
+        TileExtremum extremum)
     {
         if (kind == 3 || chosen < 0 || chosen >= metrics.Count) return MetricTile.Empty(size);
 
@@ -220,9 +235,10 @@ internal static class TileEditor
 
         return kind switch
         {
-            1 => new MetricTile(id, TileKind.Chart, size, showLabel, options, limits),
-            2 => new MetricTile(id, TileKind.Extremum, size, showLabel, Limits: limits, Extremum: extremum),
-            _ => new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits),
+            1 => new MetricTile(id, TileKind.Chart, size, showLabel, options, limits, ShowHeatBar: heatBar),
+            2 => new MetricTile(id, TileKind.Extremum, size, showLabel, Limits: limits, Extremum: extremum,
+                ShowHeatBar: heatBar),
+            _ => new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits, ShowHeatBar: heatBar),
         };
     }
 

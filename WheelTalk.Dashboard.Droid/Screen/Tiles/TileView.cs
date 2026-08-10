@@ -54,6 +54,9 @@ internal abstract class TileView : LinearLayout
     /// <summary>Подпись размера («1/2 × 2») — только в правке и только там, где для неё есть место.</summary>
     private string _sizeLabel = "";
 
+    /// <summary>Показывать ли полоску жара — выбор человека на этой плитке (умолчание «да»).</summary>
+    private bool _showHeatBar = true;
+
     protected TileView(Context context, DashboardOptions options) : base(context)
     {
         Options = options;
@@ -177,8 +180,9 @@ internal abstract class TileView : LinearLayout
     /// забирает место у числа, а величина часто узнаётся по нему самому — по разрядам и единице.
     /// </para>
     /// </summary>
-    protected void BindFrame(string label, TileSize size, bool showLabel)
+    protected void BindFrame(string label, TileSize size, bool showLabel, bool heatBar = true)
     {
+        _showHeatBar = heatBar;
         _empty = false;
         Label.Text = label;
         Label.Visibility = showLabel ? ViewStates.Visible : ViewStates.Gone;
@@ -281,7 +285,7 @@ internal abstract class TileView : LinearLayout
     {
         base.DispatchDraw(canvas);
 
-        if (!_empty && _heat > 0) DrawHeatBar(canvas);
+        if (!_empty && _showHeatBar && _heat > 0) DrawHeatBar(canvas);
 
         if (!_editing) return;
 

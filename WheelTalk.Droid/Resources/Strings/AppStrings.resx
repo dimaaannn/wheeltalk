@@ -372,6 +372,7 @@
   <data name="TilesTileWindow" xml:space="preserve"><value>За какое время</value></data>
   <data name="TilesTileOverlay" xml:space="preserve"><value>Число поверх графика</value></data>
   <data name="TilesTileZoom" xml:space="preserve"><value>Обрезать по крайним значениям</value></data>
+  <data name="TilesTileHeatBar" xml:space="preserve"><value>Полоса жара по низу</value></data>
   <data name="TilesTileLabel" xml:space="preserve"><value>Показывать подпись</value></data>
   <data name="TilesTileFill" xml:space="preserve"><value>Заливка под линией</value></data>
   <data name="TilesTileAxis" xml:space="preserve"><value>Шкала слева</value></data>

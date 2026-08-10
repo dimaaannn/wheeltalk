@@ -769,8 +769,15 @@ public sealed class TilesScreen : IMainScreen
             string full = _translate(metric.LabelKey);
             if (size.Columns > 3) return full;
 
-            string shortened = _translate(metric.LabelKey + "Short");
-            return shortened.Length == 0 || shortened.StartsWith('!') ? full : shortened;
+            string key = metric.LabelKey + "Short";
+            string shortened = _translate(key);
+
+            // «Слова нет» словари отвечают по-разному: приложение рисует «!Ключ!», стенд возвращает
+            // сам ключ. Считаем пропажей оба ответа — иначе на четвертной плитке стенда стоял бы
+            // сырой ключ вместо подписи (найдено владельцем на снимках 10.08.2026).
+            return shortened.Length == 0 || shortened == key || shortened.StartsWith('!')
+                ? full
+                : shortened;
         }
 
         /// <summary>
@@ -871,16 +878,18 @@ public sealed class TilesScreen : IMainScreen
             {
                 chart.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
                     layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false),
-                    layout.Limits);
+                    layout.Limits, layout.ShowHeatBar);
             }
             else if (tile.Tile is ExtremumTileView extremum)
             {
                 extremum.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
-                    layout.Extremum ?? new TileExtremum(Lowest: false), layout.Limits, Face(layout.Size));
+                    layout.Extremum ?? new TileExtremum(Lowest: false), layout.Limits, Face(layout.Size),
+                    layout.ShowHeatBar);
             }
             else if (tile.Tile is MetricTileView value)
             {
-                value.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits, Face(layout.Size));
+                value.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits, Face(layout.Size),
+                    layout.ShowHeatBar);
             }
 
             tile.Tile.Render(_snapshot);

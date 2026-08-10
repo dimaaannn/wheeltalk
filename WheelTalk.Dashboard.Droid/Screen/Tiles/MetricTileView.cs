@@ -54,7 +54,7 @@ internal sealed class MetricTileView : TileView
     /// приложения не видит — тот же порядок, что у подписей шторки и плашки связи.
     /// </summary>
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileLimits? limits, TileTypeface face)
+        TileLimits? limits, TileTypeface face, bool heatBar)
     {
         _metric = metric;
         _limits = limits;
@@ -64,7 +64,7 @@ internal sealed class MetricTileView : TileView
         // процентов плитки, а величину называет подпись (план плиток §4).
         _unit = TileTypography.UnitOn(new TileClass(size.Columns, size.Rows), unit);
 
-        BindFrame(label, size, showLabel);
+        BindFrame(label, size, showLabel, heatBar);
         Apply(face, size);
 
         _shown = "";

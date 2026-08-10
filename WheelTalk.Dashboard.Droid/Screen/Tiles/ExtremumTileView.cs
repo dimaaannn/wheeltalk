@@ -51,7 +51,7 @@ internal sealed class ExtremumTileView : TileView
     }
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileExtremum options, TileLimits? limits, TileTypeface face)
+        TileExtremum options, TileLimits? limits, TileTypeface face, bool heatBar)
     {
         // Величина или сторона сменились — прежнее крайнее к ним не относится: максимум тока не
         // может стать минимумом напряжения.
@@ -66,7 +66,7 @@ internal sealed class ExtremumTileView : TileView
 
         // Пометка ▲▼ рядом с подписью: у крайних своё поведение — тап их сбрасывает, — и выглядеть
         // они обязаны иначе (план плиток §5). Место под неё уже учтено в подборе кегля.
-        BindFrame($"{label} {(options.Lowest ? "▼" : "▲")}", size, showLabel);
+        BindFrame($"{label} {(options.Lowest ? "▼" : "▲")}", size, showLabel, heatBar);
         ApplyForm(face.Form, size);
         _value.SetTextSize(ComplexUnitType.Sp, face.ValueSp);
         _value.Gravity = face.Form == TileForm.Row

@@ -236,6 +236,13 @@ public static class TilesLayout
     /// </summary>
     public static int ChartGapSteps => 3;
 
+    /// <summary>
+    /// Отступ под графиком внутри его плитки. Без него низ линии и подпись «за какое время»
+    /// прилипали к краю плитки и сливались с рамкой соседней снизу (владелец, снимки 10.08.2026).
+    /// Платит за отступ сам график — он сжимается по высоте, а не плитка растёт.
+    /// </summary>
+    public static int ChartBottomDp => 6;
+
     /// <summary>Кегль подписей шкалы на плитке-графике, sp. Восемь не читались (план плиток §5).</summary>
     public static float ChartAxisSp => 10f;
 

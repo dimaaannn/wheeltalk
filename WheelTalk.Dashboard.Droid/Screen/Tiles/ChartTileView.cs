@@ -102,9 +102,12 @@ internal sealed class ChartTileView : TileView
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent,
             GravityFlags.Bottom | GravityFlags.Start));
 
+        // Нижний отступ — внутри плитки и за счёт самого графика: линия и подпись времени
+        // упирались в край, и низ графика читался как рамка плитки, стоящей ниже.
         AddView(_stack, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f)
         {
             TopMargin = context.Dp(TilesLayout.ValueTopMarginDp),
+            BottomMargin = context.Dp(TilesLayout.ChartBottomDp),
         });
     }
 
@@ -112,7 +115,7 @@ internal sealed class ChartTileView : TileView
     public int Points => Math.Max(1, Width);
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileChart options, TileLimits? limits)
+        TileChart options, TileLimits? limits, bool heatBar)
     {
         _metric = metric;
         _format = "F" + metric.Decimals;
@@ -132,7 +135,7 @@ internal sealed class ChartTileView : TileView
         _value.Visibility = options.ShowValue ? ViewStates.Visible : ViewStates.Gone;
         _range.Text = Describe(options.Window);
 
-        BindFrame(label, size, showLabel);
+        BindFrame(label, size, showLabel, heatBar);
         Render(null);
     }
 

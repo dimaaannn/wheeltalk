@@ -83,9 +83,15 @@ public enum TileKind
 /// старше настроечных и работают для любой величины, а не только для тех двух, у которых пороги в
 /// настройках есть.
 /// </param>
+/// <param name="ShowHeatBar">
+/// Показывать ли полоску жара по низу плитки. Своя у каждой плитки — тем же правом, что и пороги
+/// (<paramref name="Limits"/>): полоска отвечает «насколько близко к тревоге», и на плитке, где
+/// тревоге взяться неоткуда, она лишняя строка внимания. Включена по умолчанию, и старая
+/// сохранённая раскладка, где поля нет вовсе, читается именно так.
+/// </param>
 public sealed record MetricTile(
     string MetricId, TileKind Kind, TileSize Size, bool ShowLabel = true, TileChart? Chart = null,
-    TileLimits? Limits = null, TileExtremum? Extremum = null)
+    TileLimits? Limits = null, TileExtremum? Extremum = null, bool ShowHeatBar = true)
 {
     /// <summary>Пустое место заданного размера.</summary>
     public static MetricTile Empty(TileSize size) => new("", TileKind.Empty, size);
