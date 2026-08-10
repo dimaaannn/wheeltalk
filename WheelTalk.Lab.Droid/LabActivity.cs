@@ -697,9 +697,16 @@ public sealed class LabActivity : Activity
     ];
 
     /// <summary>
-    /// Меню шторки — состав и подписи боевого (quick-commands-design.md §3), действия стендовые.
+    /// Меню шторки — <b>полный состав боевого</b>: те же значки, те же слова, тот же порядок и те же
+    /// разделы, действия стендовые (решение владельца 10.08.2026). Чего стенд не умеет — стоит
+    /// неактивным, а не отсутствует: пропавшая кнопка сдвигает соседей, и снимок со стенда
+    /// перестаёт отвечать на вопрос «что увидит райдер», ради которого его и делают. Сегодня на
+    /// этом и споткнулись — «пропали» кнопки, которых на стенде никогда не было, а отличить
+    /// забывчивость от замысла было нечем; теперь это держит замок <c>LabSheetParityTests</c>.
+    /// <para>
     /// Слова продублированы с <c>AppStrings</c> приложения сознательно: библиотека слов не держит,
-    /// а ссылаться на ресурсы приложения стенд не может.
+    /// а ссылаться на ресурсы приложения стенд не может — потому их и сверяет тот же замок.
+    /// </para>
     /// </summary>
     private IReadOnlyList<QuickSheetCommand> BuildFakeCommands() =>
     [
@@ -724,9 +731,11 @@ public sealed class LabActivity : Activity
         },
         new()
         {
+            // Связь у стенда своя — колесо ей ни к чему: кнопка крутит фазы «⇄», как и раньше, а
+            // слово берёт то же, что боевое, от фазы «отключено».
             Icon = QuickIcons.Power,
             Group = WheelNow,
-            Label = () => "Связь",
+            Label = () => _linkCycle.Current.Phase == LinkPhase.Idle ? "Подключить" : "Отключить",
             Action = () =>
             {
                 CycleLink();
@@ -749,8 +758,21 @@ public sealed class LabActivity : Activity
         {
             Icon = QuickIcons.Reset,
             Group = Ride,
-            Label = () => "Сброс max",
+            Label = () => "Сброс пиков",
             Action = () => Task.CompletedTask,
+        },
+        new()
+        {
+            // Реплей боевой показывает только у отладочного транспорта — а стенд весь и есть
+            // отладочный транспорт: кнопка пускает и останавливает ту же запись, что ручка «⏸».
+            Icon = QuickIcons.Play,
+            Group = Ride,
+            Label = () => _playing ? "Стоп" : "Пуск",
+            Action = () =>
+            {
+                SetPlaying(!_playing);
+                return Task.CompletedTask;
+            },
         },
         new()
         {
@@ -768,7 +790,7 @@ public sealed class LabActivity : Activity
         {
             Icon = QuickIcons.Lock,
             Group = Phone,
-            Label = () => _overLock ? "Закреплён" : "Закрепить",
+            Label = () => _overLock ? "Экран закреплён" : "Закрепить экран",
             IsOn = () => _overLock,
             Action = () =>
             {
@@ -793,12 +815,26 @@ public sealed class LabActivity : Activity
     };
 
     /// <summary>
-    /// Переходы — раздел «Перейти» (план 32 §1, этап 4). У стенда уходить некуда, кроме собственных
-    /// ручек, — они и стоят вместо трёх экранов приложения: важно, что раздел есть и вид у него
-    /// свой.
+    /// Переходы — все три боевых, в том же порядке. Экранов данных и поездок у стенда нет, и они
+    /// стоят неактивными: место у кнопки то же, что увидит райдер, а нажатие ей не отдано
+    /// (решение владельца 10.08.2026). «Настройки» ведут в стендовые — они у него есть.
     /// </summary>
     private IReadOnlyList<QuickSheetLink> BuildFakeLinks() =>
     [
+        new()
+        {
+            Icon = QuickIcons.Data,
+            Label = "Данные",
+            IsEnabled = () => false,
+            Open = () => { },
+        },
+        new()
+        {
+            Icon = QuickIcons.Rides,
+            Label = "Поездки",
+            IsEnabled = () => false,
+            Open = () => { },
+        },
         new()
         {
             Icon = QuickIcons.Settings,

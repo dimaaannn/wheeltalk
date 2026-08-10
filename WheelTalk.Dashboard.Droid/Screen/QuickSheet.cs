@@ -311,7 +311,7 @@ public sealed class QuickSheet : FrameLayout
         var context = Context!;
 
         var row = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
-        row.AddView(new SectionSpine(context, title), new LinearLayout.LayoutParams(
+        row.AddView(new SectionSpine(context, title, SpineTextSize()), new LinearLayout.LayoutParams(
             context.Dp(SpineWidthDp), ViewGroup.LayoutParams.MatchParent));
 
         var slots = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
@@ -327,6 +327,43 @@ public sealed class QuickSheet : FrameLayout
         });
 
         return slots;
+    }
+
+    /// <summary>
+    /// Кегль корешков — <b>один на все разделы</b> и такой, чтобы самое длинное имя уместилось в
+    /// самой узкой строке. Разные кегли у соседних корешков читались бы как разная важность
+    /// (решение владельца 10.08.2026: единый кегль, подгонки каждого по себе нет), а срезанное
+    /// слово хуже мелкого — отсюда общая мерка вместо обеих крайностей.
+    /// <para>
+    /// Считается заново на каждой сборке, а не задаётся числом: длина зависит от языка и от
+    /// системного множителя шрифта (10 sp растут, а строка остаётся 48 dp), и подобранная под
+    /// «ССЫЛКИ» константа рассыпалась бы на первом же переводе.
+    /// </para>
+    /// </summary>
+    private float SpineTextSize()
+    {
+        var context = Context!;
+        float full = TypedValue.ApplyDimension(
+            ComplexUnitType.Sp, SpineSp, context.Resources!.DisplayMetrics!);
+
+        var ruler = SectionSpine.Ruler(full);
+        float longest = 0;
+        foreach (string title in SectionTitles()) longest = Math.Max(longest, ruler.MeasureText(title.ToUpperInvariant()));
+
+        float narrowest = context.Dp(Math.Min(TabHeightDp, Math.Min(LinkHeightDp, CommandHeightDp)));
+        return longest > narrowest ? full * narrowest / longest : full;
+    }
+
+    /// <summary>Имена всех разделов, которые эта шторка сейчас показывает.</summary>
+    private IEnumerable<string> SectionTitles()
+    {
+        if (_screens.Count > 0) yield return ScreensSectionLabel();
+        if (_links.Count > 0) yield return LinksSectionLabel();
+
+        foreach (string group in _commands.Select(command => command.Group).Append(PinGroup).Distinct())
+        {
+            yield return SectionLabel(group);
+        }
     }
 
     /// <summary>
@@ -402,6 +439,8 @@ public sealed class QuickSheet : FrameLayout
         var button = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
         button.SetGravity(GravityFlags.Center);
         button.Clickable = true;
+        // Недоступный переход гаснет, но место держит — тот же вид, что у недоступной команды.
+        button.Alpha = (link.IsEnabled?.Invoke() ?? true) ? 1f : 0.4f;
 
         var background = new GradientDrawable();
         background.SetShape(ShapeType.Rectangle);
@@ -496,11 +535,14 @@ public sealed class QuickSheet : FrameLayout
         foreach (var link in _links)
         {
             var button = BuildScreenLink(link);
-            button.Click += (_, _) =>
+            if (link.IsEnabled?.Invoke() ?? true)
             {
-                Hide();
-                link.Open();
-            };
+                button.Click += (_, _) =>
+                {
+                    Hide();
+                    link.Open();
+                };
+            }
 
             AddToSection(linkSlots, button);
         }
@@ -656,25 +698,33 @@ public sealed class QuickSheet : FrameLayout
         private readonly string _title;
         private readonly Paint _paint;
 
-        public SectionSpine(Context context, string title) : base(context)
+        public SectionSpine(Context context, string title, float textSize) : base(context)
         {
             _title = title.ToUpperInvariant();
-            _paint = new Paint(PaintFlags.AntiAlias)
+            _paint = Ruler(textSize);
+        }
+
+        /// <summary>
+        /// Кисть корешка — она же мерка: длину имени считает тот, кто выбирает общий кегль
+        /// (<see cref="SpineTextSize"/>), и мерить он обязан ровно тем, чем потом нарисуют, вместе с
+        /// разрядкой и начертанием.
+        /// </summary>
+        internal static Paint Ruler(float textSize)
+        {
+            var paint = new Paint(PaintFlags.AntiAlias)
             {
                 Color = QuickSheetPalette.Spine,
                 TextAlign = Paint.Align.Center,
-                TextSize = TypedValue.ApplyDimension(
-                    ComplexUnitType.Sp, SpineSp, context.Resources!.DisplayMetrics!),
+                TextSize = textSize,
                 // Разрядка макета — 1,6 px при кегле 10, то есть 0,16 em: Paint мерит её в em.
                 LetterSpacing = 0.16f,
             };
-            _paint.SetTypeface(Typeface.DefaultBold);
+            paint.SetTypeface(Typeface.DefaultBold);
+            return paint;
         }
 
         protected override void OnDraw(Canvas canvas)
         {
-            // Кегль у всех разделов один и подгонке под длину слова не подлежит (решение владельца
-            // 10.08.2026): разнокалиберные корешки читаются как разные по важности.
             float centerX = Width / 2f;
             float centerY = Height / 2f;
 
