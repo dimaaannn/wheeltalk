@@ -75,7 +75,7 @@ internal sealed class ExtremumTileView : TileView
         // кегля (TilesLayout.MarkDp).
         BindFrame(label, size, showLabel,
             heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
-        MarkLabel(options.Lowest ? "▼" : "▲", label);
+        MarkLabel(options.Lowest ? MarkLowest : MarkHighest, label);
         ApplyForm(face.Form, size);
         _value.SetTextSize(ComplexUnitType.Dip, face.ValueSp);
         _value.Gravity = face.Form == TileForm.Row

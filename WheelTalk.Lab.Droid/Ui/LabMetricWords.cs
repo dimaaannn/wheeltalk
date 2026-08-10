@@ -85,6 +85,7 @@ public static class LabMetricWords
         ["TilesTileOverlay"] = "Число поверх графика",
         ["TilesTileZoom"] = "Обрезать по крайним значениям",
         ["TilesTileLabel"] = "Показывать подпись",
+        ["TilesTileGroup"] = "Начинать новую группу",
         ["TilesTileHeatBar"] = "Полоса жара по низу",
         ["TilesTileRounding"] = "Знаков после запятой",
         ["TilesRoundingDefault"] = "По умолчанию",

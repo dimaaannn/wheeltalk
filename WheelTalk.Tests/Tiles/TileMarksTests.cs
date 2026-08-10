@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Tiles;
@@ -91,6 +92,32 @@ public class TileMarksTests
     }
 
     /// <summary>
+    /// Разделитель — свойство плитки, а не вид: черта рисуется по верхнему краю той плитки, с
+    /// которой группа начинается, и места не занимает (решение владельца 11.08.2026). Поле
+    /// необязательное: у раскладок, собранных раньше, его нет, и это ровно «группу не начинает».
+    /// <para>
+    /// Читается оно <b>во всех</b> ветках видов — пустое место тоже начинает группу; пропусти
+    /// ветку, и настройка исчезнет молча у плиток одного какого-то вида.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_group_line_is_a_property_of_the_tile_and_reaches_every_kind()
+    {
+        string json = RepoFiles.Read(Tiles + "TileLayoutJson.cs");
+
+        Assert.Contains("public bool Group { get; set; }", json);
+        Assert.Contains("Group = tile.GroupStart,", json);
+
+        // Пять веток чтения: пустое место, число, график, крайнее, дистанция.
+        Assert.Equal(5, Regex.Matches(json, @"GroupStart = dto\.Group").Count);
+
+        // Черта — по верхнему краю и во всю ширину, строки сетки не занимает.
+        Assert.Contains(
+            "if (_groupStart) canvas.DrawLine(0, 0, Width, 0, _outlinePaint);",
+            RepoFiles.Read(Tiles + "TileView.cs"));
+    }
+
+    /// <summary>
     /// Пометка ▲▼ стоит <b>перед</b> подписью и крупнее её: глаз читает начало строки, а не её
     /// конец, и крайняя плитка обязана узнаваться с одного взгляда.
     /// </summary>
@@ -98,7 +125,7 @@ public class TileMarksTests
     public void The_mark_leads_the_label_and_is_bigger()
     {
         Assert.Contains(
-            "MarkLabel(options.Lowest ? \"▼\" : \"▲\", label)",
+            "MarkLabel(options.Lowest ? MarkLowest : MarkHighest, label)",
             RepoFiles.Read(Tiles + "ExtremumTileView.cs"));
 
         string mark = RepoFiles.MethodBody(
@@ -106,5 +133,24 @@ public class TileMarksTests
 
         Assert.Contains("$\"{mark} {label}\"", mark);
         Assert.Contains("RelativeSizeSpan(TilesLayout.MarkScale)", mark);
+    }
+
+    /// <summary>
+    /// И в углу квадрата — тоже крупнее (решение владельца 11.08.2026). Там подпись рисуется руками
+    /// по канве, спан ей не указ: знак выводится своим кеглем, отдельным вызовом, и бюджет полоски
+    /// в углу считается по нему, а не по слову — иначе число залезет под метку.
+    /// </summary>
+    [Fact]
+    public void The_corner_mark_is_bigger_too()
+    {
+        string corner = RepoFiles.MethodBody(
+            RepoFiles.Read(Tiles + "TileView.cs"), "private void DrawCornerLabel(Canvas canvas)");
+
+        Assert.Contains("word * TilesLayout.MarkScale", corner);
+        Assert.Contains("_tickPaint.TextSize = sign;", corner);
+
+        Assert.Contains(
+            "_context.Sp(TilesLayout.SquareLabelSp * TilesLayout.MarkScale) * TilesLayout.InkRatio",
+            RepoFiles.Read(Tiles + "TilesScreen.cs"));
     }
 }

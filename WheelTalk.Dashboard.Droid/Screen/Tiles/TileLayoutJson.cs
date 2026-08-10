@@ -61,6 +61,7 @@ public static partial class TileLayoutJson
     {
         Id = tile.Id,
         Caption = tile.Caption.Length > 0 ? tile.Caption : null,
+        Group = tile.GroupStart,
         Kind = tile.Kind switch
         {
             TileKind.Value => "value",
@@ -124,27 +125,27 @@ public static partial class TileLayoutJson
         switch (dto.Kind)
         {
             case "empty":
-                return MetricTile.Empty(size) with { Id = id };
+                return MetricTile.Empty(size) with { Id = id, GroupStart = dto.Group };
 
             case "value" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Value, size, dto.Label,
                     Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals,
-                    Caption: caption) { Id = id };
+                    Caption: caption) { Id = id, GroupStart = dto.Group };
 
             case "chart" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Chart, size, dto.Label,
                     ToChart(dto.Chart), ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar,
-                    Decimals: decimals, Caption: caption) { Id = id };
+                    Decimals: decimals, Caption: caption) { Id = id, GroupStart = dto.Group };
 
             case "extremum" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Extremum, size, dto.Label,
                     Limits: ToLimits(dto.Limits), Extremum: new TileExtremum(dto.Lowest),
-                    ShowHeatBar: dto.HeatBar, Decimals: decimals, Caption: caption) { Id = id };
+                    ShowHeatBar: dto.HeatBar, Decimals: decimals, Caption: caption) { Id = id, GroupStart = dto.Group };
 
             case "trip" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Trip, size, dto.Label,
                     Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals,
-                    Caption: caption) { Id = id };
+                    Caption: caption) { Id = id, GroupStart = dto.Group };
 
             default:
                 // Незнакомый вид или величина без имени: строить нечего.
@@ -192,6 +193,13 @@ public static partial class TileLayoutJson
         /// дистанции по одному одометру различает только слово хозяина.
         /// </summary>
         public string? Caption { get; set; }
+
+        /// <summary>
+        /// Начинать ли этой плиткой новую группу — черта над ней. Поля нет у раскладок, собранных
+        /// раньше, и это ровно «группу не начинает»: <c>false</c> здесь и есть прежний вид, а не
+        /// потеря настройки.
+        /// </summary>
+        public bool Group { get; set; }
 
         public string? Kind { get; set; }
         public string? Metric { get; set; }

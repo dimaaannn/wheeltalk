@@ -83,6 +83,9 @@ internal abstract class TileView : LinearLayout
     /// </summary>
     private string _cornerLabel = "";
 
+    /// <summary>Начинает ли плитка группу — тогда по её верхнему краю идёт черта.</summary>
+    private bool _groupStart;
+
     protected TileView(Context context, DashboardOptions options) : base(context)
     {
         Options = options;
@@ -192,6 +195,21 @@ internal abstract class TileView : LinearLayout
         }
     }
 
+    /// <summary>
+    /// Начинает ли плитка новую группу. Ставится при привязке — как и всё прочее, чем плитка
+    /// отличается от соседки; перерисовка нужна только на перемену.
+    /// </summary>
+    public bool GroupStart
+    {
+        set
+        {
+            if (_groupStart == value) return;
+
+            _groupStart = value;
+            Invalidate();
+        }
+    }
+
     /// <summary>Очередной снимок. Зовётся на каждом кадре, поэтому дешёвый: вид без чисел молчит.</summary>
     public virtual void Render(TelemetrySnapshot? snapshot)
     {
@@ -285,6 +303,16 @@ internal abstract class TileView : LinearLayout
     /// 11.08.2026): «▲ ШИМ», а не «ШИМ ▲». Стояла она в хвосте и одного кегля с подписью, и крайние
     /// путались с обычными плитками — глаз читает начало строки, а не её конец.
     /// </summary>
+    /// <summary>Пометки видов — знаки, которыми плитка объявляет своё поведение.</summary>
+    public const string MarkHighest = "▲";
+
+    public const string MarkLowest = "▼";
+
+    /// <summary>Начинается ли подпись пометкой: по ней метка в углу рисуется своим, крупным кеглем.</summary>
+    private static bool Marked(string label) =>
+        label.StartsWith(MarkHighest, StringComparison.Ordinal)
+        || label.StartsWith(MarkLowest, StringComparison.Ordinal);
+
     protected void MarkLabel(string mark, string label)
     {
         Label.Text = $"{mark} {label}";
@@ -409,6 +437,11 @@ internal abstract class TileView : LinearLayout
         if (!_empty) DrawFrame(canvas);
         if (_cornerLabel.Length > 0) DrawCornerLabel(canvas);
 
+        // Черта группы — по верхнему краю плитки, во всю её ширину. Места не занимает: разделитель
+        // здесь свойство плитки, а не вид (решение владельца 11.08.2026), и строку сетки ради одной
+        // линии никто не тратит.
+        if (_groupStart) canvas.DrawLine(0, 0, Width, 0, _outlinePaint);
+
         if (!_editing) return;
 
         if (_empty)
@@ -498,9 +531,26 @@ internal abstract class TileView : LinearLayout
     private void DrawCornerLabel(Canvas canvas)
     {
         _tickPaint.Color = Color.Argb(255, Palette.Dim.R, Palette.Dim.G, Palette.Dim.B);
-        _tickPaint.TextSize = Context!.Dp(TilesLayout.SquareLabelSp);
-        canvas.DrawText(_cornerLabel, Context.Dp(TilesLayout.PaddingDp),
-            Context.Dp(TilesLayout.PaddingDp) + _tickPaint.TextSize, _tickPaint);
+
+        float left = Context!.Dp(TilesLayout.PaddingDp);
+        float word = Context.Dp(TilesLayout.SquareLabelSp);
+        float sign = word * TilesLayout.MarkScale;
+
+        // Пометка ▲▼ крупнее подписи и здесь (решение владельца 11.08.2026): в прочих формах это
+        // делает спан, а метка в углу рисуется руками — значит и знак рисуется своим кеглем,
+        // отдельным вызовом. Обе части стоят на одной базовой линии, посаженной под крупный знак.
+        float baseline = left + sign;
+        string mark = Marked(_cornerLabel) ? _cornerLabel[..1] : "";
+
+        if (mark.Length > 0)
+        {
+            _tickPaint.TextSize = sign;
+            canvas.DrawText(mark, left, baseline, _tickPaint);
+            left += _tickPaint.MeasureText(mark + " ");
+        }
+
+        _tickPaint.TextSize = word;
+        canvas.DrawText(_cornerLabel[mark.Length..].TrimStart(), left, baseline, _tickPaint);
 
         // Кисть меток общая — вернуть ей свой цвет обязана та же рука, что заняла.
         _tickPaint.Color = Color.Argb(TilesLayout.HeatTickAlpha, Palette.Ink.R, Palette.Ink.G, Palette.Ink.B);

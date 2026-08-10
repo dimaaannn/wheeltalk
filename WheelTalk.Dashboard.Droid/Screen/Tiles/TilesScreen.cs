@@ -871,7 +871,11 @@ public sealed class TilesScreen : IMainScreen
                 UnitScale = TilesLayout.UnitScale,
                 RowLabelShare = TilesLayout.RowLabelShare,
                 SquareRatio = TilesLayout.SquareRatio,
-                SquareLabelPx = _context.Sp(TilesLayout.SquareLabelSp) * TilesLayout.InkRatio,
+                // Полоска метки в углу считается по <b>крупному</b> знаку: пометка ▲▼ в полтора
+                // раза выше подписи (решение владельца 11.08.2026), и числу достаётся то, что
+                // осталось под самой высокой из двух частей, а не под словом.
+                SquareLabelPx =
+                    _context.Sp(TilesLayout.SquareLabelSp * TilesLayout.MarkScale) * TilesLayout.InkRatio,
             };
         }
 
@@ -1135,6 +1139,9 @@ public sealed class TilesScreen : IMainScreen
             if (holder is not TileHolder tile) return;
 
             var (layout, metric) = _tiles[position];
+
+            // Черта группы — свойство всякой плитки, включая пустое место: группу начинают и им.
+            tile.Tile.GroupStart = layout.GroupStart;
 
             if (metric is null)
             {
