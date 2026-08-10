@@ -103,7 +103,10 @@ public static class TilesLayout
     /// </summary>
     public static int SquareLabelSp => 10;
 
-    /// <summary>До какого отношения сторон плитка считается квадратной — см. <c>TileMetrics.SquareRatio</c>.</summary>
+    /// <summary>
+    /// До какого отношения сторон плитка считается квадратной — см. <c>TileMetrics.SquareRatio</c>,
+    /// там же пересчитанный замер и тесный запас на широких экранах.
+    /// </summary>
     public static float SquareRatio => 1.45f;
 
     /// <summary>Кегль подписи в форме «строка»: она стоит в одну линию с числом и читается наравне с ним.</summary>

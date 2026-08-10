@@ -25,11 +25,20 @@ public class TileTypographyTests
         public float Height(float sizeSp) => sizeSp * Ink;
     }
 
-    /// <summary>Сетка боевого экрана: 12 колонок по 23 px, строка 68, просвет 3, поля 8.</summary>
+    /// <summary>
+    /// Сетка боевого экрана: 12 колонок по 23 px, строка 68, просвет 3, поля 8.
+    /// <para>
+    /// <b>Все числа здесь одной плотности.</b> Просвет стоял вдвое больше прочих (6 против 3) —
+    /// цена невидимая, пока высота плитки считалась с прибавкой просветов; с починкой 10.08.2026
+    /// (укладчик врезает плитку на просвет, а не раздаёт их между строками) чужой просвет съел бы у
+    /// низкой плитки шестую часть высоты и перевёл бы весь класс в другую форму. Мера проста:
+    /// сетка обязана быть такой, какую даёт настоящий экран, иначе тест меряет несуществующий.
+    /// </para>
+    /// </summary>
     private static TileMetrics Grid() => new(
         CellWidthPx: 23,
         RowHeightPx: 68,
-        GapPx: 6,
+        GapPx: 3,
         PaddingPx: 8,
         LabelHeightPx: 16,
         HeatBarPx: 9,
@@ -122,10 +131,14 @@ public class TileTypographyTests
     public void Tiles_of_one_size_read_at_one_size()
     {
         var quarter = new TileClass(3, 1);
+
+        // Строка соседа взята заведомо широкой: на четвертной плитке кегль упирается то в ширину,
+        // то в высоту, и мерить правило надо там, где решает ширина, — иначе тест проверяет не
+        // «худшую строку класса», а потолок высоты, одинаковый у обеих.
         var faces = TileTypography.Measure(
         [
             new(quarter, "7", "", "Ток", false),
-            new(quarter, "1234.5", "", "Мощность", false),
+            new(quarter, "123456.7", "", "Мощность", false),
         ], Grid(), new Ruler());
 
         // Класс один — значит и кегль один, и он посчитан по худшей строке: короткое «7» не вправе
@@ -133,7 +146,7 @@ public class TileTypographyTests
         float alone = TileTypography.Measure(
             [new(quarter, "7", "", "Ток", false)], Grid(), new Ruler())[quarter].ValueSp;
         float worst = TileTypography.Measure(
-            [new(quarter, "1234.5", "", "Мощность", false)], Grid(), new Ruler())[quarter].ValueSp;
+            [new(quarter, "123456.7", "", "Мощность", false)], Grid(), new Ruler())[quarter].ValueSp;
 
         Assert.True(worst < alone, "длинная строка обязана садиться мельче короткой");
         Assert.Equal(worst, faces[quarter].ValueSp);
@@ -294,13 +307,19 @@ public class TileTypographyTests
     /// <summary>
     /// Замок на принятый вид прямоугольных: их кегли — то, что владелец принял по снимку, и меняться
     /// они не должны ни от правки квадрата, ни от «общей полезной» правки полей. Числа сняты с
-    /// тестовой линейки и тестовой сетки — на телефоне они другие (там 6×1 даёт 28 sp); важна не их
-    /// величина, а то, что они держатся: сдвинулись — значит прямоугольную породу опять задели.
+    /// тестовой линейки и тестовой сетки; важна не их величина, а то, что они держатся: сдвинулись —
+    /// значит прямоугольную породу опять задели.
+    /// <para>
+    /// <b>Числа пересняты 10.08.2026: 21 → 16 (6×1) и 64 → 57 (12×2 и 12×3).</b> Это не потеря вида,
+    /// а починка: прежние сняты с плитки, которую подбор считал выше настоящей на два просвета
+    /// (<see cref="TileMetrics.Height"/>), и низ числа на телефоне срезало. Кегль, ужавшийся до
+    /// того, что плитка даёт на самом деле, и есть верный.
+    /// </para>
     /// </summary>
     [Theory]
-    [InlineData(6, 1, 21)]
-    [InlineData(12, 2, 64)]
-    [InlineData(12, 3, 64)]
+    [InlineData(6, 1, 16)]
+    [InlineData(12, 2, 57)]
+    [InlineData(12, 3, 57)]
     public void A_rectangle_keeps_the_size_it_was_accepted_with(int columns, int rows, float expected)
     {
         var tile = new TileClass(columns, rows);
