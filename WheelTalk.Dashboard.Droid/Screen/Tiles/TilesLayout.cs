@@ -375,58 +375,52 @@ public static class TilesLayout
     /// раз в кадр.
     /// </summary>
     /// <remarks>
-    /// <b>Состав снят с телефона владельца 11.08.2026</b> — он собрал раскладку руками, и она стала
-    /// умолчанием свежей установки: порядок, размеры и пер-плиточные настройки перенесены один в
-    /// один (подписи включены, полосы жара включены, у графика окно 15 минут, число поверх, заливка,
-    /// шкала слева и прореживание «минимум и максимум» — всё это умолчания <c>TileChart</c>, и в его
-    /// файле они стоят теми же значениями).
+    /// <b>Раскладка собрана владельцем на телефоне и принята им 11.08.2026 как умолчание свежей
+    /// установки.</b> Перенесена один в один: состав, порядок, размеры, виды и все пер-плиточные
+    /// настройки — пороги, свойства графиков, сторона крайних, подписи и полосы жара. Это не
+    /// «дизайн из головы», а то, на что человек смотрит сам; менять её без его слова нельзя, и
+    /// стережёт это замок полного состава.
     /// <para>
     /// <b>Имена плиток здесь не зашиты.</b> В сохранённой раскладке у каждой плитки есть <c>id</c>,
     /// но зашитой он не нужен: имена раздаёт экран при чтении и тут же сохраняет — иначе они
     /// разошлись бы у двух установок с одним и тем же зашитым именем.
     /// </para>
-    /// <para>
-    /// <b>Низ раскладки владелец ещё будет править</b> — пробеги, крайние и график ждут его слова;
-    /// состав вернётся сюда ещё раз.
-    /// </para>
     /// </remarks>
     public static IReadOnlyList<MetricTile> Fixed =>
     [
-        new("speed", TileKind.Value, new(12, 2)),
+        // Три графика подряд, и все с обрезкой по крайним значениям: у скорости, ШИМ и напряжения
+        // размах мал против самого значения, и без обрезки линия у них прямая. Окно у всех
+        // четверть часа. ШИМ рисуется пиками — по нему смотрят, как высоко поднималось.
+        new("speed", TileKind.Chart, new(12, 3),
+            Chart: new TileChart(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: true),
+            Limits: new TileLimits(25, 50, Rising: true)),
 
-        new("pwm", TileKind.Value, new(6, 2)),
+        new("pwm", TileKind.Chart, new(6, 2),
+            Chart: new TileChart(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: true,
+                Smoothing: ChartSmoothing.Peaks),
+            Limits: new TileLimits(70, 80, Rising: true)),
+
+        new("voltage", TileKind.Chart, new(6, 2),
+            Chart: new TileChart(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: true)),
+
+        // Ряд крайних: у скорости, ШИМ и тока важен верхний край, у напряжения нижний — обе стороны
+        // правила видны сразу. У пика ШИМ полоса жара выключена: пик и так стоит у своего порога, и
+        // вторая шкала рядом с ним — лишняя строка внимания.
+        new("speed", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: false)),
+        new("pwm", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: false),
+            Limits: new TileLimits(70, 80, Rising: true), ShowHeatBar: false),
+        new("current", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: false)),
+        new("voltage", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: true)),
+
         new("battery_level", TileKind.Value, new(6, 2)),
-
-        // Половина и четыре четвертных двумя столбиками — ряд, ради которого высота стала своей
-        // мерой. Укладчик кладёт их сам: список идёт слева направо и сверху вниз, а четвертные
-        // ложатся в остаток ряда рядом с двухстрочным напряжением.
-        new("voltage", TileKind.Value, new(6, 2)),
         new("current", TileKind.Value, new(3, 1)),
         new("power", TileKind.Value, new(3, 1)),
-        new("phase_current", TileKind.Value, new(3, 1)),
 
-        // Мин/макс в раскладке — только крайними (решение владельца 11.08.2026): величины-максимумы
-        // («Пик ШИМ», «Максимум» скорости) в стартовый состав не входят вовсе. Крайнее — один вид на
-        // все величины, с пометкой ▲▼ и своим сбросом; вторая величина рядом с основной делала бы то
-        // же самое молча и по-своему у каждой.
-        new("speed", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: false)),
-        new("current", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: false)),
-
-        new("system_temp", TileKind.Value, new(3, 1)),
-        new("temp2", TileKind.Value, new(3, 1)),
-        new("tilt", TileKind.Value, new(3, 1)),
+        // Температуры со своими порогами: у платы запас больше, у двигателя меньше.
+        new("system_temp", TileKind.Value, new(3, 1), Limits: new TileLimits(50, 80, Rising: true)),
+        new("temp2", TileKind.Value, new(3, 1), Limits: new TileLimits(60, 80, Rising: true)),
 
         new("distance", TileKind.Value, new(6, 1)),
         new("totaldistance", TileKind.Value, new(6, 1)),
-
-        // Крайние значения: у ШИМ важен верхний край, у напряжения нижний — обе стороны правила
-        // видны сразу. Сбрасываются из меню плитки, независимо от поездки (план 23 §3.2).
-        new("pwm", TileKind.Extremum, new(6, 1), Extremum: new TileExtremum(Lowest: false)),
-        new("voltage", TileKind.Extremum, new(6, 1), Extremum: new TileExtremum(Lowest: true)),
-
-        // График ШИМ с числом поверх — то, ради чего экран и задуман: пик видно на линии, а текущее
-        // значение читается не отходя.
-        new("pwm", TileKind.Chart, new(12, 2), ShowLabel: true,
-            new TileChart(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: false)),
     ];
 }

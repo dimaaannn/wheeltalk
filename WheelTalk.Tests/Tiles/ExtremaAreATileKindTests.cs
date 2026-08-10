@@ -67,13 +67,11 @@ public class ExtremaAreATileKindTests
     }
 
     /// <summary>
-    /// Состав умолчания — тот, что владелец собрал руками на телефоне 11.08.2026, один в один:
-    /// величина, вид и размер каждой из семнадцати плиток, в его порядке. Замок на состав, а не на
-    /// вкус: раскладку правит человек, а эта — то, что он <b>принял</b> как начало для свежей
-    /// установки. Двинется — двинется молча, и заметить будет нечем.
-    /// <para>
-    /// Низ (пробеги, крайние, график) владелец ещё будет править — тогда обновится и этот список.
-    /// </para>
+    /// Состав умолчания — тот, что владелец собрал руками на телефоне и принял 11.08.2026, один в
+    /// один: величина, вид и размер каждой из четырнадцати плиток в его порядке, а следом — его же
+    /// пер-плиточные настройки. Замок на состав, а не на вкус: раскладку правит человек, а эта —
+    /// то, что он <b>принял</b> как начало для свежей установки. Двинется — двинется молча, и
+    /// заметить будет нечем.
     /// </summary>
     [Fact]
     public void The_starting_layout_is_the_one_the_owner_assembled()
@@ -83,24 +81,33 @@ public class ExtremaAreATileKindTests
 
         Assert.Equal(
         [
-            "speed Value 12×2",
-            "pwm Value 6×2",
+            "speed Chart 12×3",
+            "pwm Chart 6×2",
+            "voltage Chart 6×2",
+            "speed Extremum 3×1",
+            "pwm Extremum 3×1",
+            "current Extremum 3×1",
+            "voltage Extremum 3×1",
             "battery_level Value 6×2",
-            "voltage Value 6×2",
             "current Value 3×1",
             "power Value 3×1",
-            "phase_current Value 3×1",
-            "speed Extremum 3×1",
-            "current Extremum 3×1",
             "system_temp Value 3×1",
             "temp2 Value 3×1",
-            "tilt Value 3×1",
             "distance Value 6×1",
             "totaldistance Value 6×1",
-            "pwm Extremum 6×1",
-            "voltage Extremum 6×1",
-            "pwm Chart 12×2",
         ], tiles);
+
+        // Пер-плиточное — часть того же умолчания: пороги скорости, ШИМ и температур, обрезка
+        // графиков по крайним значениям, пики у ШИМ и выключенная полоса жара у его пика.
+        string source = Starting();
+
+        Assert.Contains("new TileLimits(25, 50, Rising: true)", source);
+        Assert.Contains("new TileLimits(70, 80, Rising: true)", source);
+        Assert.Contains("new TileLimits(50, 80, Rising: true)", source);
+        Assert.Contains("new TileLimits(60, 80, Rising: true)", source);
+        Assert.Contains("Smoothing: ChartSmoothing.Peaks", source);
+        Assert.Contains("ShowHeatBar: false", source);
+        Assert.Equal(3, Regex.Matches(source, @"Zoom: true").Count);
     }
 
     /// <summary>
