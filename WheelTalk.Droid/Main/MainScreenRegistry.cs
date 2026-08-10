@@ -47,13 +47,16 @@ public sealed class MainScreenRegistry
         DashboardOptions dashboard,
         PanelVariants panels,
         IMetricHistory history,
-        ITileLayoutStore tileLayout)
+        ITileLayoutStore tileLayout,
+        ITripBaselineStore tripBaselines,
+        Func<string> wheelAddress)
     {
         _screens =
         [
             new(PanelId, QuickIcons.Panel, () => AppStrings.ScreenPanel, panels.Create),
             new(TilesId, QuickIcons.Tiles, () => AppStrings.ScreenTiles, context => new TilesScreen(
-                context, dashboard, TranslateExtension.Get, history, tileLayout)),
+                context, dashboard, TranslateExtension.Get, history, tileLayout, tripBaselines,
+                wheelAddress)),
         ];
     }
 

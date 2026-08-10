@@ -42,13 +42,25 @@ internal static class TileEditor
         bool chart = tile?.Kind == TileKind.Chart;
         bool empty = tile is null || tile.Kind == TileKind.Empty;
 
+        // Порядок видов в списке — он же порядок чисел в Result: «число», «график», «крайнее»,
+        // «дистанция», «пусто».
+        int kindOf(MetricTile? known) => known?.Kind switch
+        {
+            TileKind.Chart => 1,
+            TileKind.Extremum => 2,
+            TileKind.Trip => 3,
+            TileKind.Empty => 4,
+            null => 4,
+            _ => 0,
+        };
+
         // Пустое место — третий вид плитки, а не первый пункт в списке величин: дырку ставят не
         // «величиной по имени Пусто», а решением «здесь ничего». Заодно у пустой гаснет всё, чего у
         // неё не бывает, — величина, подпись, пороги.
         var kindPick = Pick(context,
             [translate("TilesKindValue"), translate("TilesKindChart"), translate("TilesKindExtremum"),
-                translate("TilesTileEmpty")],
-            empty ? 3 : tile?.Kind == TileKind.Extremum ? 2 : chart ? 1 : 0);
+                translate("TilesKindTrip"), translate("TilesTileEmpty")],
+            kindOf(tile));
         var metricPick = Pick(context, Choices(translate, chart ? charted : all), 0);
         var sizePick = Pick(context, [.. sizes.Select(size => size.Describe())],
             tile is null ? 0 : Math.Max(0, sizes.ToList().IndexOf(tile.Size)));
@@ -151,6 +163,22 @@ internal static class TileEditor
         metricLine.AddView(metricPick);
         metricLine.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
 
+        // Своя подпись — у всякой плитки, не только у дистанции (решение владельца 10.08.2026).
+        // Пусто значит «зови по величине»: подсказкой стоит то самое имя, чтобы видно было, что
+        // получится, если поле оставить пустым.
+        var caption = new EditText(context)
+        {
+            Text = tile?.Caption ?? "",
+            Hint = translate("TilesTileCaption"),
+        };
+
+        caption.SetSingleLine(true);
+
+        var captionLine = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
+        captionLine.AddView(Caption(context, translate("TilesTileCaption")));
+        captionLine.AddView(caption);
+        captionLine.Visibility = empty ? ViewStates.Gone : ViewStates.Visible;
+
         var roundingLine = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
         roundingLine.AddView(Caption(context, translate("TilesTileRounding")));
         roundingLine.AddView(roundingPick);
@@ -174,8 +202,9 @@ internal static class TileEditor
 
         kindPick.ItemSelected += (_, _) =>
         {
-            bool wantEmpty = kindPick.SelectedItemPosition == 3;
+            bool wantEmpty = kindPick.SelectedItemPosition == 4;
             bool wantChart = kindPick.SelectedItemPosition == 1;
+            bool wantTrip = kindPick.SelectedItemPosition == 3;
             lowest.Visibility = kindPick.SelectedItemPosition == 2 ? ViewStates.Visible : ViewStates.Gone;
             var metrics = wantChart ? charted : all;
 
@@ -183,7 +212,11 @@ internal static class TileEditor
 
             // У пустого места нет ни величины, ни подписи, ни порогов — спрашивать о них незачем.
             var forFilled = wantEmpty ? ViewStates.Gone : ViewStates.Visible;
-            metricLine.Visibility = forFilled;
+            captionLine.Visibility = forFilled;
+
+            // У дистанции величина одна — общий пробег колеса, из которого она и считается;
+            // спрашивать «какую величину» там значит предлагать бессмыслицу вроде «дистанция ШИМа».
+            metricLine.Visibility = wantTrip ? ViewStates.Gone : forFilled;
             showLabel.Visibility = forFilled;
             heatBar.Visibility = forFilled;
             roundingLine.Visibility = forFilled;
@@ -207,6 +240,7 @@ internal static class TileEditor
         var content = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
         content.SetPadding(pad, pad, pad, pad);
         content.AddView(metricLine);
+        content.AddView(captionLine);
         content.AddView(Caption(context, translate("TilesTileKind")));
         content.AddView(kindPick);
         content.AddView(Caption(context, translate("TilesTileSize")));
@@ -236,7 +270,11 @@ internal static class TileEditor
                     fill.Checked, axis.Checked, (ChartSmoothing)smoothingPick.SelectedItemPosition),
                 Limits(warn, danger, falling.Checked),
                 new TileExtremum(lowest.Checked),
-                Rounding(roundingPick.SelectedItemPosition))))!
+                Rounding(roundingPick.SelectedItemPosition),
+                caption.Text ?? "",
+                // Имя плитки переживает правку: точка отсчёта дистанции хранится по нему, и
+                // рождённое заново имя означало бы сброшенный счёт после смены размера.
+                tile?.Id ?? "")))!
             .SetNegativeButton(Android.Resource.String.Cancel, (_, _) => { })!;
 
         if (remove is not null) dialog.SetNeutralButton(translate("TilesTileRemove"), (_, _) => remove());
@@ -244,24 +282,39 @@ internal static class TileEditor
         return dialog.Show()!;
     }
 
+    /// <param name="named">Имя правимой плитки; пусто — плитка новая, имя ей даётся здесь.</param>
     private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, int kind, int chosen,
         TileSize size, bool showLabel, bool heatBar, TileChart options, TileLimits? limits,
-        TileExtremum extremum, int? decimals)
+        TileExtremum extremum, int? decimals, string caption, string named)
     {
-        if (kind == 3 || chosen < 0 || chosen >= metrics.Count) return MetricTile.Empty(size);
+        string tile = named.Length > 0 ? named : MetricTile.NewId();
 
-        string id = metrics[chosen].Id;
+        // У дистанции величина не спрашивается: она считается из общего пробега колеса, и другой
+        // величины у этого вида не бывает.
+        string id = kind == 3
+            ? Odometer
+            : chosen >= 0 && chosen < metrics.Count ? metrics[chosen].Id : "";
+
+        if (kind == 4 || id.Length == 0) return MetricTile.Empty(size) with { Id = tile };
 
         return kind switch
         {
             1 => new MetricTile(id, TileKind.Chart, size, showLabel, options, limits, ShowHeatBar: heatBar,
-                Decimals: decimals),
+                Decimals: decimals, Caption: caption) { Id = tile },
             2 => new MetricTile(id, TileKind.Extremum, size, showLabel, Limits: limits, Extremum: extremum,
-                ShowHeatBar: heatBar, Decimals: decimals),
+                ShowHeatBar: heatBar, Decimals: decimals, Caption: caption) { Id = tile },
+            3 => new MetricTile(id, TileKind.Trip, size, showLabel, Limits: limits, ShowHeatBar: heatBar,
+                Decimals: decimals, Caption: caption) { Id = tile },
             _ => new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits, ShowHeatBar: heatBar,
-                Decimals: decimals),
+                Decimals: decimals, Caption: caption) { Id = tile },
         };
     }
+
+    /// <summary>
+    /// Величина, из которой считается дистанция, — общий пробег колеса. Имя, а не описание: у вида
+    /// «дистанция» выбора величины нет, и держать его в трёх местах незачем.
+    /// </summary>
+    internal const string Odometer = "totaldistance";
 
     /// <summary>
     /// Пункты выбора округления: «по умолчанию» и сами числа. Числа переводить нечего — цифра

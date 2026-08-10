@@ -59,11 +59,14 @@ public static partial class TileLayoutJson
 
     private static TileDto ToDto(MetricTile tile) => new()
     {
+        Id = tile.Id,
+        Caption = tile.Caption.Length > 0 ? tile.Caption : null,
         Kind = tile.Kind switch
         {
             TileKind.Value => "value",
             TileKind.Chart => "chart",
             TileKind.Extremum => "extremum",
+            TileKind.Trip => "trip",
             TileKind.Empty => "empty",
             // Новый вид без строки формата должен упасть у разработчика при первом же сохранении,
             // а не молча записаться числом, которое прошлая версия прочтёт как мусор.
@@ -112,24 +115,36 @@ public static partial class TileLayoutJson
         // прореживания: плитка живёт, округление берётся от величины.
         int? decimals = MetricRounding.Chosen(dto.Decimals);
 
+        // Имя плитки и своя подпись — общие для всех видов, поэтому берутся один раз. Пустое имя
+        // здесь не рождается: раскладке без имён их раздаёт экран и тут же сохраняет — так они
+        // переживут перезапуск вместе с точками отсчёта дистанций.
+        string caption = dto.Caption ?? "";
+        string id = dto.Id ?? "";
+
         switch (dto.Kind)
         {
             case "empty":
-                return MetricTile.Empty(size);
+                return MetricTile.Empty(size) with { Id = id };
 
             case "value" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Value, size, dto.Label,
-                    Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals);
+                    Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals,
+                    Caption: caption) { Id = id };
 
             case "chart" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Chart, size, dto.Label,
                     ToChart(dto.Chart), ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar,
-                    Decimals: decimals);
+                    Decimals: decimals, Caption: caption) { Id = id };
 
             case "extremum" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Extremum, size, dto.Label,
                     Limits: ToLimits(dto.Limits), Extremum: new TileExtremum(dto.Lowest),
-                    ShowHeatBar: dto.HeatBar, Decimals: decimals);
+                    ShowHeatBar: dto.HeatBar, Decimals: decimals, Caption: caption) { Id = id };
+
+            case "trip" when dto.Metric is { Length: > 0 }:
+                return new MetricTile(dto.Metric, TileKind.Trip, size, dto.Label,
+                    Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals,
+                    Caption: caption) { Id = id };
 
             default:
                 // Незнакомый вид или величина без имени: строить нечего.
@@ -156,6 +171,19 @@ public static partial class TileLayoutJson
 
     internal sealed class TileDto
     {
+        /// <summary>
+        /// Устойчивое имя плитки. Отсутствует у раскладок, собранных до этого поля, — и тогда его
+        /// раздаёт экран при чтении. Позицией его не заменить: перетаскивание её меняет, а точка
+        /// отсчёта дистанции обязана остаться при своей плитке.
+        /// </summary>
+        public string? Id { get; set; }
+
+        /// <summary>
+        /// Своя подпись плитки. Пусто либо нет поля — имя величины, как было до этого правила: две
+        /// дистанции по одному одометру различает только слово хозяина.
+        /// </summary>
+        public string? Caption { get; set; }
+
         public string? Kind { get; set; }
         public string? Metric { get; set; }
         public int Columns { get; set; }

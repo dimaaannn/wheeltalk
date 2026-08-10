@@ -368,6 +368,11 @@
   <data name="TilesKindValue" xml:space="preserve"><value>Число</value></data>
   <data name="TilesKindChart" xml:space="preserve"><value>График</value></data>
   <data name="TilesKindExtremum" xml:space="preserve"><value>Крайнее значение</value></data>
+  <data name="TilesKindTrip" xml:space="preserve"><value>Дистанция</value></data>
+  <data name="TilesTileCaption" xml:space="preserve"><value>Подпись</value></data>
+  <data name="TilesActionReset" xml:space="preserve"><value>Сбросить</value></data>
+  <data name="TilesActionRename" xml:space="preserve"><value>Переименовать</value></data>
+  <data name="TilesActionChart" xml:space="preserve"><value>График</value></data>
   <data name="TilesTileLowest" xml:space="preserve"><value>Помнить минимум, а не максимум</value></data>
   <data name="TilesTileWindow" xml:space="preserve"><value>За какое время</value></data>
   <data name="TilesTileOverlay" xml:space="preserve"><value>Число поверх графика</value></data>

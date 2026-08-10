@@ -97,8 +97,18 @@ public sealed class TilesScreen : IMainScreen
     /// Где живёт собранная человеком раскладка (план 23 §3.4). <c>null</c> — хранилища нет: экран
     /// начинает с зашитой раскладки, а правки живут до его пересборки.
     /// </param>
+    /// <param name="trips">
+    /// Где живут точки отсчёта плиток-дистанций. <c>null</c> — хранилища нет: точки заведутся в
+    /// памяти и умрут с экраном, а дистанция после перезапуска начнётся заново.
+    /// </param>
+    /// <param name="wheel">
+    /// Чьё колесо сейчас на связи — адресом. Дистанция считается по колесу (решение владельца
+    /// 10.08.2026), и знать, какое из них выбрано, экрану неоткуда: это забота хозяина. Пусто —
+    /// колесо не выбрано, и плитка-дистанция честно молчит.
+    /// </param>
     public TilesScreen(Context context, DashboardOptions options, Func<string, string> translate,
-        IMetricHistory? history = null, ITileLayoutStore? layout = null)
+        IMetricHistory? history = null, ITileLayoutStore? layout = null,
+        ITripBaselineStore? trips = null, Func<string>? wheel = null)
     {
         _context = context;
         _translate = translate;
@@ -106,7 +116,8 @@ public sealed class TilesScreen : IMainScreen
         _options = options;
         _palette = options.Palette;
         _padding = context.Dp(6);
-        _adapter = new TileAdapter(context, options, translate, layout, layout?.Load() ?? TilesLayout.Fixed);
+        _adapter = new TileAdapter(context, options, translate, layout, layout?.Load() ?? TilesLayout.Fixed,
+            new TripPoints(trips), wheel ?? (() => ""));
 
         _list = new RecyclerView(context);
         _list.SetLayoutManager(LayoutManager(context));
@@ -246,7 +257,7 @@ public sealed class TilesScreen : IMainScreen
     public void WheelChanged() => ResetExtremes();
 
     /// <summary>Сбросить крайние значения плиток. Своё имя у действия остаётся: стенд зовёт его кнопкой.</summary>
-    public void ResetExtremes() => _adapter.ResetExtremes();
+    public void ResetExtremes() => _adapter.ResetExtremeTiles();
 
     /// <summary>
     /// «Назад» в режиме правки значит «не сохранять» — то же, что кнопка «отменить». Иначе кнопка
@@ -310,10 +321,13 @@ public sealed class TilesScreen : IMainScreen
     }
 
     /// <summary>
-    /// В режиме правки короткий тап по плитке открывает её меню. Мимо плиток он не значит ничего:
-    /// правку заканчивают кнопкой, а не промахом — иначе непонятно, легла она или потерялась. Вне
-    /// режима короткий тап не занят вовсе: его ждёт плитка-график, которой он откроет полноэкранный
-    /// просмотр (решение владельца 04.08.2026).
+    /// Короткий тап по плитке: в правке — её меню правки, вне правки — <b>меню действий</b>
+    /// (решение владельца 10.08.2026). Мимо плиток он не значит ничего: правку заканчивают кнопкой,
+    /// а не промахом — иначе непонятно, легла она или потерялась.
+    /// <para>
+    /// Прежде тап у каждого вида значил своё — сбрасывал пик, открывал график, — и это снято: одно
+    /// действие на жест, а <b>что</b> оно сделает, человек читает в меню, а не вспоминает.
+    /// </para>
     /// </summary>
     private void SingleTap(float x, float y)
     {
@@ -328,23 +342,41 @@ public sealed class TilesScreen : IMainScreen
             return;
         }
 
-        // Крайнее значение сбрасывается тем же коротким тапом: у этого вида он единственный
-        // свободный, а сброс не разрушителен — число наберётся снова из живого потока.
-        if (view is ExtremumTileView extremum)
-        {
-            extremum.Reset();
-            return;
-        }
+        ShowActions(position, view as TileView);
+    }
 
-        // Вне правки короткий тап принадлежит графику: он открывает полноэкранный просмотр
-        // (решение владельца 04.08.2026). По остальным плиткам тапать пока нечего.
-        if (_history is { } history
-            && _adapter.TileAt(position) is { Kind: TileKind.Chart, Chart: { } options } tile
-            && MetricCatalogue.Find(tile.MetricId) is { } metric)
-        {
-            _overlay = ChartViewer.Show(_context, _options, history, metric, _translate(metric.LabelKey),
-                metric.UnitKey is { } unit ? _translate(unit) : "", options, tile.Limits, tile.Decimals);
-        }
+    /// <summary>
+    /// Меню действий плитки. Сброс делает сама плитка — только она знает, что у неё сбрасывается;
+    /// переименование правит раскладку и тут же её сохраняет: вне режима правки кнопки «сохранить»
+    /// нет, и уйти правке некуда, кроме хранилища.
+    /// <para>
+    /// <b>Всякое открытое отсюда окно уходит в <see cref="_overlay"/></b> — и само меню, и то, что
+    /// оно откроет следом: просмотр графика или вопрос о подписи. Хозяин у окна один, и меняется
+    /// оно на ходу: список закрывается по выбору пункта, а на его место встаёт следующее окно.
+    /// Брошенное здесь окно — это <c>WindowLeaked</c> при смерти экрана, тот самый, что уже был
+    /// пойман дампом 10.08.2026.
+    /// </para>
+    /// </summary>
+    private void ShowActions(int position, TileView? view)
+    {
+        var tile = _adapter.TileAt(position);
+        if (tile.Kind == TileKind.Empty) return;
+
+        var metric = MetricCatalogue.Find(tile.MetricId);
+
+        Action? chart = _history is { } history && tile is { Kind: TileKind.Chart, Chart: { } options }
+            && metric is not null
+            ? () => _overlay = ChartViewer.Show(_context, _options, history, metric,
+                _adapter.LabelOf(tile, metric), metric.UnitKey is { } unit ? _translate(unit) : "",
+                options, tile.Limits, tile.Decimals)
+            : null;
+
+        _overlay = TileActions.Show(_context, _translate, _adapter.LabelOf(tile, metric),
+            view is { CanReset: true } ? view.ResetValue : null,
+            () => _overlay = TileActions.AskCaption(_context, _translate, tile.Caption,
+                metric is not null ? _translate(metric.LabelKey) : "",
+                caption => _adapter.Rename(position, caption)),
+            chart);
     }
 
     /// <summary>
@@ -670,6 +702,13 @@ public sealed class TilesScreen : IMainScreen
         private readonly DashboardOptions _options;
         private readonly Func<string, string> _translate;
         private readonly ITileLayoutStore? _layout;
+
+        /// <summary>Точки отсчёта дистанций — общие на экран: плиток-дистанций может стоять несколько.</summary>
+        private readonly TripPoints _trips;
+
+        /// <summary>Адрес колеса, к которому относится счёт дистанций. Спрашивается на каждом показе: колесо меняется.</summary>
+        private readonly Func<string> _wheel;
+
         /// <summary>Величина у пустого места пуста: <see cref="TileKind.Empty"/> ни на что не ссылается.</summary>
         private readonly List<(MetricTile Tile, MetricDescriptor? Metric)> _tiles = [];
 
@@ -705,22 +744,32 @@ public sealed class TilesScreen : IMainScreen
         private int _remeasureDone;
 
         public TileAdapter(Context context, DashboardOptions options, Func<string, string> translate,
-            ITileLayoutStore? layoutStore, IReadOnlyList<MetricTile> layout)
+            ITileLayoutStore? layoutStore, IReadOnlyList<MetricTile> layout, TripPoints trips,
+            Func<string> wheel)
         {
             _context = context;
             _options = options;
             _translate = translate;
             _layout = layoutStore;
+            _trips = trips;
+            _wheel = wheel;
 
+            // Плитке без имени имя даётся здесь — и здесь же сохраняется. Рождать его при каждом
+            // чтении и не записывать значило бы терять вместе с ним точку отсчёта дистанции: она
+            // хранится по имени плитки, а не по её месту в списке.
+            bool named = false;
             foreach (var tile in layout)
             {
-                if (Entry(tile) is { } entry) _tiles.Add(entry);
+                var known = tile.Id.Length > 0 ? tile : tile with { Id = MetricTile.NewId() };
+                named |= known.Id != tile.Id;
+
+                if (Entry(known) is { } entry) _tiles.Add(entry);
             }
 
             // Отсев неизвестных величин уходит и в хранимое: иначе позиция плитки на экране
             // разошлась бы с позицией в хранимом списке, и перенос двигал бы не ту. Но только когда
             // отсев что-то выбросил — писать настройку на каждом запуске незачем.
-            if (_tiles.Count != layout.Count) Keep();
+            if (named || _tiles.Count != layout.Count) Keep();
 
             _ruler = new PaintRuler(context.Resources!.DisplayMetrics!.Density);
             Remeasure();
@@ -861,8 +910,8 @@ public sealed class TilesScreen : IMainScreen
                     // по худшей строке — плитка с сотыми опустит кегль соседке с целыми.
                     MetricNumber.Widest(MetricRounding.Decimals(metric, tile.Decimals), digits),
                     unit,
-                    Label(metric, tile.Size),
-                    tile.Kind == TileKind.Extremum);
+                    Label(tile, metric),
+                    tile.Kind is TileKind.Extremum or TileKind.Trip);
             }
         }
 
@@ -930,10 +979,16 @@ public sealed class TilesScreen : IMainScreen
         /// формы плитки незачем.
         /// </para>
         /// </summary>
-        private string Label(MetricDescriptor metric, TileSize size)
+        private string Label(MetricTile tile, MetricDescriptor metric)
         {
-            string full = _translate(metric.LabelKey);
-            if (size.Columns > 3) return full;
+            // Своя подпись старше всего: ею и различают две дистанции по одному одометру. Короткую
+            // подмену она не терпит — человек написал ровно то, что хотел прочесть.
+            if (tile.Caption.Length > 0) return tile.Caption;
+
+            // У дистанции имя величины не годится вовсе: она считается из одометра, но одометр — не
+            // то, что на ней написано. Пока хозяин не назвал её сам, плитка зовётся своим видом.
+            string full = tile.Kind == TileKind.Trip ? _translate("TilesKindTrip") : _translate(metric.LabelKey);
+            if (tile.Size.Columns > 3 || tile.Kind == TileKind.Trip) return full;
 
             string key = metric.LabelKey + "Short";
             string shortened = _translate(key);
@@ -954,6 +1009,27 @@ public sealed class TilesScreen : IMainScreen
             _faces.TryGetValue(new TileClass(size.Columns, size.Rows), out var face)
                 ? face
                 : new TileTypeface(TileForm.Stack, TilesLayout.ValueMinSp, TilesLayout.MinUnitSp);
+
+        /// <summary>Чем подписана плитка — тем же словом, что и на ней самой: им же зовётся её меню.</summary>
+        public string LabelOf(MetricTile tile, MetricDescriptor? metric) =>
+            metric is null ? tile.Caption : Label(tile, metric);
+
+        /// <summary>
+        /// Переименовать плитку. Правка идёт мимо режима правки — из меню действий, — поэтому
+        /// сохраняется сразу: кнопки «сохранить» там нет, и другого случая записать не будет.
+        /// </summary>
+        public void Rename(int position, string caption)
+        {
+            var tile = _tiles[position].Tile;
+            if (tile.Caption == caption) return;
+
+            if (Entry(tile with { Caption = caption }) is not { } entry) return;
+
+            _tiles[position] = entry;
+            Remeasure();
+            NotifyItemChanged(position);
+            Keep();
+        }
 
         /// <summary>Раскладка как она есть сейчас — её запоминают на входе в режим правки.</summary>
         public IReadOnlyList<MetricTile> Snapshot() => [.. _tiles.Select(entry => entry.Tile)];
@@ -995,6 +1071,7 @@ public sealed class TilesScreen : IMainScreen
         {
             TileKind.Chart => 1,
             TileKind.Extremum => 2,
+            TileKind.Trip => 3,
             _ => 0,
         };
 
@@ -1004,6 +1081,7 @@ public sealed class TilesScreen : IMainScreen
             {
                 1 => new ChartTileView(_context, _options, _translate),
                 2 => new ExtremumTileView(_context, _options),
+                3 => new TripTileView(_context, _options, _wheel),
                 _ => new MetricTileView(_context, _options),
             };
 
@@ -1037,10 +1115,15 @@ public sealed class TilesScreen : IMainScreen
                 return;
             }
 
-            string label = Label(metric, layout.Size);
+            string label = Label(layout, metric);
             string unit = metric.UnitKey is { } key ? _translate(key) : "";
 
-            if (tile.Tile is ChartTileView chart)
+            if (tile.Tile is TripTileView trip)
+            {
+                trip.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits,
+                    Face(layout.Size), layout.ShowHeatBar, layout.Decimals, layout.Id, _trips);
+            }
+            else if (tile.Tile is ChartTileView chart)
             {
                 chart.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
                     layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false),
@@ -1096,11 +1179,13 @@ public sealed class TilesScreen : IMainScreen
         /// созданным вью, а не по видимым: укатившаяся за край плитка вернётся со старым числом,
         /// если забыть её здесь.
         /// </summary>
-        public void ResetExtremes()
+        public void ResetExtremeTiles()
         {
             foreach (var view in _views)
             {
-                if (view is ExtremumTileView extremum) extremum.Reset();
+                // Дистанции это не касается вовсе (решение владельца 10.08.2026): её точку не
+                // двигает ничто, кроме руки хозяина, — вернулся к прежнему колесу, продолжил счёт.
+                if (view is ExtremumTileView extremum) extremum.ResetValue();
             }
         }
 

@@ -37,11 +37,20 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton(sp => new PanelVariants(sp.GetRequiredService<DashboardOptions>()));
         services.AddSingleton<ITileLayoutStore>(sp =>
             new TileLayoutSetting(sp.GetRequiredService<LayeredSettings>()));
+
+        // Точки отсчёта дистанций и адрес нынешнего колеса — той же выдачей по месту: экрану дан
+        // узкий доступ к своему ключу и один вопрос «какое колесо», а не слои целиком.
+        services.AddSingleton<ITripBaselineStore>(sp =>
+            new TripBaselineSetting(sp.GetRequiredService<LayeredSettings>()));
         services.AddSingleton(sp => new MainScreenRegistry(
             sp.GetRequiredService<DashboardOptions>(),
             sp.GetRequiredService<PanelVariants>(),
             sp.GetRequiredService<IMetricHistory>(),
-            sp.GetRequiredService<ITileLayoutStore>()));
+            sp.GetRequiredService<ITileLayoutStore>(),
+            sp.GetRequiredService<ITripBaselineStore>(),
+            // Область слоёв — это и есть адрес выбранного колеса (LayeredSettings.Scope): второго
+            // ответа на «какое колесо сейчас» в приложении нет, и заводить его незачем.
+            () => sp.GetRequiredService<LayeredSettings>().Scope));
 
         return services;
     }

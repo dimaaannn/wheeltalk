@@ -32,6 +32,12 @@ public class TileLayoutCompatibilityTests
 
         /// <summary>Своё округление плитки. Пусто — «по умолчанию»; ноль — «показывать целыми».</summary>
         public int? Decimals { get; set; }
+
+        /// <summary>Устойчивое имя плитки. Пусто — раскладка старше этого поля, имя даст экран.</summary>
+        public string? Id { get; set; }
+
+        /// <summary>Своя подпись. Пусто — имя величины.</summary>
+        public string? Caption { get; set; }
     }
 
     /// <summary>Те же настройки разбора, что у боевого контекста (<c>TileLayoutJson.TileLayoutContext</c>).</summary>
@@ -107,6 +113,61 @@ public class TileLayoutCompatibilityTests
     }
 
     /// <summary>
+    /// Своя подпись и имя плитки появились полями <c>caption</c> и <c>id</c>. У раскладки, собранной
+    /// раньше, их нет вовсе — и это не поломка: подпись берётся у величины, имя раздаёт экран при
+    /// чтении и тут же сохраняет (иначе оно рождалось бы заново каждый запуск, а с ним терялась бы
+    /// точка отсчёта дистанции, которая по этому имени и хранится).
+    /// </summary>
+    [Fact]
+    public void A_layout_saved_before_names_and_captions_reads_without_them()
+    {
+        const string saved = """
+            [{"kind":"value","metric":"speed","columns":12,"rows":2,"label":true}]
+            """;
+
+        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
+
+        Assert.NotNull(tiles);
+        Assert.Null(tiles[0].Id);
+        Assert.Null(tiles[0].Caption);
+    }
+
+    /// <summary>Заданные имя и подпись переживают запись и чтение — без этого их незачем и заводить.</summary>
+    [Fact]
+    public void A_name_and_a_caption_come_back_as_they_were()
+    {
+        const string saved = """
+            [{"kind":"trip","metric":"totaldistance","columns":6,"rows":1,"id":"a1b2c3d4",
+              "caption":"С последнего ТО"}]
+            """;
+
+        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
+
+        Assert.NotNull(tiles);
+        Assert.Equal("a1b2c3d4", tiles[0].Id);
+        Assert.Equal("С последнего ТО", tiles[0].Caption);
+
+        var again = JsonSerializer.Deserialize<List<TileDto>>(
+            JsonSerializer.Serialize(tiles, Options), Options);
+
+        Assert.Equal("a1b2c3d4", again![0].Id);
+        Assert.Equal("С последнего ТО", again[0].Caption);
+    }
+
+    /// <summary>
+    /// Вид «дистанция» пишется и читается тем же словом. Замок на пару: разойдись эти две строки —
+    /// сохранённая дистанция вернулась бы мусором и была бы отброшена молча, вместе с точкой.
+    /// </summary>
+    [Fact]
+    public void The_trip_kind_is_written_and_read_by_the_same_word()
+    {
+        string source = RepoFiles.Read("WheelTalk.Dashboard.Droid/Screen/Tiles/TileLayoutJson.cs");
+
+        Assert.Contains("TileKind.Trip => \"trip\"", source);
+        Assert.Contains("case \"trip\" when dto.Metric is { Length: > 0 }:", source);
+    }
+
+    /// <summary>
     /// Замок на само объявление: без инициализатора отсутствующее поле прочтётся как <c>false</c>,
     /// и старая раскладка потеряет полосы молча — ни исключения, ни строки в журнале. У округления
     /// та же беда с другой стороны: не-<c>null</c>-тип превратил бы «не задано» в «целыми».
@@ -119,5 +180,7 @@ public class TileLayoutCompatibilityTests
         Assert.Contains("public bool HeatBar { get; set; } = true;", source);
         Assert.Contains("public bool Label { get; set; } = true;", source);
         Assert.Contains("public int? Decimals { get; set; }", source);
+        Assert.Contains("public string? Id { get; set; }", source);
+        Assert.Contains("public string? Caption { get; set; }", source);
     }
 }

@@ -97,6 +97,9 @@ public sealed class LabActivity : Activity
     /// <summary>Раскладка плиток стенда — файлом: слоёв настроек у стенда нет, а перезапуск она пережить обязана.</summary>
     private readonly LabTileLayoutFile _layoutFile = new();
 
+    /// <summary>Точки отсчёта дистанций стенда — файлом рядом с раскладкой.</summary>
+    private readonly LabTripBaselineFile _tripFile = new();
+
     /// <summary>
     /// Экран плиток в рамке — тот же класс, что показывает райдеру приложение. Живёт ровно столько,
     /// сколько сама рамка: смена варианта панели пересобирает её, и плитка со старым родителем в
@@ -643,7 +646,10 @@ public sealed class LabActivity : Activity
         screen.Show(tiles
             // История графикам идёт из базы стенда — тем же читателем, каким её читает приложение
             // (LabStore): свой генератор точек проверял бы путь, которого в бою нет.
-            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get, _store?.History, _layoutFile)
+            // Колесо на стенде одно и зовётся стендом: дистанции нужен ключ, а не связь, — и
+            // постоянное имя даёт ей на стенде то же поведение, что на телефоне у одного колеса.
+            ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get, _store?.History,
+                _layoutFile, _tripFile, () => "lab")
             {
                 OnIntent = OnScreenIntent,
             }
