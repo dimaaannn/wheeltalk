@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#f0eee9;font-family:Roboto,system-ui,sans-serif}a{color:#2a78d6}a:hover{color:#1a5fb0}.dv-turn{padding:40px 44px 32px;scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 14px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#1a1a1a}.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.35 system-ui,sans-serif;color:rgba(0,0,0,.55);max-width:360px}.dv-card{max-width:100%;background:#1F1F1F;border:1px solid rgba(0,0,0,.25);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden;position:relative}.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}.dv-note{margin:0 0 20px;max-width:780px;font:13px/1.6 system-ui,sans-serif;color:rgba(0,0,0,.62)}.dv-note code{font:12px ui-monospace,Menlo,monospace;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px}</style></helmet>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">Настройки</a><span class="dv-tname">Разделы, правка значений, визуальный стиль</span></div>
+<p class="dv-note">Строки, ключи, диапазоны и подсказки — из <code>Settings/Catalogue/DisplayPage.cs</code> и <code>Resources/Strings/AppStrings.resx</code>, ничего не выдумано. Три решения: <b>слой значения — ярлык на строке</b>, а не строка мелкого текста под ней; <b>число правится на месте</b> (шаг ±, ползунок), листом — только широкие диапазоны; <b>«Дополнительно» свёрнуто</b>, а не отделено чертой посреди списка. Тёмная тема — <code>#1f1f1f</code> и сиреневый <code>#AC99EA</code> из <code>UiKit</code>, янтарь <code>#FF8F00</code> — «своё значение». Задача на доработку — <code>План — настройки.md</code>.</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Корень. Категория говорит, что внутри, и сколько в ней своих значений — янтарь тот же, что на строке.</div>
+<div class="dv-card" style="width:360px;height:760px">
+  <div style="position:absolute;inset:0;background:#1F1F1F;font-family:Roboto,sans-serif;color:#FFF">
+    <div style="padding:44px 20px 0">
+      <div style="font-size:30px;font-weight:700;letter-spacing:-.4px">Настройки</div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px;color:#9A9A9A;font-size:14px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#009E73;flex:none"></span>
+        <span>MTen3 · C8:3E:90:11:02:7A</span>
+      </div>
+    </div>
+    <div style="padding:20px 16px 0;display:flex;flex-direction:column;gap:10px">
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700">Колесо</div>
+          <div style="margin-top:4px;color:#9A9A9A;font-size:14px;line-height:1.35">Имя, ряд ячеек, протокол, авторизация</div>
+        </div>
+        <span style="background:rgba(255,143,0,.16);color:#FF8F00;font-size:12px;font-weight:700;padding:4px 8px;border-radius:6px;white-space:nowrap">2 своих</span>
+        <span style="color:#6E6E6E;font-size:22px">›</span>
+      </div>
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700">Предупреждения</div>
+          <div style="margin-top:4px;color:#9A9A9A;font-size:14px;line-height:1.35">ШИМ 78 / 92 %, скорость 45 км/ч, звук и вибро</div>
+        </div>
+        <span style="background:rgba(255,143,0,.16);color:#FF8F00;font-size:12px;font-weight:700;padding:4px 8px;border-radius:6px;white-space:nowrap">3 своих</span>
+        <span style="color:#6E6E6E;font-size:22px">›</span>
+      </div>
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700">Приложение</div>
+          <div style="margin-top:4px;color:#9A9A9A;font-size:14px;line-height:1.35">Автоподключение, питание, запись и экспорт</div>
+        </div>
+        <span style="color:#6E6E6E;font-size:22px">›</span>
+      </div>
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700">Отображение</div>
+          <div style="margin-top:4px;color:#9A9A9A;font-size:14px;line-height:1.35">Шкалы, цифры, полосы тревоги, оформление</div>
+        </div>
+        <span style="color:#6E6E6E;font-size:22px">›</span>
+      </div>
+    </div>
+    <div style="position:absolute;left:16px;right:16px;top:566px">
+      <div style="height:1px;background:#333"></div>
+      <div style="margin-top:16px;background:transparent;border:1px dashed #4A4A4A;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700;color:#D8D8D8">Тестовые функции</div>
+          <div style="margin-top:4px;color:#8A8A8A;font-size:14px;line-height:1.35">Работают полностью, но на дороге не проверены</div>
+        </div>
+        <span style="color:#6E6E6E;font-size:22px">›</span>
+      </div>
+      <div style="margin-top:18px;color:#7A7A7A;font-size:13px;line-height:1.45">Значение можно задать общим для всех колёс или своим у этого — где какое, видно на строке.</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Категория «Отображение» целиком (страница прокручивается). Разделы — карточки, слой — ярлык, числа правятся на месте.</div>
+<div class="dv-card" style="width:360px;height:1180px">
+  <div style="position:absolute;inset:0;background:#1F1F1F;font-family:Roboto,sans-serif;color:#FFF">
+    <div style="padding:40px 16px 12px;background:#1F1F1F;border-bottom:1px solid #2E2E2E">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="color:#AC99EA;font-size:26px;line-height:1">‹</span>
+        <span style="font-size:24px;font-weight:700">Отображение</span>
+      </div>
+      <div style="margin-top:12px;display:flex;background:#282828;border:1px solid #3A3A3A;border-radius:10px;padding:3px">
+        <div style="flex:1;text-align:center;padding:9px 0;border-radius:8px;color:#B8B8B8;font-size:14px;font-weight:500">Общее</div>
+        <div style="flex:1;text-align:center;padding:9px 0;border-radius:8px;background:#AC99EA;color:#1F1F1F;font-size:14px;font-weight:700">Колесо C8:3E</div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:7px;overflow:hidden">
+        <span style="border:1px solid #3F3F3F;border-radius:999px;padding:6px 11px;font-size:13px;color:#CFCFCF;white-space:nowrap">Шкала ШИМ</span>
+        <span style="border:1px solid #3F3F3F;border-radius:999px;padding:6px 11px;font-size:13px;color:#CFCFCF;white-space:nowrap">Шкала напряжения</span>
+        <span style="border:1px solid #3F3F3F;border-radius:999px;padding:6px 11px;font-size:13px;color:#CFCFCF;white-space:nowrap">Поверх</span>
+      </div>
+    </div>
+
+    <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;overflow:hidden">
+        <div style="padding:12px 16px 8px;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#9A9A9A;text-transform:uppercase">Шкала ШИМ</div>
+        <div style="padding:10px 16px 14px;border-top:1px solid #333">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1;font-size:17px">Серая ниже</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="width:38px;height:38px;border-radius:9px;border:1px solid #4A4A4A;color:#DDD;font-size:22px;display:flex;align-items:center;justify-content:center">−</span>
+              <span style="min-width:64px;text-align:center;font-size:19px;font-weight:700">50 %</span>
+              <span style="width:38px;height:38px;border-radius:9px;border:1px solid #4A4A4A;color:#DDD;font-size:22px;display:flex;align-items:center;justify-content:center">+</span>
+            </div>
+          </div>
+          <div style="margin-top:12px;position:relative;height:4px;border-radius:2px;background:#3D3D3D">
+            <div style="position:absolute;left:0;top:0;height:4px;width:50%;border-radius:2px;background:#AC99EA"></div>
+            <div style="position:absolute;left:calc(50% - 9px);top:-7px;width:18px;height:18px;border-radius:50%;background:#AC99EA"></div>
+          </div>
+          <div style="margin-top:8px;display:flex;justify-content:space-between;color:#8A8A8A;font-size:13px">
+            <span>Ниже этого значения шкала серая</span><span>0–100 %</span>
+          </div>
+        </div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:17px">Штриховка выше</div>
+              <div style="margin-top:4px;color:#8A8A8A;font-size:13px;line-height:1.35">Выше этого значения шкала заштрихована косыми полосами</div>
+            </div>
+            <div style="text-align:right">
+              <div style="border:2px solid #FF8F00;border-radius:9px;padding:7px 12px;font-size:17px;font-weight:700">95 %</div>
+              <div style="margin-top:5px;color:#FF8F00;font-size:12px;font-weight:700">своё</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;overflow:hidden">
+        <div style="padding:12px 16px 8px;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#9A9A9A;text-transform:uppercase">Шкала напряжения</div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333;display:flex;align-items:center;gap:12px">
+          <div style="flex:1">
+            <div style="font-size:17px">Размах шкалы</div>
+            <div style="margin-top:4px;color:#8A8A8A;font-size:13px;line-height:1.35">Сколько вольт укладывается в высоту экрана</div>
+          </div>
+          <div style="border:1px solid #4A4A4A;border-radius:9px;padding:7px 12px;font-size:17px;font-weight:700">10 В</div>
+        </div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333;display:flex;align-items:center;gap:12px">
+          <div style="flex:1">
+            <div style="font-size:17px">Жёлтая ниже</div>
+            <div style="margin-top:4px;color:#8A8A8A;font-size:13px;line-height:1.35">Ноль — зона выключена</div>
+          </div>
+          <div style="border:1px dashed #4A4A4A;border-radius:9px;padding:7px 12px;font-size:15px;color:#8A8A8A">выкл.</div>
+        </div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333;display:flex;align-items:center;gap:12px">
+          <div style="flex:1;font-size:17px">Красная ниже</div>
+          <div style="border:1px dashed #4A4A4A;border-radius:9px;padding:7px 12px;font-size:15px;color:#8A8A8A">выкл.</div>
+        </div>
+      </div>
+
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;overflow:hidden">
+        <div style="padding:12px 16px 8px;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#9A9A9A;text-transform:uppercase">Что рисуется поверх шкал</div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333;display:flex;align-items:center;gap:14px">
+          <div style="flex:1">
+            <div style="font-size:17px">Стрелка тренда и просадки</div>
+            <div style="margin-top:4px;color:#8A8A8A;font-size:13px;line-height:1.35">На ШИМ — куда идёт значение, на напряжении — насколько просело</div>
+          </div>
+          <div style="width:50px;height:30px;border-radius:15px;background:#AC99EA;position:relative;flex:none">
+            <div style="position:absolute;right:3px;top:3px;width:24px;height:24px;border-radius:50%;background:#1F1F1F"></div>
+          </div>
+        </div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333;display:flex;align-items:center;gap:12px">
+          <div style="flex:1;font-size:17px;padding-left:14px;border-left:2px solid #3F3F3F">Стрелка смотрит на</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:38px;height:38px;border-radius:9px;border:1px solid #4A4A4A;color:#DDD;font-size:22px;display:flex;align-items:center;justify-content:center">−</span>
+            <span style="min-width:60px;text-align:center;font-size:19px;font-weight:700">2,0 с</span>
+            <span style="width:38px;height:38px;border-radius:9px;border:1px solid #4A4A4A;color:#DDD;font-size:22px;display:flex;align-items:center;justify-content:center">+</span>
+          </div>
+        </div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333;display:flex;align-items:center;gap:14px">
+          <div style="flex:1;font-size:17px">Следы поездки</div>
+          <div style="width:50px;height:30px;border-radius:15px;background:#AC99EA;position:relative;flex:none">
+            <div style="position:absolute;right:3px;top:3px;width:24px;height:24px;border-radius:50%;background:#1F1F1F"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#282828;border:1px solid #3A3A3A;border-radius:14px;overflow:hidden">
+        <div style="padding:12px 16px 8px;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#9A9A9A;text-transform:uppercase">Оформление</div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333">
+          <div style="font-size:17px">Палитра</div>
+          <div style="margin-top:4px;color:#8A8A8A;font-size:13px;line-height:1.35">«Ванг» различима при дальтонизме, «WheelLog» — цвета оригинала</div>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <div style="flex:1;border:2px solid #AC99EA;border-radius:10px;padding:10px;display:flex;align-items:center;gap:8px">
+              <span style="display:flex;gap:3px"><span style="width:12px;height:20px;border-radius:2px;background:#0072B2"></span><span style="width:12px;height:20px;border-radius:2px;background:#E69F00"></span><span style="width:12px;height:20px;border-radius:2px;background:#D55E00"></span></span>
+              <span style="font-size:15px;font-weight:700">Ванг</span>
+            </div>
+            <div style="flex:1;border:1px solid #4A4A4A;border-radius:10px;padding:10px;display:flex;align-items:center;gap:8px">
+              <span style="display:flex;gap:3px"><span style="width:12px;height:20px;border-radius:2px;background:#8E8E8E"></span><span style="width:12px;height:20px;border-radius:2px;background:#FFD24A"></span><span style="width:12px;height:20px;border-radius:2px;background:#FF0000"></span></span>
+              <span style="font-size:15px;color:#CFCFCF">WheelLog</span>
+            </div>
+          </div>
+        </div>
+        <div style="padding:12px 16px 14px;border-top:1px solid #333;display:flex;align-items:center;gap:12px">
+          <div style="flex:1">
+            <div style="font-size:17px">Наклон панели</div>
+            <div style="margin-top:4px;color:#8A8A8A;font-size:13px;line-height:1.35">Для телефона на запястье</div>
+          </div>
+          <div style="border:1px solid #4A4A4A;border-radius:9px;padding:7px 12px;font-size:17px;font-weight:700">0°</div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #3A3A3A;border-radius:14px;padding:15px 16px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:17px;color:#D8D8D8">Дополнительно</div>
+          <div style="margin-top:4px;color:#8A8A8A;font-size:13px">Плотность шкалы, растяжка, сглаживания — 5 настроек</div>
+        </div>
+        <span style="color:#8A8A8A;font-size:18px">⌄</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="2c">
+<div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Лист правки — для широких диапазонов (0–250 В). Слой выбирается тут же, а не в отдельном меню «⋮».</div>
+<div class="dv-card" style="width:360px;height:760px">
+  <div style="position:absolute;inset:0;background:#1F1F1F;font-family:Roboto,sans-serif;color:#FFF">
+    <div style="position:absolute;inset:0;opacity:.35;padding:40px 16px;filter:blur(1px)">
+      <div style="font-size:24px;font-weight:700">Отображение</div>
+      <div style="margin-top:20px;height:120px;background:#282828;border-radius:14px"></div>
+      <div style="margin-top:14px;height:160px;background:#282828;border-radius:14px"></div>
+    </div>
+    <div style="position:absolute;inset:0;background:rgba(0,0,0,.55)"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;background:#282828;border-radius:22px 22px 0 0;padding:14px 20px 26px">
+      <div style="width:40px;height:4px;border-radius:2px;background:#4A4A4A;margin:0 auto 18px"></div>
+      <div style="font-size:22px;font-weight:700">Жёлтая ниже</div>
+      <div style="margin-top:6px;color:#9A9A9A;font-size:14px;line-height:1.4">Напряжение пакета, ниже которого шкала желтеет. Ноль — зона выключена.</div>
+      <div style="margin-top:22px;display:flex;align-items:center;gap:14px">
+        <div style="width:54px;height:54px;border-radius:12px;border:1px solid #4A4A4A;display:flex;align-items:center;justify-content:center;font-size:28px;color:#DDD">−</div>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:52px;font-weight:700;line-height:1;letter-spacing:-1px">76,0<span style="font-size:26px;font-weight:500;color:#9A9A9A"> В</span></div>
+        </div>
+        <div style="width:54px;height:54px;border-radius:12px;border:1px solid #4A4A4A;display:flex;align-items:center;justify-content:center;font-size:28px;color:#DDD">+</div>
+      </div>
+      <div style="margin-top:22px;position:relative;height:4px;border-radius:2px;background:#3D3D3D">
+        <div style="position:absolute;left:0;top:0;height:4px;width:30.4%;border-radius:2px;background:#AC99EA"></div>
+        <div style="position:absolute;left:calc(30.4% - 11px);top:-9px;width:22px;height:22px;border-radius:50%;background:#AC99EA"></div>
+      </div>
+      <div style="margin-top:10px;display:flex;justify-content:space-between;color:#8A8A8A;font-size:13px">
+        <span>0 — выключено</span><span>250 В</span>
+      </div>
+      <div style="margin-top:20px;height:1px;background:#3A3A3A"></div>
+      <div style="margin-top:16px;color:#9A9A9A;font-size:13px;font-weight:700;letter-spacing:.6px;text-transform:uppercase">Где хранить</div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <div style="flex:1;text-align:center;border:1px solid #4A4A4A;border-radius:10px;padding:11px 0;font-size:14px;color:#CFCFCF">Заводское</div>
+        <div style="flex:1;text-align:center;border:1px solid #4A4A4A;border-radius:10px;padding:11px 0;font-size:14px;color:#CFCFCF">Общее</div>
+        <div style="flex:1;text-align:center;border:2px solid #FF8F00;border-radius:10px;padding:10px 0;font-size:14px;font-weight:700;color:#FF8F00">Это колесо</div>
+      </div>
+      <div style="margin-top:22px;display:flex;gap:10px">
+        <div style="flex:1;text-align:center;border-radius:12px;padding:15px 0;font-size:16px;color:#CFCFCF">Отмена</div>
+        <div style="flex:1.4;text-align:center;border-radius:12px;padding:15px 0;font-size:16px;font-weight:700;background:#AC99EA;color:#1F1F1F">Готово</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+
+</x-dc>
+</body>
+</html>
