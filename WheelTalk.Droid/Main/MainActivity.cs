@@ -1092,22 +1092,39 @@ public sealed class MainActivity : Activity
     /// фиксирован на всё время жизни экрана, «прыгающего» списка нет — только подписи/подсветка
     /// команд читаются заново на каждой отрисовке шторки.
     /// </summary>
-    // ---- Стайки команд шторки (план 25 §2, шаг 3) --------------------------------------------
+    // ---- Разделы шторки (план 32 §1, этап 4) --------------------------------------------------
     //
-    // Порода, а не частота: рука идёт к месту, глаз — к стайке из двух-трёх, а не к ряду из семи.
-    // Шторка о значении этих слов не знает — она лишь ставит черту там, где стайка сменилась.
+    // Порода, а не частота: рука идёт к месту, глаз — к разделу из двух-трёх, а не к ряду из семи.
+    // Шторка о значении этих слов не знает: ключ говорит ей, где раздел сменился, а имя раздела на
+    // боковом корешке она спрашивает у нас (SectionLabel). Соседи по разделу стоят в списке подряд
+    // — порядок списка и есть порядок строк.
     private const string WheelNow = "wheel";
-    private const string Recording = "record";
-    private const string Link = "link";
+    private const string Ride = "ride";
     private const string Phone = "phone";
-    private const string Replay = "replay";
 
     /// <summary>
-    /// Семь оперативных команд — те, после которых человек продолжает ехать (план 25 §2, шаг 2:
-    /// «Данные», «Поездки» и «Настройки» ушли отсюда в полосу переходов, к корешкам экранов).
-    /// Порядок и состав закреплены: он и есть та точка отсчёта, от которой считается правило
-    /// «позиции фиксированы навсегда» (quick-commands-design.md §3), и держит его тест
-    /// <c>QuickSheetLayoutTests</c> — перестановка роняет сборку, а не всплывает жалобой.
+    /// Имя раздела для корешка шторки. Пятый раздел, «Экран», шторка собирает сама из корешков
+    /// экранов, шестого не бывает: неизвестный ключ — это забытое слово, и пустой корешок скажет об
+    /// этом громче, чем ключ, показанный райдеру.
+    /// </summary>
+    private static string SectionLabel(string group) => group switch
+    {
+        WheelNow => AppStrings.SheetSectionWheel,
+        Ride => AppStrings.SheetSectionRide,
+        Phone => AppStrings.SheetSectionPhone,
+        _ => "",
+    };
+
+    /// <summary>
+    /// Оперативные команды — те, после которых человек продолжает ехать (план 25 §2, шаг 2:
+    /// «Данные», «Поездки» и «Настройки» ушли отсюда в раздел переходов). Порядок и состав
+    /// закреплены: он и есть та точка отсчёта, от которой считается правило «позиции фиксированы
+    /// навсегда» (quick-commands-design.md §3), и держит его тест <c>QuickSheetLayoutTests</c> —
+    /// перестановка роняет сборку, а не всплывает жалобой.
+    /// <para>
+    /// Порядок здесь же задаёт и разделы (план 32 §1, этап 4): колесо · поездка · телефон, каждый
+    /// своей строкой. Булавку шторка приписывает сама, в раздел «телефон» — <c>PinGroup</c>.
+    /// </para>
     /// </summary>
     private IReadOnlyList<QuickSheetCommand> BuildWheelCommands()
     {
@@ -1115,7 +1132,7 @@ public sealed class MainActivity : Activity
         {
             new()
             {
-                Icon = "💡",
+                Icon = QuickIcons.Light,
                 Group = WheelNow,
                 Label = () => _wheelConfig.LightEnabled ? AppStrings.ButtonLightOn : AppStrings.ButtonLight,
                 IsOn = () => _wheelConfig.LightEnabled,
@@ -1123,17 +1140,33 @@ public sealed class MainActivity : Activity
             },
             new()
             {
-                Icon = "📢",
+                Icon = QuickIcons.Beep,
                 Group = WheelNow,
                 Label = () => AppStrings.ButtonBeep,
                 Action = BeepAsync,
             },
+
+            // Подключение и отключение переехали сюда из полосы состояния вместе с ней (прогон 5).
+            // Одна команда на оба действия, а не две: они взаимоисключающие, и подпись говорит, что
+            // случится сейчас. Поведение прежнее — поиск колеса, если не подключены, и подтверждение
+            // на ходу, если едем. Раздел «колесо»: связь с колесом — про колесо (план 32 §1, этап 4).
             new()
             {
-                // Красный кружок, а не «⏺» (U+23FA) — тот из того же блока, что и символ питания
-                // выше, и с той же судьбой в системном шрифте.
-                Icon = "🔴",
-                Group = Recording,
+                Icon = QuickIcons.Power,
+                Group = WheelNow,
+                Label = () => _session.CurrentState == ConnectionState.Disconnected
+                    ? AppStrings.ButtonConnect
+                    : AppStrings.ButtonDisconnect,
+                Action = () =>
+                {
+                    OnStateTapped();
+                    return Task.CompletedTask;
+                },
+            },
+            new()
+            {
+                Icon = QuickIcons.Record,
+                Group = Ride,
                 Label = () => _recorder.IsRecording ? AppStrings.ButtonStopRecording : AppStrings.ButtonRecord,
                 IsOn = () => _recorder.IsRecording,
                 Action = RecordToggleAsync,
@@ -1148,40 +1181,41 @@ public sealed class MainActivity : Activity
             },
             new()
             {
-                Icon = "🔄",
-                Group = Recording,
+                Icon = QuickIcons.Reset,
+                Group = Ride,
                 Label = () => AppStrings.ButtonResetPeaks,
                 IsEnabled = () => _trace.HasData,
                 Action = ResetPeaksAsync,
             },
+        };
 
-            // Подключение и отключение переехали сюда из полосы состояния вместе с ней (прогон 5).
-            // Одна команда на оба действия, а не две: они взаимоисключающие, и подпись говорит, что
-            // случится сейчас. Поведение прежнее — поиск колеса, если не подключены, и подтверждение
-            // на ходу, если едем.
-            new()
+        // Реплей не запускается сам: на телефоне это внезапная тревога в полный голос, и не факт,
+        // что рядом окажется, чем её выключить. Кнопка есть только у отладочного транспорта — на
+        // колесе она не появится ни при каких обстоятельствах, а не просто спрятана.
+        //
+        // Встаёт он в середину списка, а не в конец: раздел — это подряд идущие соседи, и
+        // приписанный за телефонными командами реплей завёл бы вторую строку «Поездка» под ними.
+        if (_transport.IsReplay)
+        {
+            commands.Add(new QuickSheetCommand
             {
-                // Вилка, а не символ питания «⏻» (U+23FB): его нет в системном шрифте символов
-                // Android — тот идёт урезанным, и на кнопке был пустой прямоугольник вместо знака
-                // (найдено глазами на телефоне 01.08.2026). Правило простое: в шторке — только
-                // эмодзи, у них покрытие гарантировано, а знаки из Misc Technical — рулетка.
-                Icon = "🔌",
-                Group = Link,
+                Icon = QuickIcons.Play,
+                Group = Ride,
                 Label = () => _session.CurrentState == ConnectionState.Disconnected
-                    ? AppStrings.ButtonConnect
-                    : AppStrings.ButtonDisconnect,
-                Action = () =>
-                {
-                    OnStateTapped();
-                    return Task.CompletedTask;
-                },
-            },
+                    ? AppStrings.ReplayStart
+                    : AppStrings.ReplayStop,
+                Action = ReplayToggleAsync,
+            });
+        }
+
+        commands.AddRange(
+        [
             new()
             {
                 // Экран, который не гаснет, нужен на разбор у обочины и на долгий светофор — то
                 // есть здесь, рядом с остальными «сейчас», а не в настройках через три экрана.
                 // Гаснет он от кнопки питания как обычно; флаг отменяет только таймаут.
-                Icon = "☀",
+                Icon = QuickIcons.Sun,
                 Group = Phone,
                 Label = () => _screenOptions.KeepOn ? AppStrings.ButtonKeepScreenOn : AppStrings.ButtonKeepScreen,
                 IsOn = () => _screenOptions.KeepOn,
@@ -1197,7 +1231,7 @@ public sealed class MainActivity : Activity
                 // стоит рядом: не гасить экран — и показывать на нём приборы, когда его включили,
                 // не требуя разблокировки (план 16 §2). Выключено по умолчанию: панель поверх
                 // замка отдаёт шторку с командами любому, кто телефон поднял.
-                Icon = "🔒",
+                Icon = QuickIcons.Lock,
                 Group = Phone,
                 Label = () => _screenOptions.ShowOverLock ? AppStrings.ButtonLockScreenOn : AppStrings.ButtonLockScreen,
                 IsOn = () => _screenOptions.ShowOverLock,
@@ -1207,42 +1241,26 @@ public sealed class MainActivity : Activity
                     return Task.CompletedTask;
                 },
             },
-        };
-
-        // Реплей не запускается сам: на телефоне это внезапная тревога в полный голос, и не факт,
-        // что рядом окажется, чем её выключить. Кнопка есть только у отладочного транспорта — на
-        // колесе она не появится ни при каких обстоятельствах, а не просто спрятана.
-        if (_transport.IsReplay)
-        {
-            commands.Add(new QuickSheetCommand
-            {
-                Icon = "▶",
-                Group = Replay,
-                Label = () => _session.CurrentState == ConnectionState.Disconnected
-                    ? AppStrings.ReplayStart
-                    : AppStrings.ReplayStop,
-                Action = ReplayToggleAsync,
-            });
-        }
+        ]);
 
         return commands;
     }
 
     /// <summary>
-    /// Переходы на другие экраны — своя стайка в полосе корешков (план 25 §2, шаг 2). Оперативной
-    /// командой переход не является: после него человек уже не едет, а ищут их там же, где корешки,
-    /// — «уйти отсюда» рядом с «показать другое здесь», но за разделителем и другим видом.
+    /// Переходы на другие экраны — раздел «Перейти», последний в шторке (план 32 §1, этап 4).
+    /// Оперативной командой переход не является: после него человек уже не едет, и кнопки у них
+    /// свои — узкие, со значком и словом в строку.
     /// <para>
-    /// Значок «Данных» — 📈, а не 📊: тем же знаком помечен корешок «Панель» в реестре экранов, и
-    /// один знак на два разных дела был готовым объяснением жалобы «какая за что — непонятно»
-    /// (план 25 §1). Уникальность знаков в шторке держит тест.
+    /// Значок «Данных» — столбики, а корешку «Панель» досталась шкала со стрелкой: прежний «📊»
+    /// стоял на обоих, и один знак на два разных дела был готовым объяснением жалобы «какая за что
+    /// — непонятно» (план 25 §1). Уникальность знаков в шторке держит тест.
     /// </para>
     /// </summary>
     private IReadOnlyList<QuickSheetLink> BuildScreenLinks() =>
     [
         new()
         {
-            Icon = "📈",
+            Icon = QuickIcons.Data,
             Label = AppStrings.ButtonData,
             Open = () => OpenScreen(typeof(TelemetryActivity)),
         },
@@ -1250,7 +1268,7 @@ public sealed class MainActivity : Activity
         {
             // Ведёт в RidesActivity, а не в RecordingActivity: та отвечает на вопрос «что пишется
             // прямо сейчас», и попасть на неё, нажав «Поездки», — не то, зачем сюда шли.
-            Icon = "📁",
+            Icon = QuickIcons.Rides,
             Label = AppStrings.ButtonRides,
             Open = () => OpenScreen(typeof(RidesActivity)),
         },
@@ -1258,7 +1276,7 @@ public sealed class MainActivity : Activity
         {
             // Через OpenScreen, как и все выходы с главного экрана: настройки поверх замка не
             // показываются, сперва разблокировка.
-            Icon = "⚙",
+            Icon = QuickIcons.Settings,
             Label = AppStrings.ButtonSettings,
             Open = () => OpenScreen(typeof(SettingsActivity)),
         },
@@ -1367,6 +1385,12 @@ public sealed class MainActivity : Activity
 
         _sheet = _screen.Sheet;
         _sheet.PinLabel = () => AppStrings.ButtonPin;
+        // Булавка — про то, как телефон ведёт себя эту поездку, поэтому стоит с телефонными
+        // командами, а не отдельной строкой ради одной кнопки (макет 3a, раздел «Телефон»).
+        _sheet.PinGroup = Phone;
+        _sheet.SectionLabel = SectionLabel;
+        _sheet.ScreensSectionLabel = () => AppStrings.SheetSectionScreen;
+        _sheet.LinksSectionLabel = () => AppStrings.SheetSectionGo;
         _sheet.SetCommands(BuildWheelCommands());
         _sheet.SetScreens(BuildScreenTabs());
         _sheet.SetLinks(BuildScreenLinks());

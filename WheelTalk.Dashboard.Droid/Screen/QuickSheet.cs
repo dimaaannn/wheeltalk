@@ -1,7 +1,9 @@
 using Android.Content;
+using Android.Content.Res;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.OS;
+using Android.Text;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
@@ -60,39 +62,67 @@ public sealed class QuickSheet : FrameLayout
     private readonly Action _hideNow;
     private readonly LinearLayout _content;
     /// <summary>
-    /// Ряд оперативных команд: одна строка, пока команды помещаются, иначе — перенос по измеренной
-    /// ширине (<see cref="RowStack"/>). Семь кнопок не влезали в 360 dp, и последняя («Настройки»)
-    /// просто уезжала за край — найдено 30.07.2026, когда добавилась кнопка «Не гасить». Прокрутку
-    /// не берём: искать команду пальцем на ходу хуже, чем увидеть все сразу.
+    /// Разделы команд, строка на раздел, слева от строки — боковой корешок с его именем
+    /// (план 32 §1, этап 3). Переноса больше нет: состав строки задаёт раздел, а не измеренная
+    /// ширина чужих подписей, и кнопки тянутся весом на всю ширину. Последней строкой сюда же
+    /// встают переходы — они не команды, но и не корешки, и раздел у них свой.
     /// </summary>
     private readonly LinearLayout _rows;
 
     /// <summary>
-    /// Полоса над рядом команд: корешки экранов (план 23 §2.2) и, за разделителем, переходы на
-    /// другие экраны (план 25 §2, шаг 2). Не команды: правило «позиции команд фиксированы навсегда»
-    /// их не касается, и перенос у неё свой — тем же <see cref="RowStack"/>, но по своей мерке.
+    /// Полоса над командами: корешки экранов (план 23 §2.2) своим разделом и черта под ними.
+    /// Не команды: правило «позиции команд фиксированы навсегда» их не касается.
     /// </summary>
     private readonly LinearLayout _screenRow;
 
-    /// <summary>Минимальная сторона кнопки — она же цель касания (quick-commands-design.md §3).</summary>
-    private const int ButtonWidthDp = 56;
+    /// <summary>
+    /// Кнопки команд по порядку списка, булавка — последней. Подсветка судьбы ищет нажатую по её
+    /// номеру среди команд, а обходом дерева его больше не найти: в строке теперь стоят корешок
+    /// раздела и обойма, и «первая <see cref="LinearLayout"/> в строке» — уже не кнопка.
+    /// </summary>
+    private readonly List<View> _buttons = [];
 
     /// <summary>
-    /// Наименьшая цель касания — 48 dp (Android). Кнопкам команд её даёт <see cref="ButtonWidthDp"/>,
-    /// а корешкам и переходам, у которых высота росла из одних паддингов, — вот эта величина: замер
-    /// 09.08.2026 дал у них 31 dp, ниже нормы (план 25 §2, шаг 4).
+    /// Высота строки команд (план 32 §1, этап 3). Задаётся строке <b>явно</b>, и это не украшение:
+    /// горизонтальный <see cref="LinearLayout"/> с детьми нулевой ширины и весом мерил свою высоту
+    /// нулём — из-за той ловушки прежний ряд и жил на <c>WrapContent</c> с фиксированными ширинами.
+    /// Высота задана — веса безопасны.
     /// </summary>
-    private const int TouchTargetDp = 48;
+    private const int CommandHeightDp = 70;
+
+    /// <summary>Корешок экрана: во всю ширину, выше наименьшей цели касания (48 dp).</summary>
+    private const int TabHeightDp = 48;
 
     /// <summary>
-    /// Кегли шторки, ISO 15008 в пересчёте на телефон у руля (700 мм): угл. мин. ≈ 382 × sp / 700.
-    /// Значок 26 sp — 14,2′, выше минимальных 12′; подпись 13 sp — 7,1′, ниже минимума и осознанно:
-    /// подпись отвечает на «какая за что» с полуметра, а издалека работают значок и место кнопки.
-    /// Было 20 и 10 sp — 10,9′ и 5,5′, ниже минимума оба (план 25 §2, шаг 4).
+    /// Переход ниже команды: уйти с экрана — не оперативное дело, и выглядеть командой оно не
+    /// должно. 48 dp вместо 44 макета — решение владельца 10.08.2026: имя раздела идёт единым
+    /// кеглем со всеми, и в 44 dp «ПЕРЕЙТИ» вставало впритык.
     /// </summary>
-    private const float IconSp = 26;
+    private const int LinkHeightDp = 48;
 
-    private const float LabelSp = 13;
+    /// <summary>Полоса бокового корешка раздела. По высоте раздел не стоит ничего — в этом весь его смысл.</summary>
+    private const int SpineWidthDp = 22;
+
+    private const int GapDp = 8;
+
+    /// <summary>
+    /// Кегли шторки. Подпись команды 12 sp вместо прежних 10 (план 25 §2, шаг 4: 10 sp — вдвое ниже
+    /// минимума ISO 15008 даже для взгляда стоя), корешок экрана 16 sp, переход 13 sp, имя
+    /// раздела 10 sp — оно подсказка, а не то, что читают на ходу.
+    /// </summary>
+    private const float LabelSp = 12;
+
+    private const float TabLabelSp = 16;
+
+    private const float LinkLabelSp = 13;
+
+    private const float SpineSp = 10;
+
+    private const int IconDp = 24;
+
+    private const int TabIconDp = 22;
+
+    private const int LinkIconDp = 19;
 
     private IReadOnlyList<QuickSheetCommand> _commands = [];
     private IReadOnlyList<QuickSheetScreen> _screens = [];
@@ -111,11 +141,7 @@ public sealed class QuickSheet : FrameLayout
         Click += (_, _) => Hide();
 
         _rows = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
-        _rows.SetPadding(context.Dp(8), 0, context.Dp(8), context.Dp(12));
 
-        // Вертикальный, как и ряд команд: две вкладки да три перехода в 360 dp одной строкой не
-        // помещаются, и без переноса последний переход уезжал бы за край — та же беда, что нашлась
-        // у команд 30.07.2026.
         _screenRow = new LinearLayout(context)
         {
             Orientation = Android.Widget.Orientation.Vertical,
@@ -123,18 +149,15 @@ public sealed class QuickSheet : FrameLayout
         };
 
         _content = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical, Clickable = true };
-        _content.SetBackgroundColor(context.PageBackground());
-        _content.AddView(BuildGrabber(context), new LinearLayout.LayoutParams(context.Dp(32), context.Dp(4))
+        _content.Background = BuildSheetBackground(context);
+        _content.SetPadding(context.Dp(14), context.Dp(10), context.Dp(14), context.Dp(16));
+        _content.AddView(BuildGrabber(context), new LinearLayout.LayoutParams(context.Dp(36), context.Dp(4))
         {
             Gravity = GravityFlags.CenterHorizontal,
-            TopMargin = context.Dp(8),
-            BottomMargin = context.Dp(8),
+            BottomMargin = context.Dp(12),
         });
         _content.AddView(_screenRow, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-        {
-            BottomMargin = context.Dp(8),
-        });
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
         _content.AddView(_rows, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
@@ -144,8 +167,24 @@ public sealed class QuickSheet : FrameLayout
 
     public bool IsOpen => _visible;
 
-    /// <summary>Подпись булавки — единственное слово, которое шторка показывает сама.</summary>
+    /// <summary>Подпись булавки — слово, которое шторка показывает сама.</summary>
     public Func<string> PinLabel { get; set; } = () => "Pin";
+
+    /// <summary>
+    /// В каком разделе стоит булавка. По смыслу она про телефон в эту поездку, но слова про телефон
+    /// библиотеке не принадлежат — раздел ей называет хозяин меню тем же ключом, что и командам.
+    /// Пусто — своим, безымянным разделом.
+    /// </summary>
+    public string PinGroup { get; set; } = "";
+
+    /// <summary>Имя раздела по ключу команды (<see cref="QuickSheetCommand.Group"/>).</summary>
+    public Func<string, string> SectionLabel { get; set; } = group => group;
+
+    /// <summary>Имя раздела корешков экранов.</summary>
+    public Func<string> ScreensSectionLabel { get; set; } = () => "Screen";
+
+    /// <summary>Имя раздела переходов.</summary>
+    public Func<string> LinksSectionLabel { get; set; } = () => "Go";
 
     /// <summary>
     /// The menu's composition — set once for the life of the screen. Positions are fixed by list
@@ -169,14 +208,13 @@ public sealed class QuickSheet : FrameLayout
     }
 
     /// <summary>
-    /// Переходы на другие экраны приложения — та же полоса, что у корешков, но своя стайка за
-    /// разделителем (план 25 §2, шаг 2: «переходы к переходам»). Пусто — стайки нет; так живёт
-    /// стенд, которому уходить некуда.
+    /// Переходы на другие экраны приложения — последний раздел шторки, «Перейти» (план 32 §1,
+    /// этап 3). Пусто — раздела нет вовсе.
     /// </summary>
     public void SetLinks(IReadOnlyList<QuickSheetLink> links)
     {
         _links = links;
-        RebuildScreens();
+        RebuildRow();
     }
 
     public void Show()
@@ -226,9 +264,82 @@ public sealed class QuickSheet : FrameLayout
         var background = new GradientDrawable();
         background.SetShape(ShapeType.Rectangle);
         background.SetCornerRadius(context.Dp(2));
-        background.SetColor(Color.ParseColor("#66888888"));
+        background.SetColor(QuickSheetPalette.Grabber);
         grabber.Background = background;
         return grabber;
+    }
+
+    /// <summary>
+    /// Подложка шторки: скруглённый сверху на 20 dp прямоугольник и волосяная граница по верхнему
+    /// краю (план 32 §1, этап 3). До этого подложкой был общий <c>PageBackground()</c> — тот же
+    /// тёмный, что и фон панели, и границы шторки почти не было видно.
+    /// <para>
+    /// Двумя слоями, а не обводкой: обводка <see cref="GradientDrawable"/> идёт по всем четырём
+    /// сторонам, а нужна одна — та, что отделяет шторку от панели.
+    /// </para>
+    /// </summary>
+    private static Drawable BuildSheetBackground(Context context)
+    {
+        float radius = context.Dp(20);
+        float[] corners = [radius, radius, radius, radius, 0, 0, 0, 0];
+
+        var border = new GradientDrawable();
+        border.SetShape(ShapeType.Rectangle);
+        border.SetCornerRadii(corners);
+        border.SetColor(QuickSheetPalette.TopBorder);
+
+        var face = new GradientDrawable();
+        face.SetShape(ShapeType.Rectangle);
+        face.SetCornerRadii(corners);
+        face.SetColor(QuickSheetPalette.Background);
+
+        var sheet = new LayerDrawable([border, face]);
+        sheet.SetLayerInset(1, 0, context.Dp(1), 0, 0);
+        return sheet;
+    }
+
+    /// <summary>
+    /// Строка раздела: слева боковой корешок с именем, справа обойма, куда встают кнопки весом.
+    /// Отдаёт обойму — саму строку хозяину знать незачем.
+    /// <para>
+    /// Высота строки задаётся <b>здесь и точно</b>: на ней держится вся раскладка с весами
+    /// (см. <see cref="CommandHeightDp"/>).
+    /// </para>
+    /// </summary>
+    private LinearLayout AddSection(LinearLayout host, string title, int heightDp)
+    {
+        var context = Context!;
+
+        var row = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
+        row.AddView(new SectionSpine(context, title), new LinearLayout.LayoutParams(
+            context.Dp(SpineWidthDp), ViewGroup.LayoutParams.MatchParent));
+
+        var slots = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
+        row.AddView(slots, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MatchParent, 1f)
+        {
+            LeftMargin = context.Dp(GapDp),
+        });
+
+        host.AddView(row, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, context.Dp(heightDp))
+        {
+            TopMargin = host.ChildCount > 0 ? context.Dp(GapDp) : 0,
+        });
+
+        return slots;
+    }
+
+    /// <summary>
+    /// Кнопка встаёт в обойму весом: в строке из двух они просто шире, из трёх — уже, а пустого
+    /// места не остаётся ни в одной (план 32 §1, этап 3). Место кнопки при этом постоянно — его
+    /// задаёт раздел, а не измеренная ширина соседей.
+    /// </summary>
+    private void AddToSection(LinearLayout slots, View view)
+    {
+        slots.AddView(view, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MatchParent, 1f)
+        {
+            LeftMargin = slots.ChildCount > 0 ? Context!.Dp(GapDp) : 0,
+        });
     }
 
     /// <summary>
@@ -239,9 +350,11 @@ public sealed class QuickSheet : FrameLayout
     /// </summary>
     private void RebuildScreens()
     {
-        _screenRow.Visibility = _screens.Count == 0 && _links.Count == 0 ? ViewStates.Gone : ViewStates.Visible;
+        _screenRow.RemoveAllViews();
+        _screenRow.Visibility = _screens.Count == 0 ? ViewStates.Gone : ViewStates.Visible;
+        if (_screens.Count == 0) return;
 
-        var stack = new RowStack(Context!, _screenRow);
+        var slots = AddSection(_screenRow, ScreensSectionLabel(), TabHeightDp);
 
         foreach (var screen in _screens)
         {
@@ -252,12 +365,133 @@ public sealed class QuickSheet : FrameLayout
                 RebuildScreens();
             };
 
-            stack.Add(tab);
+            AddToSection(slots, tab);
         }
 
-        // Переходы — за разделителем и без заливки: они уводят с экрана совсем, а корешок только
-        // меняет содержимое рамки (план 25 §2, шаг 2). Одинаковыми им выглядеть нельзя.
-        if (_screens.Count > 0 && _links.Count > 0 && stack.RowStarted) stack.Add(BuildDivider());
+        // Черта под корешками: корешок меняет содержимое рамки, команда делает что-то с колесом или
+        // телефоном — это разные вещи, а не пятый раздел команд (план 32 §1, этап 3).
+        _screenRow.AddView(BuildDivider(), new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, Context!.Dp(1))
+        {
+            TopMargin = Context!.Dp(12),
+            BottomMargin = Context!.Dp(12),
+        });
+    }
+
+    /// <summary>
+    /// Черта между корешками экранов и командами. Своей величины у голого <see cref="View"/> нет —
+    /// высоту ему задаёт тот, кто добавляет (см. <see cref="BuildGrabber"/> про то, чем кончается
+    /// <c>WrapContent</c> на таком).
+    /// </summary>
+    private View BuildDivider()
+    {
+        var divider = new View(Context!);
+        divider.SetBackgroundColor(QuickSheetPalette.Plate);
+        return divider;
+    }
+
+    /// <summary>
+    /// Переход: значок и подпись <b>в строку</b>, узкой кнопкой с обводкой и без заливки — уйти с
+    /// экрана оперативной командой не является, и выглядеть командой не должно (план 32 §1,
+    /// этап 3). Выбранным переход не бывает.
+    /// </summary>
+    private View BuildScreenLink(QuickSheetLink link)
+    {
+        var context = Context!;
+
+        var button = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
+        button.SetGravity(GravityFlags.Center);
+        button.Clickable = true;
+
+        var background = new GradientDrawable();
+        background.SetShape(ShapeType.Rectangle);
+        background.SetCornerRadius(context.Dp(11));
+        background.SetColor(Color.Transparent);
+        background.SetStroke(context.Dp(1), QuickSheetPalette.LinkBorder);
+        button.Background = background;
+
+        button.AddView(BuildIcon(link.Icon, QuickSheetPalette.Ink, LinkIconDp));
+
+        var label = new TextView(context) { Text = link.Label, Gravity = GravityFlags.Center };
+        label.SetTextSize(ComplexUnitType.Sp, LinkLabelSp);
+        label.SetTextColor(QuickSheetPalette.Ink);
+        label.SetSingleLine(true);
+        label.Ellipsize = TextUtils.TruncateAt.End;
+        label.SetPadding(context.Dp(7), 0, 0, 0);
+        button.AddView(label);
+
+        return button;
+    }
+
+    /// <summary>
+    /// Корешок экрана: во всю ширину своей доли ряда, 48 dp высотой, значок и слово в строку.
+    /// Ширина во всю долю — заодно и лечение узкой цели касания: тап между значком и словом раньше
+    /// проваливался мимо кнопки (найдено 09.08.2026).
+    /// </summary>
+    private View BuildScreenTab(QuickSheetScreen screen)
+    {
+        var context = Context!;
+        bool selected = screen.IsSelected();
+        var accent = QuickSheetPalette.Accent;
+
+        var tab = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
+        tab.SetGravity(GravityFlags.Center);
+        tab.Clickable = true;
+
+        var background = new GradientDrawable();
+        background.SetShape(ShapeType.Rectangle);
+        background.SetCornerRadius(context.Dp(12));
+        background.SetColor(selected ? accent : Color.Transparent);
+        if (!selected) background.SetStroke(context.Dp(1), QuickSheetPalette.TabBorder);
+        tab.Background = background;
+
+        // Выбранный корешок залит акцентом — слово на нём берёт тот цвет, что читается на этой
+        // заливке (в тёмной теме акцент светлый, и белым по нему выходило 2,5:1). Невыбранный
+        // акцентом больше не красится: тем же цветом красились и все кнопки команд, отсюда и
+        // «похожего цвета» (план 25 §1).
+        var ink = selected ? Readable(accent) : QuickSheetPalette.Ink;
+
+        tab.AddView(BuildIcon(screen.Icon, ink, TabIconDp));
+
+        var label = new TextView(context) { Text = screen.Label, Gravity = GravityFlags.Center };
+        label.SetTextSize(ComplexUnitType.Sp, TabLabelSp);
+        label.SetTextColor(ink);
+        label.SetSingleLine(true);
+        label.Ellipsize = TextUtils.TruncateAt.End;
+        if (selected) label.SetTypeface(null, TypefaceStyle.Bold);
+        label.SetPadding(context.Dp(9), 0, 0, 0);
+        tab.AddView(label);
+
+        return tab;
+    }
+
+    /// <summary>
+    /// Разделы команд сверху вниз: строка на раздел, соседи по разделу стоят подряд. Булавка идёт
+    /// тем же путём, что и команды, а не приписывается в конец: отдельный путь и был тем, из-за
+    /// чего её уносило за край. Последним — раздел переходов.
+    /// </summary>
+    private void RebuildRow()
+    {
+        _rows.RemoveAllViews();
+        _buttons.Clear();
+
+        var entries = new List<QuickSheetCommand>(_commands) { PinCommand() };
+
+        for (int index = 0; index < entries.Count;)
+        {
+            string group = entries[index].Group;
+            var slots = AddSection(_rows, SectionLabel(group), CommandHeightDp);
+
+            while (index < entries.Count && entries[index].Group == group)
+            {
+                AddToSection(slots, BuildCommandButton(entries[index], index));
+                index++;
+            }
+        }
+
+        if (_links.Count == 0) return;
+
+        var linkSlots = AddSection(_rows, LinksSectionLabel(), LinkHeightDp);
 
         foreach (var link in _links)
         {
@@ -268,146 +502,45 @@ public sealed class QuickSheet : FrameLayout
                 link.Open();
             };
 
-            stack.Add(button);
+            AddToSection(linkSlots, button);
         }
     }
 
     /// <summary>
-    /// Тонкая черта между стайками — и в полосе переходов, и в ряду команд: одна разлука, один вид.
-    /// <para>
-    /// Размер задаётся <b>здесь и точно</b>, 1×36 dp: у голого <see cref="View"/> своей величины
-    /// нет, и <c>WrapContent</c> разрешился бы во всё доступное место (см. <see cref="BuildGrabber"/>
-    /// и <see cref="RowStack.Add"/>).
-    /// </para>
+    /// Кнопка команды вместе с её поведением; номер в списке запоминается тут же — по нему
+    /// подсветка судьбы находит нажатую (<see cref="ButtonAt"/>). Номер за концом списка команд —
+    /// булавка: она про саму шторку, и дело у неё своё.
     /// </summary>
-    private View BuildDivider()
+    private View BuildCommandButton(QuickSheetCommand command, int index)
     {
-        var context = Context!;
-        var divider = new View(context);
-        divider.SetBackgroundColor(Color.Argb(60, 128, 128, 128));
-        divider.LayoutParameters = new ViewGroup.LayoutParams(context.Dp(1), context.Dp(TouchTargetDp - 12));
-        return divider;
-    }
+        var button = BuildButton(command);
+        _buttons.Add(button);
 
-    /// <summary>
-    /// Переход: значок и слово в цвете акцента, без заливки и без выделения «выбрано» — выбранным
-    /// переход не бывает. Высота — не меньше цели касания (48 dp), как у корешков.
-    /// </summary>
-    private View BuildScreenLink(QuickSheetLink link)
-    {
-        var context = Context!;
-        var accent = NormalColor(context);
+        if (index == _commands.Count)
+        {
+            button.Click += (_, _) => OnPinTapped();
+            return button;
+        }
 
-        var button = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
-        button.SetGravity(GravityFlags.Center);
-        button.SetMinimumHeight(context.Dp(TouchTargetDp));
-        int padH = context.Dp(12);
-        button.SetPadding(padH, 0, padH, 0);
-        button.Clickable = true;
+        if (command.IsEnabled?.Invoke() ?? true)
+        {
+            button.Click += (_, _) => OnCommandTapped(index, command.Action);
 
-        var icon = new TextView(context) { Text = link.Icon, Gravity = GravityFlags.Center };
-        icon.SetTextSize(ComplexUnitType.Sp, 18);
-        icon.SetTextColor(accent);
-        button.AddView(icon);
-
-        var label = new TextView(context) { Text = link.Label, Gravity = GravityFlags.Center };
-        label.SetTextSize(ComplexUnitType.Sp, LabelSp);
-        label.SetTextColor(accent);
-        label.SetPadding(context.Dp(4), 0, 0, 0);
-        button.AddView(label);
+            // Consumed long click swallows the click that would otherwise follow it on the same
+            // ACTION_UP (platform behaviour, no gesture bookkeeping needed here) — a long press
+            // fires only LongPress, never Action too.
+            if (command.LongPress is { } longPress)
+            {
+                button.LongClick += (_, e) =>
+                {
+                    OnCommandTapped(index, longPress);
+                    e.Handled = true;
+                };
+            }
+        }
 
         return button;
     }
-
-    private View BuildScreenTab(QuickSheetScreen screen)
-    {
-        var context = Context!;
-        bool selected = screen.IsSelected();
-        var accent = NormalColor(context);
-
-        var tab = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
-        tab.SetGravity(GravityFlags.Center);
-        tab.SetMinimumHeight(context.Dp(TouchTargetDp));
-        int padH = context.Dp(12);
-        tab.SetPadding(padH, 0, padH, 0);
-
-        var background = new GradientDrawable();
-        background.SetShape(ShapeType.Rectangle);
-        background.SetCornerRadius(context.Dp(16));
-        background.SetColor(selected ? accent : Color.Transparent);
-        tab.Background = background;
-
-        // Выбранный корешок залит акцентом — слово на нём берёт тот цвет, что читается на этой
-        // заливке (в тёмной теме акцент светлый, и белым по нему выходило 2,5:1).
-        var textColor = selected ? Readable(accent) : accent;
-
-        var icon = new TextView(context) { Text = screen.Icon, Gravity = GravityFlags.Center };
-        icon.SetTextSize(ComplexUnitType.Sp, 18);
-        icon.SetTextColor(textColor);
-        tab.AddView(icon);
-
-        var label = new TextView(context) { Text = screen.Label, Gravity = GravityFlags.Center };
-        label.SetTextSize(ComplexUnitType.Sp, LabelSp);
-        label.SetTextColor(textColor);
-        label.SetPadding(context.Dp(4), 0, 0, 0);
-        tab.AddView(label);
-
-        return tab;
-    }
-
-    private void RebuildRow()
-    {
-        var stack = new RowStack(Context!, _rows);
-        string? group = null;
-
-        for (int i = 0; i < _commands.Count; i++)
-        {
-            int index = i;
-            var command = _commands[i];
-
-            // Разделитель встаёт на смене стайки (план 25 §2, шаг 3) — но не первым в строке: у
-            // переноса своя разлука, и черта в начале строки разделяла бы пустоту.
-            if (group is not null && command.Group != group && stack.RowStarted) stack.Add(BuildDivider());
-
-            group = command.Group;
-            var button = BuildButton(command);
-            if (command.IsEnabled?.Invoke() ?? true)
-            {
-                button.Click += (_, _) => OnCommandTapped(index, command.Action);
-
-                // Consumed long click swallows the click that would otherwise follow it on the same
-                // ACTION_UP (platform behaviour, no gesture bookkeeping needed here) — a long press
-                // fires only LongPress, never Action too.
-                if (command.LongPress is { } longPress)
-                {
-                    button.LongClick += (_, e) =>
-                    {
-                        OnCommandTapped(index, longPress);
-                        e.Handled = true;
-                    };
-                }
-            }
-
-            stack.Add(button);
-        }
-
-        // Булавка идёт тем же путём, что и команды, а не приписывается в конец: отдельный путь и
-        // был тем, из-за чего её уносило за край, когда команды заполняли строку ровно. И стайка у
-        // неё своя: булавка — про саму шторку, а не про колесо или телефон.
-        if (_commands.Count > 0 && stack.RowStarted) stack.Add(BuildDivider());
-        stack.Add(BuildPinButton());
-    }
-
-    /// <summary>
-    /// Кладёт кнопку в текущую строку или начинает новую, если она туда уже не влезает.
-    /// <para>
-    /// Ширину спрашиваем у самой кнопки, а не считаем по <see cref="ButtonWidthDp"/>: 56 dp — это
-    /// её минимум, а настоящая ширина растёт с подписью, и «Закрепить панель» вдвое шире «Бипа».
-    /// Расчёт по минимуму врал в большую сторону — «столько влезет» оказывалось на кнопку больше,
-    /// чем помещается, и последняя уезжала за край. Тем же он ломался бы от длинного перевода и от
-    /// увеличенного шрифта в системных настройках.
-    /// </para>
-    /// </summary>
 
     private View BuildButton(QuickSheetCommand command)
     {
@@ -417,52 +550,64 @@ public sealed class QuickSheet : FrameLayout
         var context = Context!;
         var button = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
         button.SetGravity(GravityFlags.Center);
-        button.SetMinimumWidth(context.Dp(ButtonWidthDp));
-        button.SetMinimumHeight(context.Dp(ButtonWidthDp));
         int pad = context.Dp(4);
         button.SetPadding(pad, pad, pad, pad);
         button.Alpha = enabled ? 1f : 0.4f;
+        button.Clickable = true;
 
-        // Цвет слова выбирается по заливке, а не берётся белым навсегда: у «включено» (янтарь) и у
-        // акцента тёмной темы белым выходило 2,0:1 и 2,5:1 — вдвое ниже требуемых 4,5:1
-        // (WCAG 1.4.3). Тот же расчёт, что у подсветки судьбы команды.
-        var fill = on ? OnColor(context) : NormalColor(context);
-        var textColor = Readable(fill);
+        // Спокойная плашка вместо акцентной (план 32 §1, этап 3): акцентом красились и невключённая
+        // команда, и корешок выбранного экрана — вот и «все кнопки похожего цвета» (план 25 §1).
+        // Цвет слова считается по заливке, а не берётся белым навсегда: белым по янтарю «включено»
+        // выходило 2,0:1 — вдвое ниже требуемых 4,5:1 (WCAG 1.4.3).
+        var fill = on ? OnColor(context) : QuickSheetPalette.Plate;
+        var ink = Readable(fill);
 
         var background = new GradientDrawable();
         background.SetShape(ShapeType.Rectangle);
-        background.SetCornerRadius(context.Dp(10));
+        background.SetCornerRadius(context.Dp(12));
         background.SetColor(fill);
         button.Background = background;
 
-        var icon = new TextView(context) { Text = command.Icon, Gravity = GravityFlags.Center };
-        icon.SetTextSize(ComplexUnitType.Sp, IconSp);
-        icon.SetTextColor(textColor);
-        button.AddView(icon);
+        button.AddView(BuildIcon(command.Icon, ink, IconDp));
 
         var label = new TextView(context) { Text = command.Label(), Gravity = GravityFlags.Center };
         label.SetTextSize(ComplexUnitType.Sp, LabelSp);
-        label.SetTextColor(textColor);
-        button.AddView(label);
-
-        return button;
-    }
-
-    private View BuildPinButton()
-    {
-        var button = BuildButton(new QuickSheetCommand
+        label.SetTextColor(ink);
+        label.SetMaxLines(2);
+        label.Ellipsize = TextUtils.TruncateAt.End;
+        if (on) label.SetTypeface(null, TypefaceStyle.Bold);
+        button.AddView(label, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
         {
-            Icon = "📌",
-            Label = PinLabel,
-            IsOn = () => _pinned,
-            Action = () => Task.CompletedTask,
+            TopMargin = context.Dp(5),
         });
-        button.Click += (_, _) => OnPinTapped();
+
         return button;
     }
 
-    private static Color NormalColor(Context context) =>
-        context.IsDarkTheme() ? Color.ParseColor("#AC99EA") : Color.ParseColor("#512BD4");
+    /// <summary>
+    /// Значок — свой контур (<see cref="QuickIcons"/>) в цвете кнопки, тинтом: держать один и тот
+    /// же знак в трёх цветах ради белого, чёрного и приглушённого было бы втрое больше файлов.
+    /// </summary>
+    private ImageView BuildIcon(int icon, Color tint, int sizeDp)
+    {
+        var context = Context!;
+        var view = new ImageView(context);
+        view.SetImageResource(icon);
+        view.ImageTintList = ColorStateList.ValueOf(tint);
+        view.LayoutParameters = new LinearLayout.LayoutParams(context.Dp(sizeDp), context.Dp(sizeDp));
+        return view;
+    }
+
+    /// <summary>Булавка как команда: место в ряду ей достаётся тем же путём, что и остальным.</summary>
+    private QuickSheetCommand PinCommand() => new()
+    {
+        Icon = QuickIcons.Pin,
+        Group = PinGroup,
+        Label = PinLabel,
+        IsOn = () => _pinned,
+        Action = () => Task.CompletedTask,
+    };
 
     /// <summary>
     /// Чёрное или белое — что читается на этой заливке (WCAG 1.4.3, 4,5:1 для подписи). Считается, а
@@ -492,124 +637,51 @@ public sealed class QuickSheet : FrameLayout
     }
 
     /// <summary>
-    /// Wrap-content width, not weight-based 0dp+weight: a horizontal <see cref="LinearLayout"/> with
-    /// weighted zero-width children measured its own wrap-content height as zero here — a known
-    /// Android quirk (the weighted second pass does not feed back into the row's own height). Fixed
-    /// widths sidestep it and cost nothing — the row is centered, not stretched to fill.
+    /// Кнопка по её номеру среди команд — не по номеру внутри строки: разделы разложили команды по
+    /// строкам, и подсветка «команда не ушла» светила бы соседа.
     /// </summary>
-    /// <summary>
-    /// Кнопка по её номеру среди команд — не по номеру внутри строки: после переноса они разошлись,
-    /// и подсветка «команда не ушла» светила бы соседа.
-    /// </summary>
-    private View? ButtonAt(int index)
-    {
-        for (int r = 0; r < _rows.ChildCount; r++)
-        {
-            if (_rows.GetChildAt(r) is not LinearLayout row) continue;
-
-            for (int c = 0; c < row.ChildCount; c++)
-            {
-                // Разделители стоят в той же строке, но кнопками не являются: считать их значило бы
-                // подсветить соседа вместо нажатой команды.
-                if (row.GetChildAt(c) is not LinearLayout button) continue;
-                if (index == 0) return button;
-                index--;
-            }
-        }
-
-        return null;
-    }
+    private View? ButtonAt(int index) => index >= 0 && index < _buttons.Count ? _buttons[index] : null;
 
     /// <summary>
-    /// Укладчик строк: кладёт элементы слева направо, а когда очередной в строку уже не влезает —
-    /// начинает новую. Один на обе полосы шторки (команды и корешки с переходами): у них одна и та
-    /// же беда — 360 dp кончаются раньше, чем элементы, — и разные решения расходились бы.
+    /// Боковой корешок раздела: имя снизу вверх в полосе шириной <see cref="SpineWidthDp"/> dp.
+    /// Заголовок над строкой стоил бы 18 dp высоты пять раз и оставлял бы дыры в неполных строках —
+    /// корешок по высоте не стоит ничего (план 32 §1, этап 3).
     /// <para>
-    /// Ширину спрашиваем у самого элемента, а не считаем по минимуму кнопки: 56 dp — это минимум, а
-    /// настоящая ширина растёт с подписью, и «Закрепить» вдвое шире «Бипа». Расчёт по минимуму врал
-    /// в большую сторону, и последняя кнопка уезжала за край; тем же он ломался бы от длинного
-    /// перевода и от увеличенного шрифта в системных настройках.
+    /// Рисуется поворотом канвы, а не повёрнутым <see cref="TextView"/>: тот меряется до поворота,
+    /// как горизонтальный, и полоса получила бы ширину слова вместо 22 dp — капкан плана 32 §2.
     /// </para>
     /// </summary>
-    private sealed class RowStack
+    private sealed class SectionSpine : View
     {
-        private readonly Context _context;
-        private readonly LinearLayout _container;
-        private readonly int _available;
-        private readonly int _gap;
-        private LinearLayout _row = null!;
-        private int _used;
+        private readonly string _title;
+        private readonly Paint _paint;
 
-        public RowStack(Context context, LinearLayout container)
+        public SectionSpine(Context context, string title) : base(context)
         {
-            _context = context;
-            _container = container;
-            _container.RemoveAllViews();
-            _available = context.Resources!.DisplayMetrics!.WidthPixels - context.Dp(16);
-            _gap = context.Dp(8);
-            StartRow();
-        }
-
-        /// <summary>
-        /// Кладёт элемент, <b>сохраняя заданный им самим размер</b>. Это не мелочь: голый
-        /// <see cref="View"/> (разделитель) при <c>WrapContent</c> разрешается не в свою величину, а
-        /// во <b>всё доступное</b> — <c>View.getDefaultSize</c> под <c>AT_MOST</c>. Та же ловушка,
-        /// что однажды раздула черенок (см. <see cref="BuildGrabber"/>): затерев 1×36 dp
-        /// разделителя на <c>WrapContent</c>, укладчик получал серую колонну во весь экран, а вместе
-        /// с ней — строку во всю высоту, шторку на весь экран и уехавшие за край команды
-        /// (найдено на телефоне 09.08.2026, 720×1440).
-        /// </summary>
-        public void Add(View view)
-        {
-            var own = view.LayoutParameters;
-            int wantedWidth = own?.Width ?? ViewGroup.LayoutParams.WrapContent;
-            int wantedHeight = own?.Height ?? ViewGroup.LayoutParams.WrapContent;
-
-            // Ширина для подсчёта: заданная — как есть, иначе измеренная. Мерить элемент с явной
-            // шириной нельзя: тот же голый View ответит нулём, и строка сочтёт разделитель бесплатным.
-            int width;
-            if (wantedWidth > 0)
+            _title = title.ToUpperInvariant();
+            _paint = new Paint(PaintFlags.AntiAlias)
             {
-                width = wantedWidth;
-            }
-            else
-            {
-                int unspecified = MeasureSpec.MakeMeasureSpec(0, MeasureSpecMode.Unspecified);
-                view.Measure(unspecified, unspecified);
-                width = view.MeasuredWidth;
-            }
-
-            int gap = _row.ChildCount > 0 ? _gap : 0;
-
-            if (_row.ChildCount > 0 && _used + gap + width > _available)
-            {
-                StartRow();
-                gap = 0;
-            }
-
-            _used += gap + width;
-
-            var p = new LinearLayout.LayoutParams(wantedWidth, wantedHeight)
-            {
-                Gravity = GravityFlags.CenterVertical,
-                LeftMargin = gap,
+                Color = QuickSheetPalette.Spine,
+                TextAlign = Paint.Align.Center,
+                TextSize = TypedValue.ApplyDimension(
+                    ComplexUnitType.Sp, SpineSp, context.Resources!.DisplayMetrics!),
+                // Разрядка макета — 1,6 px при кегле 10, то есть 0,16 em: Paint мерит её в em.
+                LetterSpacing = 0.16f,
             };
-            _row.AddView(view, p);
+            _paint.SetTypeface(Typeface.DefaultBold);
         }
 
-        /// <summary>Строка не пуста — значит разделитель между стайками поставить есть куда.</summary>
-        public bool RowStarted => _row.ChildCount > 0;
-
-        private void StartRow()
+        protected override void OnDraw(Canvas canvas)
         {
-            _used = 0;
-            _row = new LinearLayout(_context) { Orientation = Android.Widget.Orientation.Horizontal };
-            _row.SetGravity(GravityFlags.CenterHorizontal);
-            _container.AddView(_row, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-            {
-                TopMargin = _container.ChildCount > 0 ? _gap : 0,
-            });
+            // Кегль у всех разделов один и подгонке под длину слова не подлежит (решение владельца
+            // 10.08.2026): разнокалиберные корешки читаются как разные по важности.
+            float centerX = Width / 2f;
+            float centerY = Height / 2f;
+
+            canvas.Save();
+            canvas.Rotate(-90, centerX, centerY);
+            canvas.DrawText(_title, centerX, centerY - (_paint.Ascent() + _paint.Descent()) / 2f, _paint);
+            canvas.Restore();
         }
     }
 
@@ -657,9 +729,10 @@ public sealed class QuickSheet : FrameLayout
     }
 
     /// <summary>
-    /// Судьба команды — заливкой кнопки (design doc §5). Слово перекрашивается вместе с ней тем же
-    /// расчётом, что и при сборке: иначе чёрная подпись, выбранная под светлый акцент, оставалась
-    /// бы на тёмно-зелёном.
+    /// Судьба команды — заливкой кнопки (design doc §5). Слово и значок перекрашиваются вместе с
+    /// ней тем же расчётом, что и при сборке: иначе чёрная подпись, выбранная под янтарь
+    /// «включено», оставалась бы на тёмно-зелёном. Значок теперь свой контур, и красится он тинтом,
+    /// а не цветом текста.
     /// </summary>
     private static void Highlight(View? view, bool success)
     {
@@ -668,10 +741,14 @@ public sealed class QuickSheet : FrameLayout
         var fill = success ? SuccessColor : FailureColor;
         background.SetColor(fill);
 
-        var textColor = Readable(fill);
+        var ink = Readable(fill);
         for (int i = 0; i < button.ChildCount; i++)
         {
-            if (button.GetChildAt(i) is TextView text) text.SetTextColor(textColor);
+            switch (button.GetChildAt(i))
+            {
+                case TextView text: text.SetTextColor(ink); break;
+                case ImageView icon: icon.ImageTintList = ColorStateList.ValueOf(ink); break;
+            }
         }
     }
 

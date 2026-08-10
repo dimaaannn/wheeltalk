@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Фара. Контур из макета шторки (quicksheet-mockup 3c, #i-light): сетка 24, обводка 2,
+     скруглённые концы. Белым — цвет кнопка задаёт тинтом. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="24dp"
+	android:height="24dp"
+	android:viewportWidth="24"
+	android:viewportHeight="24">
+
+	<path
+		android:pathData="M4,12 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M16,8 L21,6"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M16,12 L21,12"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M16,16 L21,18"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+
+</vector>

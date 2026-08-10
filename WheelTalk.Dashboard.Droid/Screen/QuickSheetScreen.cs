@@ -9,8 +9,8 @@ namespace WheelTalk.Dashboard.Droid.Screen;
 /// </summary>
 public sealed class QuickSheetScreen
 {
-    /// <summary>Big glyph drawn beside the label.</summary>
-    public required string Icon { get; init; }
+    /// <summary>Значок рядом с подписью — номер vector drawable (<see cref="QuickIcons"/>).</summary>
+    public required int Icon { get; init; }
 
     /// <summary>Tab wording — the caller's, not the sheet's (see <see cref="QuickSheet.PinLabel"/> for why).</summary>
     public required string Label { get; init; }

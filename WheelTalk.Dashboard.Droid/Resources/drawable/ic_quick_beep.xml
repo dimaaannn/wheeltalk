@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Бип. Контур из макета шторки (quicksheet-mockup 3c, #i-beep). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="24dp"
+	android:height="24dp"
+	android:viewportWidth="24"
+	android:viewportHeight="24">
+
+	<path
+		android:pathData="M3.8,12 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M11,7.5 a6,6 0 0,1 0,9"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M15.5,4.5 a11,11 0 0,1 0,15"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+
+</vector>

@@ -19,7 +19,7 @@ namespace WheelTalk.Droid.Main;
 /// (<see cref="TranslateExtension"/>), и запомненная однажды строка пережила бы смену языка.
 /// </para>
 /// </summary>
-public sealed record MainScreenEntry(string Id, string Icon, Func<string> Label, Func<Context, IMainScreen> Create);
+public sealed record MainScreenEntry(string Id, int Icon, Func<string> Label, Func<Context, IMainScreen> Create);
 
 /// <summary>
 /// Все основные экраны приложения — списком, а не поимённо по коду (план 17 §3). Отсюда кормятся
@@ -51,8 +51,8 @@ public sealed class MainScreenRegistry
     {
         _screens =
         [
-            new(PanelId, "📊", () => AppStrings.ScreenPanel, panels.Create),
-            new(TilesId, "🔢", () => AppStrings.ScreenTiles, context => new TilesScreen(
+            new(PanelId, QuickIcons.Panel, () => AppStrings.ScreenPanel, panels.Create),
+            new(TilesId, QuickIcons.Tiles, () => AppStrings.ScreenTiles, context => new TilesScreen(
                 context, dashboard, TranslateExtension.Get, history, tileLayout)),
         ];
     }

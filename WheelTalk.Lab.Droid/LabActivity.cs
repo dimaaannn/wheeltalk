@@ -612,6 +612,12 @@ public sealed class LabActivity : Activity
         // «Не закрывать», как в боевом: слово «Закрепить» уже занято командой с замком, и две
         // одинаковые подписи в одной шторке — ровно та неразличимость, которую чинит план 25.
         _screen.Sheet.PinLabel = () => "Не закрывать";
+        _screen.Sheet.PinGroup = Phone;
+        _screen.Sheet.SectionLabel = SectionLabel;
+        _screen.Sheet.ScreensSectionLabel = () => "Экран";
+        // «Ссылки», не «Перейти»: семь букв с разрядкой длиннее корешка 48 dp — срезало концы
+        // (слово владельца 10.08.2026).
+        _screen.Sheet.LinksSectionLabel = () => "Ссылки";
         _screen.Sheet.SetCommands(BuildFakeCommands());
         _screen.Sheet.SetScreens(BuildScreens());
         _screen.Sheet.SetLinks(BuildFakeLinks());
@@ -676,14 +682,14 @@ public sealed class LabActivity : Activity
     [
         new()
         {
-            Icon = "📊",
+            Icon = QuickIcons.Panel,
             Label = "Панель",
             IsSelected = () => !_tilesShown,
             Select = () => ShowTiles(false),
         },
         new()
         {
-            Icon = "🔢",
+            Icon = QuickIcons.Tiles,
             Label = "Цифры",
             IsSelected = () => _tilesShown,
             Select = () => ShowTiles(true),
@@ -699,7 +705,7 @@ public sealed class LabActivity : Activity
     [
         new()
         {
-            Icon = "💡",
+            Icon = QuickIcons.Light,
             Group = WheelNow,
             Label = () => _lightOn ? "Фара вкл" : "Фара",
             IsOn = () => _lightOn,
@@ -711,15 +717,26 @@ public sealed class LabActivity : Activity
         },
         new()
         {
-            Icon = "📢",
+            Icon = QuickIcons.Beep,
             Group = WheelNow,
             Label = () => "Бип",
             Action = () => Task.CompletedTask,
         },
         new()
         {
-            Icon = "🔴",
-            Group = Recording,
+            Icon = QuickIcons.Power,
+            Group = WheelNow,
+            Label = () => "Связь",
+            Action = () =>
+            {
+                CycleLink();
+                return Task.CompletedTask;
+            },
+        },
+        new()
+        {
+            Icon = QuickIcons.Record,
+            Group = Ride,
             Label = () => _settings.Recording ? "Стоп" : "Запись",
             IsOn = () => _settings.Recording,
             Action = () =>
@@ -730,27 +747,14 @@ public sealed class LabActivity : Activity
         },
         new()
         {
-            Icon = "🔄",
-            Group = Recording,
+            Icon = QuickIcons.Reset,
+            Group = Ride,
             Label = () => "Сброс max",
             Action = () => Task.CompletedTask,
         },
         new()
         {
-            Icon = "🔌",
-            Group = Link,
-            Label = () => "Связь",
-            Action = () =>
-            {
-                CycleLink();
-                return Task.CompletedTask;
-            },
-        },
-        new()
-        {
-            // Двух телефонных команд у стенда нет: гасить ему нечего и замка у него нет. Место в
-            // ряду при этом чужое не занимается — стайка «телефон» просто пуста.
-            Icon = "☀",
+            Icon = QuickIcons.Sun,
             Group = Phone,
             Label = () => _keepOn ? "Не гаснет" : "Не гасить",
             IsOn = () => _keepOn,
@@ -762,7 +766,7 @@ public sealed class LabActivity : Activity
         },
         new()
         {
-            Icon = "🔒",
+            Icon = QuickIcons.Lock,
             Group = Phone,
             Label = () => _overLock ? "Закреплён" : "Закрепить",
             IsOn = () => _overLock,
@@ -774,23 +778,30 @@ public sealed class LabActivity : Activity
         },
     ];
 
-    // Стайки — те же слова, что у приложения: шторка одна на двоих, и снимки со стенда должны
-    // показывать ровно тот ряд, который увидит райдер (план 25 §2, шаг 3).
+    // Разделы — те же ключи и та же раскладка, что у приложения: шторка одна на двоих, и снимки со
+    // стенда должны показывать ровно те строки, которые увидит райдер (план 32 §1, этап 4).
     private const string WheelNow = "wheel";
-    private const string Recording = "record";
-    private const string Link = "link";
+    private const string Ride = "ride";
     private const string Phone = "phone";
 
+    private static string SectionLabel(string group) => group switch
+    {
+        WheelNow => "Колесо",
+        Ride => "Поездка",
+        Phone => "Телефон",
+        _ => "",
+    };
+
     /// <summary>
-    /// Переходы — та же полоса, что у корешков (план 25 §2, шаг 2). У стенда уходить некуда, кроме
-    /// собственных ручек, — они и стоят вместо трёх экранов приложения: важно, что стайка есть, за
-    /// разделителем и другого вида.
+    /// Переходы — раздел «Перейти» (план 32 §1, этап 4). У стенда уходить некуда, кроме собственных
+    /// ручек, — они и стоят вместо трёх экранов приложения: важно, что раздел есть и вид у него
+    /// свой.
     /// </summary>
     private IReadOnlyList<QuickSheetLink> BuildFakeLinks() =>
     [
         new()
         {
-            Icon = "⚙",
+            Icon = QuickIcons.Settings,
             Label = "Настройки",
             Open = () => StartActivity(new Intent(this, typeof(LabSettingsActivity))),
         },

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Корешок экрана «Панель». Контур из макета шторки (quicksheet-mockup 3c, #i-panel): шкала-
+     полукруг со стрелкой — вторая половина разведённого «📊» (первая, столбики, у «Данных»). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="24dp"
+	android:height="24dp"
+	android:viewportWidth="24"
+	android:viewportHeight="24">
+
+	<path
+		android:pathData="M4.5,17 a8.5,8.5 0 1,1 15,0"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M12,16 L15.6,10.4"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+
+</vector>

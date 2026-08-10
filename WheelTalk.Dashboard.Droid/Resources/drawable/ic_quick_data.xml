@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Данные (переход на экран телеметрии). Контур из макета шторки (quicksheet-mockup 3c, #i-data):
+     столбики — та половина разведённого «📊», что досталась данным; шкала со стрелкой ушла
+     корешку «Панель». -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="24dp"
+	android:height="24dp"
+	android:viewportWidth="24"
+	android:viewportHeight="24">
+
+	<path
+		android:pathData="M5,19 L19,19"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M8,19 L8,12"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M12,19 L12,6.5"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+	<path
+		android:pathData="M16,19 L16,9.5"
+		android:strokeColor="#FFFFFF"
+		android:strokeWidth="2"
+		android:strokeLineCap="round" />
+
+</vector>

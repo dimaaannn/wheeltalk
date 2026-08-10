@@ -450,4 +450,9 @@
   <data name="MetricFanStatus" xml:space="preserve"><value>Вентилятор</value></data>
   <data name="ScreenPanel" xml:space="preserve"><value>Панель</value></data>
   <data name="ScreenTiles" xml:space="preserve"><value>Цифры</value></data>
+  <data name="SheetSectionScreen" xml:space="preserve"><value>Экран</value></data>
+  <data name="SheetSectionWheel" xml:space="preserve"><value>Колесо</value></data>
+  <data name="SheetSectionRide" xml:space="preserve"><value>Поездка</value></data>
+  <data name="SheetSectionPhone" xml:space="preserve"><value>Телефон</value></data>
+  <data name="SheetSectionGo" xml:space="preserve"><value>Ссылки</value></data>
 </root>
