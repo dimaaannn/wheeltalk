@@ -56,6 +56,17 @@ public sealed class RidesActivity : Activity
     private WheelOptions _wheel = null!;
     private WheelIdentity _identity = null!;
 
+    /// <summary>Окна поверх экрана — меню строки и подтверждения. Держатся здесь, закрываются в <see cref="OnDestroy"/>.</summary>
+    private readonly OwnedWindow _windows = new();
+
+    protected override void OnDestroy()
+    {
+        // Экран уходит — окно уходит с ним: брошенное, оно переживает свою активность и течёт
+        // (дамп владельца 10.08.2026). Этот экран вдобавок пересоздаётся от поворота телефона.
+        _windows.Close();
+        base.OnDestroy();
+    }
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -169,7 +180,7 @@ public sealed class RidesActivity : Activity
             ? [AppStrings.RidesExport]
             : [AppStrings.RidesExport, AppStrings.RidesDelete, AppStrings.RidesSelect];
 
-        new AlertDialog.Builder(this)!
+        _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(row.When)!
             .SetItems(actions, (_, e) =>
             {
@@ -177,8 +188,7 @@ public sealed class RidesActivity : Activity
                 else if (actions[e.Which] == AppStrings.RidesDelete) _ = ConfirmAndDelete(row.Ride);
                 else if (actions[e.Which] == AppStrings.RidesSelect) ToggleSelection(row);
             })!
-            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!
-            .Show();
+            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!);
     }
 
     /// <summary>Отмечает или снимает строку. Открытую поездку не берём — на неё и одиночное удаление отказывает, тем же правилом.</summary>
@@ -300,13 +310,17 @@ public sealed class RidesActivity : Activity
     private Task<bool> ConfirmAsync(string title, string message, string positive, string negative)
     {
         var tcs = new TaskCompletionSource<bool>();
-        new AlertDialog.Builder(this)!
+        var dialog = _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(title)!
             .SetMessage(message)!
             .SetCancelable(false)!
             .SetPositiveButton(positive, (_, _) => tcs.TrySetResult(true))!
-            .SetNegativeButton(negative, (_, _) => tcs.TrySetResult(false))!
-            .Show();
+            .SetNegativeButton(negative, (_, _) => tcs.TrySetResult(false))!);
+
+        // Экран этот пересоздаётся от поворота телефона и от смены темы: окно тогда уходит, а
+        // вопрос без ответа держал бы задачу — и экран за ней — навсегда.
+        dialog.DismissEvent += (_, _) => tcs.TrySetResult(false);
+
         return tcs.Task;
     }
 

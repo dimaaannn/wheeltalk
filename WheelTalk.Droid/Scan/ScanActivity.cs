@@ -65,6 +65,9 @@ public sealed class ScanActivity : Activity
     private CancellationTokenSource? _scanCts;
     private Task? _scanTask;
 
+    /// <summary>Окно поверх экрана — вопрос «забыть колесо». Держится здесь и закрывается в <see cref="OnDestroy"/>.</summary>
+    private readonly OwnedWindow _windows = new();
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -99,6 +102,14 @@ public sealed class ScanActivity : Activity
     {
         _ = StopScanAsync();
         base.OnStop();
+    }
+
+    protected override void OnDestroy()
+    {
+        // Экран уходит — вопрос уходит с ним. Иначе окно переживает свою активность и течёт вместе
+        // с ней (дамп владельца 10.08.2026), а ждущая ответа задача не кончается никогда.
+        _windows.Close();
+        base.OnDestroy();
     }
 
     public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Android.Content.PM.Permission[] grantResults)
@@ -351,13 +362,18 @@ public sealed class ScanActivity : Activity
     private Task<bool> ConfirmAsync(string title, string message)
     {
         var answer = new TaskCompletionSource<bool>();
-        new AlertDialog.Builder(this)!
+        var dialog = _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(title)!
             .SetMessage(message)!
             .SetCancelable(false)!
             .SetPositiveButton(AppStrings.ScanForget, (_, _) => answer.TrySetResult(true))!
-            .SetNegativeButton(AppStrings.Cancel, (_, _) => answer.TrySetResult(false))!
-            .Show();
+            .SetNegativeButton(AppStrings.Cancel, (_, _) => answer.TrySetResult(false))!);
+
+        // Экран закрывает себя сам, закончив подключение (см. OnWheelSelected), — и делает это, не
+        // спрашивая, открыт ли сейчас вопрос. Окно тогда уходит вместе с экраном, а ответ «нет»
+        // здесь досказывает вопрос за него: иначе ожидающая задача не кончится никогда.
+        dialog.DismissEvent += (_, _) => answer.TrySetResult(false);
+
         return answer.Task;
     }
 

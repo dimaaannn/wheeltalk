@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
@@ -106,6 +106,20 @@ public sealed class SettingsCategoryActivity : Activity
     /// <summary>Куда встать при открытии: раздел и строка из <see cref="ExtraSection"/>/<see cref="ExtraKey"/>. Срабатывает один раз.</summary>
     private string? _pendingSection;
     private string? _pendingKey;
+
+    /// <summary>
+    /// Окна поверх экрана — правка значения, выбор варианта, меню строки, ответ действия. Держатся
+    /// здесь и закрываются в <see cref="OnDestroy"/>: экран пересоздаётся от поворота телефона и от
+    /// смены темы, а брошенное окно переживает свою активность и течёт вместе с ней (дамп владельца
+    /// 10.08.2026).
+    /// </summary>
+    private readonly OwnedWindow _windows = new();
+
+    protected override void OnDestroy()
+    {
+        _windows.Close();
+        base.OnDestroy();
+    }
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -714,12 +728,11 @@ public sealed class SettingsCategoryActivity : Activity
         input.SetSingleLine(true);
         container.AddView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
-        new AlertDialog.Builder(this)!
+        _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
             .SetView(container)!
             .SetPositiveButton(AppStrings.SettingsAccept, (_, _) => Commit(descriptor, input.Text?.Trim() ?? ""))!
-            .SetNegativeButton(AppStrings.Cancel, (IDialogInterfaceOnClickListener?)null)!
-            .Show();
+            .SetNegativeButton(AppStrings.Cancel, (IDialogInterfaceOnClickListener?)null)!);
     }
 
     /// <summary>
@@ -795,7 +808,7 @@ public sealed class SettingsCategoryActivity : Activity
             syncing = false;
         };
 
-        new AlertDialog.Builder(this)!
+        _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
             .SetView(container)!
             .SetPositiveButton(AppStrings.SettingsAccept, (_, _) =>
@@ -806,8 +819,7 @@ public sealed class SettingsCategoryActivity : Activity
                 double snapped = Math.Clamp(SettingsFormat.Snap(descriptor, parsed), descriptor.Minimum, descriptor.Maximum);
                 Commit(descriptor, SettingsFormat.Store(descriptor, snapped));
             })!
-            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!
-            .Show();
+            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!);
     }
 
     private void EditChoice(SettingDescriptor descriptor, string value)
@@ -821,15 +833,14 @@ public sealed class SettingsCategoryActivity : Activity
         int selected = SettingsFormat.IndexOfChoice(descriptor, value);
         int chosen = selected;
 
-        new AlertDialog.Builder(this)!
+        _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
             .SetSingleChoiceItems(labels, selected, (_, e) => chosen = e.Which)!
             .SetPositiveButton(AppStrings.SettingsAccept, (_, _) =>
             {
                 if (chosen >= 0 && chosen < choices.Count) Commit(descriptor, choices[chosen]);
             })!
-            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!
-            .Show();
+            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!);
     }
 
     /// <summary>
@@ -873,11 +884,10 @@ public sealed class SettingsCategoryActivity : Activity
     /// одного.
     /// </summary>
     private void Announce(SettingDescriptor descriptor, string message) =>
-        new AlertDialog.Builder(this)!
+        _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
             .SetMessage(message)!
-            .SetPositiveButton(AppStrings.SettingsAccept, (_, _) => { })!
-            .Show();
+            .SetPositiveButton(AppStrings.SettingsAccept, (_, _) => { })!);
 
     private bool CanOpenMenu(SettingDescriptor descriptor, ResolvedSetting resolved) =>
         !descriptor.ReportedByWheel && resolved.Origin != SettingOrigin.Factory;
@@ -895,7 +905,7 @@ public sealed class SettingsCategoryActivity : Activity
         string[] actions = shareable ? [restore, AppStrings.SettingsMakeGlobal] : [restore];
         string origin = overridden ? AppStrings.SettingsOverridden : AppStrings.SettingsGlobalValue;
 
-        new AlertDialog.Builder(this)!
+        _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle($"{TranslateExtension.Get(descriptor.LabelKey)} — {origin}")!
             .SetItems(actions, (_, e) =>
             {
@@ -905,8 +915,7 @@ public sealed class SettingsCategoryActivity : Activity
                 else if (chosen == AppStrings.SettingsMakeGlobal) _binder.PromoteToGlobal(descriptor, _viewScope);
                 Rebuild();
             })!
-            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!
-            .Show();
+            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!);
     }
 
     private void Commit(SettingDescriptor descriptor, string value)

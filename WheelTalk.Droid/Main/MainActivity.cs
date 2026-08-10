@@ -168,6 +168,9 @@ public sealed class MainActivity : Activity
     private GestureDetector _sheetGestureDetector = null!;
     private GestureDetector _tapDetector = null!;
 
+    /// <summary>Окна поверх экрана — отказ колеса и подтверждения. Держит их этот экран, закрывает в <see cref="OnDestroy"/>.</summary>
+    private readonly OwnedWindow _windows = new();
+
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -339,6 +342,9 @@ public sealed class MainActivity : Activity
         // панели встречает рабочий стол, отличить «ушла сама» от «убита системой» больше нечем —
         // процесс к тому времени жив, а Activity уже нет (план 16 §3, шаг 2).
         _logger.LogInformation("Ui.ScreenDestroyed IsFinishing={IsFinishing}", IsFinishing);
+        // Окно поверх экрана уходит вместе с ним: брошенное, оно переживает свою активность и течёт
+        // (дамп владельца 10.08.2026 — WindowLeaked на уничтоженной MainActivity).
+        _windows.Close();
         _snapshotClock?.Dispose();
         _snapshotClock = null;
         _session.WheelChanged -= OnWheelChanged;
@@ -1341,23 +1347,32 @@ public sealed class MainActivity : Activity
     /// отключилась и повторов не будет, поэтому предлагать тут нечего, кроме «понятно».
     /// </summary>
     private void ShowRefusal(string reason) => RunOnUiThread(() =>
-        new AlertDialog.Builder(this)!
+    {
+        // Отказ приходит событием сессии, а не нажатием: пока весть шла до потока интерфейса, экран
+        // мог начать закрываться, и окно на уходящей активности — это уже не показ, а BadToken.
+        if (IsFinishing || IsDestroyed) return;
+
+        _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(AppStrings.WheelRefusedTitle)!
             .SetMessage(reason)!
-            .SetPositiveButton(AppStrings.Ok, (_, _) => { })!
-            .Show());
+            .SetPositiveButton(AppStrings.Ok, (_, _) => { })!);
+    });
 
     /// <summary>Подтверждение через системный диалог — аналог <c>DisplayAlertAsync</c> MAUI.</summary>
     private Task<bool> ConfirmAsync(string title, string message, string positive, string negative)
     {
         var tcs = new TaskCompletionSource<bool>();
-        new AlertDialog.Builder(this)!
+        var dialog = _windows.Show(new AlertDialog.Builder(this)!
             .SetTitle(title)!
             .SetMessage(message)!
             .SetCancelable(false)!
             .SetPositiveButton(positive, (_, _) => tcs.TrySetResult(true))!
-            .SetNegativeButton(negative, (_, _) => tcs.TrySetResult(false))!
-            .Show();
+            .SetNegativeButton(negative, (_, _) => tcs.TrySetResult(false))!);
+
+        // Окно ушло само (экран закрылся, хозяин прибрал) — ответ «нет». Иначе ожидающая задача не
+        // кончается никогда и держит собой экран со всем, что за ним: вопрос без ответа хуже отказа.
+        dialog.DismissEvent += (_, _) => tcs.TrySetResult(false);
+
         return tcs.Task;
     }
 
