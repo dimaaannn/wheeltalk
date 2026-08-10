@@ -39,7 +39,7 @@ internal sealed class MetricTileView : TileView
         // Автоподбор платформы снят (план плиток §3): он считает кегль на каждую плитку отдельно, и
         // соседние плитки одного размера читались тем мельче, чем длиннее у величины имя. Кегль
         // теперь один на класс формы и приходит снаружи — Apply.
-        _value.SetTextSize(ComplexUnitType.Sp, TilesLayout.ValueMinSp);
+        _value.SetTextSize(ComplexUnitType.Dip, TilesLayout.ValueMinSp);
 
         // Остаток плитки под показанием: подпись сверху, число — во всём, что осталось, и по центру
         // этого остатка. Отсюда и «стоит по центру плитки», и то, во что упирается автоподбор.
@@ -82,7 +82,7 @@ internal sealed class MetricTileView : TileView
     {
         ApplyForm(face.Form, size);
 
-        _value.SetTextSize(ComplexUnitType.Sp, face.ValueSp);
+        _value.SetTextSize(ComplexUnitType.Dip, face.ValueSp);
         _value.Gravity = face.Form == TileForm.Row ? GravityFlags.End | GravityFlags.CenterVertical : GravityFlags.Center;
         _unitPx = (int)Math.Round((double)Context!.Dp(face.UnitSp));
 

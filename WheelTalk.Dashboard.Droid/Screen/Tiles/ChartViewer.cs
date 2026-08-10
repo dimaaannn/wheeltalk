@@ -40,13 +40,13 @@ internal static class ChartViewer
         // С единицей: без неё «ШИМ» не говорит, проценты это или что-то ещё, а узнаётся
         // она только тапом по точке.
         var title = new TextView(context) { Text = unit.Length == 0 ? label : $"{label}, {unit}" };
-        title.SetTextSize(ComplexUnitType.Sp, TilesLayout.ViewerTitleSp);
+        title.SetTextSize(ComplexUnitType.Dip, TilesLayout.ViewerTitleSp);
         title.SetTextColor(palette.Ink);
 
         // Значение выбранной точки — здесь же, под заголовком: маркер поверх линии закрыл бы сам
         // график, а место под ним всё равно есть.
         var picked = new TextView(context) { Text = "" };
-        picked.SetTextSize(ComplexUnitType.Sp, TilesLayout.ViewerPickedSp);
+        picked.SetTextSize(ComplexUnitType.Dip, TilesLayout.ViewerPickedSp);
         picked.SetTextColor(palette.Dim);
 
         var chart = BuildChart(context, palette, from, options.Window);

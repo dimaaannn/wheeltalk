@@ -534,7 +534,7 @@ public sealed class TilesScreen : IMainScreen
         // трёх кнопок, чтобы полоса читалась полосой, а не тремя разными надписями.
         button.SetMinimumHeight(context.Dp(TilesLayout.ButtonsHeightDp));
         button.SetTextColor(palette.Ink);
-        button.SetTextSize(ComplexUnitType.Sp, TilesLayout.ButtonSp);
+        button.SetTextSize(ComplexUnitType.Dip, TilesLayout.ButtonSp);
         button.Click += (_, _) => tapped();
 
         return button;

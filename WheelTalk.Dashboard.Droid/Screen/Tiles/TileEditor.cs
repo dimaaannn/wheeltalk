@@ -338,7 +338,7 @@ internal static class TileEditor
     private static TextView Caption(Context context, string text)
     {
         var caption = new TextView(context) { Text = text };
-        caption.SetTextSize(ComplexUnitType.Sp, TilesLayout.LabelSp);
+        caption.SetTextSize(ComplexUnitType.Dip, TilesLayout.LabelSp);
 
         return caption;
     }

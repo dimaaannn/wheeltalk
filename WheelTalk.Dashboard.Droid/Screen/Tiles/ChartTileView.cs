@@ -81,12 +81,12 @@ internal sealed class ChartTileView : TileView
         _value.SetTextColor(palette.Ink);
         _value.SetMaxLines(1);
         _value.SetAutoSizeTextTypeUniformWithConfiguration(
-            TilesLayout.ValueMinSp, TilesLayout.ChartValueMaxSp, TilesLayout.ValueStepSp, (int)ComplexUnitType.Sp);
+            TilesLayout.ValueMinSp, TilesLayout.ChartValueMaxSp, TilesLayout.ValueStepSp, (int)ComplexUnitType.Dip);
 
         // За какое время нарисована линия — под шкалой, в том же углу: это подпись к шкале, а не к
         // плитке, и стоять она должна там, где кончаются деления.
         _range = new TextView(context);
-        _range.SetTextSize(ComplexUnitType.Sp, TilesLayout.ChartRangeSp);
+        _range.SetTextSize(ComplexUnitType.Dip, TilesLayout.ChartRangeSp);
         _range.SetTextColor(palette.Dim);
 
         // Зоны — поверх графика, но под числом: они подсказка о шкале, а показание важнее.

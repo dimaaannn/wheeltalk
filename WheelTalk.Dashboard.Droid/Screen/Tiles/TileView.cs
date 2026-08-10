@@ -121,7 +121,7 @@ internal abstract class TileView : LinearLayout
         _outlinePaint.Color = Color.Argb(TilesLayout.HandleAlpha, palette.Dim.R, palette.Dim.G, palette.Dim.B);
 
         Label = new TextView(context);
-        Label.SetTextSize(ComplexUnitType.Sp, TilesLayout.LabelSp);
+        Label.SetTextSize(ComplexUnitType.Dip, TilesLayout.LabelSp);
         Label.SetTextColor(palette.Dim);
         Label.SetMaxLines(1);
         Label.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
@@ -257,7 +257,7 @@ internal abstract class TileView : LinearLayout
         Orientation = row ? Android.Widget.Orientation.Horizontal : Android.Widget.Orientation.Vertical;
         SetGravity(row ? GravityFlags.CenterVertical : GravityFlags.Top);
 
-        Label.SetTextSize(ComplexUnitType.Sp, row ? TilesLayout.RowLabelSp : TilesLayout.LabelSp);
+        Label.SetTextSize(ComplexUnitType.Dip, row ? TilesLayout.RowLabelSp : TilesLayout.LabelSp);
 
         if (Label.LayoutParameters is LayoutParams label)
         {

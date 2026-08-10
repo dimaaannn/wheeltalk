@@ -42,7 +42,7 @@ internal sealed class ExtremumTileView : TileView
         _value.SetTextColor(Palette.Ink);
         _value.SetMaxLines(1);
         _value.SetTypeface(PaintRuler.Mono, Android.Graphics.TypefaceStyle.Normal);
-        _value.SetTextSize(ComplexUnitType.Sp, TilesLayout.ValueMinSp);
+        _value.SetTextSize(ComplexUnitType.Dip, TilesLayout.ValueMinSp);
 
         AddView(_value, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f)
         {
@@ -69,7 +69,7 @@ internal sealed class ExtremumTileView : TileView
         BindFrame($"{label} {(options.Lowest ? "▼" : "▲")}", size, showLabel,
             heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
         ApplyForm(face.Form, size);
-        _value.SetTextSize(ComplexUnitType.Sp, face.ValueSp);
+        _value.SetTextSize(ComplexUnitType.Dip, face.ValueSp);
         _value.Gravity = face.Form == TileForm.Row
             ? GravityFlags.End | GravityFlags.CenterVertical
             : GravityFlags.Center;
