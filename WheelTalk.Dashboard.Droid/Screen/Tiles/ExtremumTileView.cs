@@ -1,4 +1,4 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
@@ -36,6 +36,9 @@ internal sealed class ExtremumTileView : TileView
     private TileLimits? _limits;
     private int _unitPx = 11;
 
+    /// <summary>Сколько знаков в худшей строке этой плитки — по нему число и встаёт неподвижно.</summary>
+    private Func<int> _box = () => 0;
+
     public ExtremumTileView(Context context, DashboardOptions options) : base(context, options)
     {
         _value = new TextView(context) { Gravity = GravityFlags.Center };
@@ -51,8 +54,11 @@ internal sealed class ExtremumTileView : TileView
     }
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileExtremum options, TileLimits? limits, TileTypeface face, bool heatBar, int? decimals)
+        TileExtremum options, TileLimits? limits, TileTypeface face, bool heatBar, int? decimals,
+        Func<int> box)
     {
+        _box = box;
+
         // Величина или сторона сменились — прежнее крайнее к ним не относится: максимум тока не
         // может стать минимумом напряжения.
         if (_metric?.Id != metric.Id || _lowest != options.Lowest) _extremum = null;
@@ -64,10 +70,12 @@ internal sealed class ExtremumTileView : TileView
         _limits = limits;
         _shown = "";
 
-        // Пометка ▲▼ рядом с подписью: у крайних своё поведение — тап их сбрасывает, — и выглядеть
-        // они обязаны иначе (план плиток §5). Место под неё уже учтено в подборе кегля.
-        BindFrame($"{label} {(options.Lowest ? "▼" : "▲")}", size, showLabel,
+        // Пометка ▲▼ — перед подписью и крупнее её (решение владельца 11.08.2026): у крайних своё
+        // поведение, и узнаваться они обязаны с одного взгляда. Место под неё учтено в подборе
+        // кегля (TilesLayout.MarkDp).
+        BindFrame(label, size, showLabel,
             heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
+        MarkLabel(options.Lowest ? "▼" : "▲", label);
         ApplyForm(face.Form, size);
         _value.SetTextSize(ComplexUnitType.Dip, face.ValueSp);
         _value.Gravity = face.Form == TileForm.Row
@@ -110,6 +118,8 @@ internal sealed class ExtremumTileView : TileView
     protected override void ShowContent(bool visible) =>
         _value.Visibility = visible ? ViewStates.Visible : ViewStates.Gone;
 
+    protected override TextView? Content => _value;
+
     /// <summary>
     /// Очередной снимок. Молчание величины крайнего не двигает: <c>null</c> значит «колесо этого не
     /// сообщает», и принять его за ноль означало бы записать в минимум показание, которого не было.
@@ -125,13 +135,15 @@ internal sealed class ExtremumTileView : TileView
                 : Math.Max(kept, number);
         }
 
-        string text = MetricNumber.Text(_extremum, _format);
+        string text = NumberBox.Fit(MetricNumber.Text(_extremum, _format), _box());
 
         if (_shown == text) return;
 
         _shown = text;
         _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim, _unitPx);
+        Measured(metric.Id, text);
         ShowMuted(_extremum is null);
-        ShowHeat(MetricHeat.Of(metric.Id, _extremum, Options, _limits));
+        ShowHeat(MetricHeat.Of(metric.Id, _extremum, Options, _limits),
+            MetricHeat.Limits(metric.Id, Options, _limits));
     }
 }

@@ -43,6 +43,9 @@ internal sealed class TripTileView : TileView
     private double? _odometer;
     private int _unitPx = 11;
 
+    /// <summary>Сколько знаков в худшей строке этой плитки — по нему число и встаёт неподвижно.</summary>
+    private Func<int> _box = () => 0;
+
     public TripTileView(Context context, DashboardOptions options, Func<string> wheel)
         : base(context, options)
     {
@@ -64,8 +67,10 @@ internal sealed class TripTileView : TileView
     public override bool CanReset => true;
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileLimits? limits, TileTypeface face, bool heatBar, int? decimals, string tile, TripPoints points)
+        TileLimits? limits, TileTypeface face, bool heatBar, int? decimals, string tile, TripPoints points,
+        Func<int> box)
     {
+        _box = box;
         _metric = metric;
         _points = points;
         _tile = tile;
@@ -115,6 +120,8 @@ internal sealed class TripTileView : TileView
     protected override void ShowContent(bool visible) =>
         _value.Visibility = visible ? ViewStates.Visible : ViewStates.Gone;
 
+    protected override TextView? Content => _value;
+
     /// <summary>
     /// Очередной снимок. Молчащий одометр — прочерк: без него дистанцию не из чего вычесть, а ноль
     /// на его месте читался бы как «сегодня никуда не ездили».
@@ -129,11 +136,12 @@ internal sealed class TripTileView : TileView
             ? points.Since(wheel, _tile, odometer)
             : null;
 
-        string text = MetricNumber.Text(passed, _format);
+        string text = NumberBox.Fit(MetricNumber.Text(passed, _format), _box());
         if (_shown == text) return;
 
         _shown = text;
         _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim, _unitPx);
+        Measured(metric.Id, text);
         ShowMuted(passed is null);
     }
 

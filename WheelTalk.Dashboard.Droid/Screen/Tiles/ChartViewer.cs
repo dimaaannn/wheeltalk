@@ -165,10 +165,19 @@ internal static class ChartViewer
         // Пороги чертой поперёк графика: видно, докуда дотянулся пик, не прикладывая палец к точкам.
         // На плитке их нет намеренно — там две черты заняли бы треть высоты и стали бы шумом.
         chart.AxisLeft.RemoveAllLimitLines();
+        // Черта — на каждую метку, какая есть: они независимы, и одинокая жёлтая законна
+        // (решение владельца 11.08.2026).
         if (MetricHeat.Limits(metric.Id, dashboard, limits) is { } marks)
         {
-            chart.AxisLeft.AddLimitLine(Mark(context, (float)marks.Warn, dashboard.Palette.Caution));
-            chart.AxisLeft.AddLimitLine(Mark(context, (float)marks.Danger, dashboard.Palette.Danger));
+            if (marks.Warn is { } warn)
+            {
+                chart.AxisLeft.AddLimitLine(Mark(context, (float)warn, dashboard.Palette.Caution));
+            }
+
+            if (marks.Danger is { } danger)
+            {
+                chart.AxisLeft.AddLimitLine(Mark(context, (float)danger, dashboard.Palette.Danger));
+            }
         }
 
         if (ChartLine.Build(points, dashboard.Palette, label, from, options) is not { } data) return;

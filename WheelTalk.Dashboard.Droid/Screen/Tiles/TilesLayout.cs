@@ -125,8 +125,17 @@ public static class TilesLayout
     /// </summary>
     public static float RowLabelShare => 0.35f;
 
-    /// <summary>Место под пометку ▲▼ у крайних значений — внутри лимита подписи.</summary>
-    public static int MarkDp => 12;
+    /// <summary>
+    /// Место под пометку ▲▼ у крайних значений — внутри лимита подписи. Выросло вместе с самой
+    /// пометкой (владелец 11.08.2026): знак стоит перед подписью и крупнее её.
+    /// </summary>
+    public static int MarkDp => 18;
+
+    /// <summary>
+    /// Во сколько раз пометка ▲▼ крупнее подписи. Полуторный размер — та мера, при которой крайняя
+    /// плитка узнаётся с одного взгляда и не спорит с самим словом.
+    /// </summary>
+    public static float MarkScale => 1.5f;
 
     /// <summary>Просвет между числом и единицей.</summary>
     public static int UnitGapDp => 4;
@@ -365,6 +374,22 @@ public static class TilesLayout
     /// доехала бы. Список собирается заново на каждую пересборку экрана — это раз в правку, а не
     /// раз в кадр.
     /// </summary>
+    /// <remarks>
+    /// <b>Состав снят с телефона владельца 11.08.2026</b> — он собрал раскладку руками, и она стала
+    /// умолчанием свежей установки: порядок, размеры и пер-плиточные настройки перенесены один в
+    /// один (подписи включены, полосы жара включены, у графика окно 15 минут, число поверх, заливка,
+    /// шкала слева и прореживание «минимум и максимум» — всё это умолчания <c>TileChart</c>, и в его
+    /// файле они стоят теми же значениями).
+    /// <para>
+    /// <b>Имена плиток здесь не зашиты.</b> В сохранённой раскладке у каждой плитки есть <c>id</c>,
+    /// но зашитой он не нужен: имена раздаёт экран при чтении и тут же сохраняет — иначе они
+    /// разошлись бы у двух установок с одним и тем же зашитым именем.
+    /// </para>
+    /// <para>
+    /// <b>Низ раскладки владелец ещё будет править</b> — пробеги, крайние и график ждут его слова;
+    /// состав вернётся сюда ещё раз.
+    /// </para>
+    /// </remarks>
     public static IReadOnlyList<MetricTile> Fixed =>
     [
         new("speed", TileKind.Value, new(12, 2)),
@@ -379,18 +404,23 @@ public static class TilesLayout
         new("current", TileKind.Value, new(3, 1)),
         new("power", TileKind.Value, new(3, 1)),
         new("phase_current", TileKind.Value, new(3, 1)),
-        new("max_pwm", TileKind.Value, new(3, 1)),
+
+        // Мин/макс в раскладке — только крайними (решение владельца 11.08.2026): величины-максимумы
+        // («Пик ШИМ», «Максимум» скорости) в стартовый состав не входят вовсе. Крайнее — один вид на
+        // все величины, с пометкой ▲▼ и своим сбросом; вторая величина рядом с основной делала бы то
+        // же самое молча и по-своему у каждой.
+        new("speed", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: false)),
+        new("current", TileKind.Extremum, new(3, 1), Extremum: new TileExtremum(Lowest: false)),
 
         new("system_temp", TileKind.Value, new(3, 1)),
         new("temp2", TileKind.Value, new(3, 1)),
         new("tilt", TileKind.Value, new(3, 1)),
-        new("top_speed", TileKind.Value, new(3, 1)),
 
         new("distance", TileKind.Value, new(6, 1)),
         new("totaldistance", TileKind.Value, new(6, 1)),
 
         // Крайние значения: у ШИМ важен верхний край, у напряжения нижний — обе стороны правила
-        // видны сразу. Сбрасываются коротким тапом, независимо от поездки (план 23 §3.2).
+        // видны сразу. Сбрасываются из меню плитки, независимо от поездки (план 23 §3.2).
         new("pwm", TileKind.Extremum, new(6, 1), Extremum: new TileExtremum(Lowest: false)),
         new("voltage", TileKind.Extremum, new(6, 1), Extremum: new TileExtremum(Lowest: true)),
 

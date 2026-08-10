@@ -1,4 +1,4 @@
-namespace WheelTalk.Core.Tiles;
+﻿namespace WheelTalk.Core.Tiles;
 
 /// <summary>Размер плитки в клетках сетки — он же класс формы: колонки × строки.</summary>
 public readonly record struct TileClass(int Columns, int Rows)
@@ -131,8 +131,21 @@ public sealed record TileMetrics(
     /// </summary>
     public float SquareLabelPx { get; init; } = 14;
 
-    /// <summary>Ширина плитки класса.</summary>
-    public float Width(TileClass tile) => (tile.Columns * CellWidthPx) + ((tile.Columns - 1) * GapPx);
+    /// <summary>
+    /// Ширина плитки класса — <b>та, что даёт укладчик</b>, ровно как и высота: клетка режется по
+    /// колонкам, а плитка врезается внутрь на просвет слева и справа
+    /// (<c>TileGridLayoutManager</c>: <c>left = column·W + gap</c>, <c>right = (column+cols)·W − gap</c>).
+    /// Оттого просветы <b>вычитаются</b>, и вычитаются ровно два, сколько бы колонок плитка ни
+    /// занимала.
+    /// <para>
+    /// <b>Замок:</b> прежняя формула складывала колонки с внутренними просветами и считала плитку
+    /// шире настоящей (на 360 dp — 171,5 px против 162). Пока живое показание было короче худшей
+    /// строки, разница пряталась в этом запасе; с якорем запятой (11.08.2026) число заняло всю
+    /// худшую строку — и вылезло за края плитки. Сходимость с укладчиком стережёт
+    /// <c>TileFitsTheGridTests</c>, где место считается вторым путём.
+    /// </para>
+    /// </summary>
+    public float Width(TileClass tile) => (tile.Columns * CellWidthPx) - (2 * GapPx);
 
     /// <summary>
     /// Высота плитки класса — <b>та, что даёт укладчик</b>: он режет сетку по строкам и врезает
@@ -272,7 +285,7 @@ public static class TileTypography
         // Поля не ужимаются: прямоугольная порода осталась ровно такой, какой её приняли, и
         // «полезная общая правка» ей не положена — ровно она однажды подняла кегль строки и вывела
         // число за низ плитки (стенд 10.08.2026, решение владельца: породы разделить).
-        float width = metrics.Width(tile.Class) - (2 * metrics.PaddingPx)
+        float width = metrics.Width(tile.Class) - (2 * metrics.PaddingPx) - (2 * metrics.HeatBarPx)
             - (editing ? metrics.EditReservePx : 0);
         float height = metrics.Height(tile.Class) - (2 * metrics.PaddingPx)
             - metrics.LabelHeightPx - metrics.HeatBarPx
@@ -285,11 +298,17 @@ public static class TileTypography
     /// Квадрат: числу достаётся плитка целиком — поля в бок ужаты (<see cref="TileMetrics.ValueBleedPx"/>),
     /// подпись сверху забирает не строку, а свою полоску (<see cref="TileMetrics.SquareLabelPx"/>),
     /// потому что нарисована меткой в углу.
+    /// <para>
+    /// <b>Рамка жара вычитается и по ширине</b> (11.08.2026): она идёт по всем четырём сторонам, а
+    /// бюджет резервировал её только сверху-снизу. Пока число было короче худшей строки, разница
+    /// пряталась в его запасе; с якорем запятой запас исчез — и на квадрате с ужатыми полями число
+    /// поехало прямо под линию рамки, а её край срезал последний знак.
+    /// </para>
     /// </summary>
     private static float FitSquare(TileText tile, TileMetrics metrics, ITextRuler ruler, bool editing)
     {
         float width = metrics.Width(tile.Class) - (2 * metrics.PaddingPx) + (2 * metrics.ValueBleedPx)
-            - (editing ? metrics.EditReservePx : 0);
+            - (2 * metrics.HeatBarPx) - (editing ? metrics.EditReservePx : 0);
         float height = metrics.Height(tile.Class) - (2 * metrics.PaddingPx)
             - metrics.SquareLabelPx - metrics.HeatBarPx
             - (editing ? metrics.EditFooterPx : 0);
@@ -307,7 +326,7 @@ public static class TileTypography
             ruler.Width(tile.Label, metrics.RowLabelSp, mono: false) + (tile.Mark ? metrics.MarkPx : 0),
             box * metrics.RowLabelShare);
 
-        float width = box - (2 * metrics.PaddingPx) - label - metrics.GapLabelPx
+        float width = box - (2 * metrics.PaddingPx) - (2 * metrics.HeatBarPx) - label - metrics.GapLabelPx
             - (editing ? metrics.EditReservePx : 0);
         float height = metrics.Height(tile.Class) - (2 * metrics.PaddingPx) - metrics.HeatBarPx;
 
@@ -328,7 +347,13 @@ public static class TileTypography
             if (ruler.Height(size) > height) continue;
 
             float line = ruler.Width(tile.Value, size, mono: true);
-            if (unit.Length > 0) line += metrics.GapUnitPx + ruler.Width(unit, UnitSp(size, metrics), mono: false);
+
+            // Единица меряется так, как рисуется: она живёт в той же строке и тем же моноширинным
+            // начертанием, только мельче (MetricNumber.Compose ставит ей размер спаном, а не свой
+            // шрифт), и отделена от числа <b>пробелом</b> — знаком, а не отступом разметки. Пока
+            // число было короче худшей строки, разница пряталась в его запасе; с якорем запятой
+            // (11.08.2026) запас исчез, и единица уехала за край плитки — «77,6» осталось без «В».
+            if (unit.Length > 0) line += ruler.Width(" " + unit, UnitSp(size, metrics), mono: true);
 
             if (line <= width) return size;
         }

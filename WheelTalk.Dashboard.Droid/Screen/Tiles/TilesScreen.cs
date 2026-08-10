@@ -115,7 +115,7 @@ public sealed class TilesScreen : IMainScreen
         _history = history;
         _options = options;
         _palette = options.Palette;
-        _padding = context.Dp(6);
+        _padding = context.Dp(ListPaddingDp);
         _adapter = new TileAdapter(context, options, translate, layout, layout?.Load() ?? TilesLayout.Fixed,
             new TripPoints(trips), wheel ?? (() => ""));
 
@@ -446,6 +446,12 @@ public sealed class TilesScreen : IMainScreen
     /// 04.08.2026. Здесь она нужна только как слагаемое запаса прокрутки в правке: сама зона живёт
     /// в приложении, и трогать её отсюда нельзя.
     /// </summary>
+    /// <summary>
+    /// Поля списка плиток. Числом их знают двое: сам список и подбор кегля — клетка сетки режется по
+    /// ширине списка <b>без</b> этих полей (<c>TileGridLayoutManager</c>), и разойтись им нельзя.
+    /// </summary>
+    private const int ListPaddingDp = 6;
+
     private const int SheetGestureZoneDp = 128;
 
     /// <summary>
@@ -875,10 +881,14 @@ public sealed class TilesScreen : IMainScreen
         /// </summary>
         private float CellWidth()
         {
+            // Клетка — та же, что режет укладчик: ширина списка без его полей, делённая на колонки
+            // (TileGridLayoutManager: usable / Columns). Своей арифметики здесь быть не должно —
+            // разошедшись с укладчиком, бюджет считает плитку шире настоящей, и число вылезает за
+            // края (регресс якоря запятой, 11.08.2026).
             float screen = _context.Resources!.DisplayMetrics!.WidthPixels;
-            float gaps = _context.Dp(TilesLayout.GapDp) * (TilesLayout.Columns - 1);
-            float padding = _context.Dp(TilesLayout.PaddingDp) * 2;
-            return Math.Max(1, (screen - gaps - padding) / TilesLayout.Columns);
+            float padding = _context.Dp(ListPaddingDp) * 2;
+
+            return Math.Max(1, (screen - padding) / TilesLayout.Columns);
         }
 
         /// <summary>
@@ -1010,6 +1020,23 @@ public sealed class TilesScreen : IMainScreen
                 ? face
                 : new TileTypeface(TileForm.Stack, TilesLayout.ValueMinSp, TilesLayout.MinUnitSp);
 
+        /// <summary>
+        /// Ширина бокса числа в знаках — по <b>увиденному</b>, тому же счёту, которым садится кегль
+        /// (<see cref="_digits"/>): число не вправе встать в бокс, под который кегль не считался.
+        /// <para>
+        /// Прямоугольная порода берёт для кегля пять разрядов про запас (<c>RectangleDigits</c>), а
+        /// бокс считается по увиденному и здесь: запас — это место, оставленное на будущее, и
+        /// равнять по нему значило бы сдвинуть число к правому краю на три пустых разряда у
+        /// величины, которая пяти никогда не покажет. Кегль от этого не страдает — его бюджет шире.
+        /// </para>
+        /// </summary>
+        private int BoxWidth(MetricTile tile, MetricDescriptor metric)
+        {
+            int decimals = MetricRounding.Decimals(metric, tile.Decimals);
+
+            return MetricNumber.Widest(decimals, _digits.GetValueOrDefault(metric.Id)).Length;
+        }
+
         /// <summary>Чем подписана плитка — тем же словом, что и на ней самой: им же зовётся её меню.</summary>
         public string LabelOf(MetricTile tile, MetricDescriptor? metric) =>
             metric is null ? tile.Caption : Label(tile, metric);
@@ -1118,27 +1145,31 @@ public sealed class TilesScreen : IMainScreen
             string label = Label(layout, metric);
             string unit = metric.UnitKey is { } key ? _translate(key) : "";
 
+            // Бокс числа спрашивается на каждом показе, а не берётся числом при привязке: он растёт
+            // вслед за увиденным, и новый разряд обязан встать на место в тот же кадр.
+            int Box() => BoxWidth(layout, metric);
+
             if (tile.Tile is TripTileView trip)
             {
                 trip.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits,
-                    Face(layout.Size), layout.ShowHeatBar, layout.Decimals, layout.Id, _trips);
+                    Face(layout.Size), layout.ShowHeatBar, layout.Decimals, layout.Id, _trips, Box);
             }
             else if (tile.Tile is ChartTileView chart)
             {
                 chart.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
                     layout.Chart ?? new TileChart(TilesLayout.ChartWindows[0], ShowValue: true, Zoom: false),
-                    layout.Limits, layout.ShowHeatBar, layout.Decimals);
+                    layout.Limits, layout.ShowHeatBar, layout.Decimals, Box);
             }
             else if (tile.Tile is ExtremumTileView extremum)
             {
                 extremum.Bind(metric, label, unit, layout.Size, layout.ShowLabel,
                     layout.Extremum ?? new TileExtremum(Lowest: false), layout.Limits, Face(layout.Size),
-                    layout.ShowHeatBar, layout.Decimals);
+                    layout.ShowHeatBar, layout.Decimals, Box);
             }
             else if (tile.Tile is MetricTileView value)
             {
                 value.Bind(metric, label, unit, layout.Size, layout.ShowLabel, layout.Limits, Face(layout.Size),
-                    layout.ShowHeatBar, layout.Decimals);
+                    layout.ShowHeatBar, layout.Decimals, Box);
             }
 
             tile.Tile.Render(_snapshot);

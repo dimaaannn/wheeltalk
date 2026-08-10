@@ -29,6 +29,9 @@ internal sealed class MetricTileView : TileView
     private TileLimits? _limits;
     private int _unitPx = 11;
 
+    /// <summary>Сколько знаков в худшей строке этой плитки — по нему число и встаёт неподвижно.</summary>
+    private Func<int> _box = () => 0;
+
     public MetricTileView(Context context, DashboardOptions options) : base(context, options)
     {
         _value = new TextView(context) { Gravity = GravityFlags.Center };
@@ -57,11 +60,16 @@ internal sealed class MetricTileView : TileView
     /// Округление этой плитки: <c>null</c> — умолчание величины. Показа это касается целиком —
     /// в базу и в историю по-прежнему идёт сырое число.
     /// </param>
+    /// <param name="box">
+    /// Ширина бокса числа в знаках — спрашивается на каждом показе, а не берётся раз: бокс растёт
+    /// вслед за увиденным, и новый разряд должен встать на место сразу, а не после перепривязки.
+    /// </param>
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileLimits? limits, TileTypeface face, bool heatBar, int? decimals)
+        TileLimits? limits, TileTypeface face, bool heatBar, int? decimals, Func<int> box)
     {
         _metric = metric;
         _limits = limits;
+        _box = box;
         _format = MetricRounding.Format(metric, decimals);
 
         // Единицы на четвертной плитке нет вовсе: 25 px «км/ч» в 61 px содержимого — сорок
@@ -109,6 +117,9 @@ internal sealed class MetricTileView : TileView
     protected override void ShowContent(bool visible) =>
         _value.Visibility = visible ? ViewStates.Visible : ViewStates.Gone;
 
+    /// <summary>Строка числа — её и меряет отладочный отчёт о ширинах.</summary>
+    protected override TextView? Content => _value;
+
     /// <summary>
     /// Очередной снимок. Зовётся на каждом кадре, поэтому текст переставляется только при
     /// изменении: <c>TextView.SetText</c> тянет за собой перекладку строки, а число меняется впятеро
@@ -123,13 +134,19 @@ internal sealed class MetricTileView : TileView
         if (_metric is not { } metric) return;
 
         double? value = MetricNumber.Value(metric, snapshot);
-        string text = MetricNumber.Text(value, _format);
+
+        // Число встаёт в бокс худшей увиденной строки: «9,8» после «10,2» не должно двигать цифры
+        // (решение владельца 11.08.2026). Сравнение «менялось ли» идёт по той же строке с боксом —
+        // иначе рост бокса не доехал бы до экрана, пока само значение стоит.
+        string text = NumberBox.Fit(MetricNumber.Text(value, _format), _box());
 
         if (_shown == text) return;
 
         _shown = text;
         _value.TextFormatted = MetricNumber.Compose(text, _unit, Palette.Dim, _unitPx);
+        Measured(metric.Id, text);
         ShowMuted(value is null);
-        ShowHeat(MetricHeat.Of(metric.Id, value, Options, _limits));
+        ShowHeat(MetricHeat.Of(metric.Id, value, Options, _limits),
+            MetricHeat.Limits(metric.Id, Options, _limits));
     }
 }

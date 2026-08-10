@@ -152,7 +152,11 @@ internal abstract class TileView : LinearLayout
     /// с каждым новым показанием.
     /// </para>
     /// </summary>
-    protected void ShowHeat(double heat)
+    /// <param name="marks">
+    /// Какие метки стоят у этой плитки: от них зависит краска. Одинокая жёлтая не краснеет оттого,
+    /// что красной рядом не поставили (решение владельца 11.08.2026).
+    /// </param>
+    protected void ShowHeat(double heat, TileLimits? marks = null)
     {
         if (Math.Abs(_heat - heat) > 0.001)
         {
@@ -160,7 +164,7 @@ internal abstract class TileView : LinearLayout
             Invalidate();
         }
 
-        var tint = MetricHeat.Tint(heat, Palette);
+        var tint = MetricHeat.Tint(heat, Palette, marks);
         var stroke = heat <= 0
             ? Color.Transparent
             : Color.Argb(MetricHeat.Alpha(heat), tint.R, tint.G, tint.B);
@@ -194,6 +198,32 @@ internal abstract class TileView : LinearLayout
     }
 
     /// <summary>
+    /// Отчёт о том, что вышло на экран: сколько знаков в боксе, какой ширины нарисованная строка и
+    /// сколько места дала ей разметка. Три числа, снятые <b>на устройстве</b>, — единственный способ
+    /// свести бюджет подбора с настоящими пикселями: линейка в тестах повторяет разметку по нашему
+    /// же представлению о ней, а срез правым краем 11.08.2026 показал, что представление врёт.
+    /// <para>
+    /// Только в отладочной сборке и только по перемене показания (текст переставляется реже, чем
+    /// идут кадры) — в боевой сборке кода нет вовсе.
+    /// </para>
+    /// </summary>
+    [System.Diagnostics.Conditional("DEBUG")]
+    protected void Measured(string metric, string text)
+    {
+        var view = Content;
+        if (view is null) return;
+
+        var paint = view.Paint!;
+
+        Android.Util.Log.Info("WheelTalk.Tiles",
+            $"{metric}: бокс {text.Length} знаков, строка {paint.MeasureText(text):F1} px, "
+            + $"место {view.Width - view.PaddingLeft - view.PaddingRight} px, кегль {paint.TextSize:F1} px");
+    }
+
+    /// <summary>Строка с числом этого вида — её меряет отладочный отчёт. <c>null</c> — числа у вида нет.</summary>
+    protected virtual TextView? Content => null;
+
+    /// <summary>
     /// Есть ли у этого вида что сбрасывать. Меню плитки одно на все виды (решение владельца
     /// 10.08.2026), и надпись в нём общая — «Сбросить»; отвечает на неё каждый вид по-своему, а у
     /// кого ответа нет, у того пункт погашен.
@@ -217,6 +247,12 @@ internal abstract class TileView : LinearLayout
     {
         _empty = true;
         Label.Text = "";
+
+        // Подпись квадрата живёт не в разметке, а меткой в углу — её рисует сама плитка
+        // (см. _cornerLabel). Чистить надо и её: сетка переиспользует вью, и пустое место,
+        // доставшееся от квадратной плитки, показывало её слово — «Мотор» на пустоте
+        // (владелец, 11.08.2026).
+        _cornerLabel = "";
         Background = null;
         ShowContent(false);
         SetRows(size.Rows);
@@ -243,6 +279,23 @@ internal abstract class TileView : LinearLayout
 
     /// <summary>Показать или спрятать то, что вид добавил под подписью.</summary>
     protected abstract void ShowContent(bool visible);
+
+    /// <summary>
+    /// Пометка вида — знак <b>перед</b> подписью и заметно крупнее её (решение владельца
+    /// 11.08.2026): «▲ ШИМ», а не «ШИМ ▲». Стояла она в хвосте и одного кегля с подписью, и крайние
+    /// путались с обычными плитками — глаз читает начало строки, а не её конец.
+    /// </summary>
+    protected void MarkLabel(string mark, string label)
+    {
+        Label.Text = $"{mark} {label}";
+
+        var line = new Android.Text.SpannableString(Label.Text);
+        line.SetSpan(
+            new Android.Text.Style.RelativeSizeSpan(TilesLayout.MarkScale), 0, mark.Length,
+            Android.Text.SpanTypes.InclusiveExclusive);
+
+        Label.TextFormatted = line;
+    }
 
     /// <summary>
     /// Форма плитки (план плиток §2). Обе формы — те же два ребёнка, только разложенные иначе:

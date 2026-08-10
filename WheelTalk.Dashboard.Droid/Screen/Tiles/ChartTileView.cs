@@ -7,6 +7,7 @@ using Com.Github.Mikephil.Charting.Charts;
 using Com.Github.Mikephil.Charting.Data;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Metrics;
+using WheelTalk.Core.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -41,6 +42,12 @@ internal sealed class ChartTileView : TileView
 
     private TileLimits? _limits;
     private TileChart _options = new(TimeSpan.FromMinutes(15), ShowValue: true, Zoom: false);
+
+    /// <summary>
+    /// Сколько знаков в худшей строке этой плитки. Число поверх линии двигается ровно так же, как на
+    /// плитке значения, и успокаивается тем же боксом — подход единообразный (владелец 11.08.2026).
+    /// </summary>
+    private Func<int> _box = () => 0;
 
     /// <param name="words">Ключ ресурса → слово: библиотека ресурсов приложения не видит, слова ей отдаёт экран.</param>
     public ChartTileView(Context context, DashboardOptions options, Func<string, string> words)
@@ -127,8 +134,9 @@ internal sealed class ChartTileView : TileView
     public const int PointsPerBucket = 2;
 
     public void Bind(MetricDescriptor metric, string label, string unit, TileSize size, bool showLabel,
-        TileChart options, TileLimits? limits, bool heatBar, int? decimals)
+        TileChart options, TileLimits? limits, bool heatBar, int? decimals, Func<int> box)
     {
+        _box = box;
         _metric = metric;
         _format = MetricRounding.Format(metric, decimals);
         _unit = unit;
@@ -204,15 +212,17 @@ internal sealed class ChartTileView : TileView
         if (_metric is not { } metric) return;
 
         double? value = MetricNumber.Value(metric, snapshot);
-        ShowHeat(MetricHeat.Of(metric.Id, value, Options, _limits));
+        ShowHeat(MetricHeat.Of(metric.Id, value, Options, _limits),
+            MetricHeat.Limits(metric.Id, Options, _limits));
 
         if (_value.Visibility != ViewStates.Visible) return;
 
-        string text = MetricNumber.Text(value, _format);
+        string text = NumberBox.Fit(MetricNumber.Text(value, _format), _box());
 
         if (_shown == text) return;
 
         _shown = text;
+        Measured(metric.Id, text);
         // Кегль единицы у графика прежний — доля от кегля числа, которое здесь подпись к линии, а
         // не главное на плитке (потолок ChartValueMaxSp). Пол в 11 sp сюда не приезжает: он живёт в
         // подборе плиток значения, где за него платит число.

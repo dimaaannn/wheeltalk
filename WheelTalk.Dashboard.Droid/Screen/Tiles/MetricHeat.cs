@@ -41,12 +41,7 @@ internal static class MetricHeat
     {
         if (value is not { } number) return 0;
 
-        if (limits is { } own)
-        {
-            return own.Rising
-                ? Rising(number, own.Warn, own.Danger)
-                : Falling(number, own.Warn, own.Danger);
-        }
+        if (limits is { } own) return Heat(number, own);
 
         return metricId switch
         {
@@ -85,13 +80,54 @@ internal static class MetricHeat
         };
     }
 
-    /// <summary>Порог, по которому нечего рисовать, — не порог: нули и вывернутая пара отбрасываются.</summary>
-    private static TileLimits? Sane(TileLimits limits) => limits switch
+    /// <summary>
+    /// Жар по меткам плитки. Две метки — шкала натянута между ними; одна — от нуля до уставки у
+    /// растущей величины и от уставки до нуля у падающей (решение владельца 11.08.2026).
+    /// <para>
+    /// Одинокая метка даёт <b>полную</b> единицу жара на своём конце шкалы, а какой краской она
+    /// горит, решает <see cref="Tint(double, DashboardPalette, TileLimits?)"/>: жёлтая метка не
+    /// вправе покраснеть оттого, что красной рядом не поставили.
+    /// </para>
+    /// </summary>
+    private static double Heat(double value, TileLimits limits)
     {
-        { Rising: true } when limits.Danger > limits.Warn => limits,
-        { Rising: false } when limits.Warn > limits.Danger && limits.Danger > 0 => limits,
-        _ => null,
-    };
+        if (limits is { Warn: { } warn, Danger: { } danger })
+        {
+            return limits.Rising ? Rising(value, warn, danger) : Falling(value, warn, danger);
+        }
+
+        // Одна метка. У растущей величины шкала идёт снизу вверх до уставки, у падающей — от
+        // уставки вниз к нулю: и там, и там «пусто» на спокойном краю, «полно» на тревожном.
+        if ((limits.Warn ?? limits.Danger) is not { } mark) return 0;
+
+        return limits.Rising ? Alone(value, mark) : Alone(mark - value, mark);
+    }
+
+    /// <summary>Доля пути от нуля до одинокой уставки. Ноль и меньше — уставки нет, греться не от чего.</summary>
+    private static double Alone(double passed, double mark) =>
+        mark <= 0 ? 0 : Math.Clamp(passed / mark, 0, 1);
+
+    /// <summary>
+    /// Метка, по которой нечего рисовать, — не метка: ноль значит «не предупреждать», как и везде в
+    /// настройках. Вывернутая <b>пара</b> отбрасывается целиком: у растущей величины красная ниже
+    /// жёлтой — это не шкала, а опечатка.
+    /// </summary>
+    private static TileLimits? Sane(TileLimits limits)
+    {
+        var sane = limits with
+        {
+            Warn = limits.Warn is > 0 ? limits.Warn : null,
+            Danger = limits.Danger is > 0 ? limits.Danger : null,
+        };
+
+        if (sane is { Warn: { } warn, Danger: { } danger }
+            && (sane.Rising ? danger <= warn : warn <= danger))
+        {
+            return null;
+        }
+
+        return sane is { Warn: null, Danger: null } ? null : sane;
+    }
 
     /// <summary>Цвет подложки для этого жара: серый → предупреждение → тревога, без ступеней.</summary>
     public static Color Tint(double heat, DashboardPalette palette) => heat switch
@@ -99,6 +135,19 @@ internal static class MetricHeat
         <= 0 => palette.Dim,
         < 0.5 => Mix(palette.Dim, palette.Caution, heat * 2),
         _ => Mix(palette.Caution, palette.Danger, heat * 2 - 1),
+    };
+
+    /// <summary>
+    /// Цвет для этого жара с оглядкой на то, <b>какие метки стоят</b>. Две — привычный путь через
+    /// жёлтое к красному. Одна — путь от серого прямо к её собственной краске: жёлтая метка не
+    /// краснеет оттого, что красной рядом не поставили, а красная не обязана сперва желтеть
+    /// (решение владельца 11.08.2026).
+    /// </summary>
+    public static Color Tint(double heat, DashboardPalette palette, TileLimits? limits) => limits switch
+    {
+        { Warn: not null, Danger: not null } or null => Tint(heat, palette),
+        { Danger: not null } => Mix(palette.Dim, palette.Danger, Math.Clamp(heat, 0, 1)),
+        _ => Mix(palette.Dim, palette.Caution, Math.Clamp(heat, 0, 1)),
     };
 
     /// <summary>

@@ -71,10 +71,14 @@ internal sealed class ChartZonesView : View
         Mark(canvas, content, low, high, limits.Danger, _palette.Danger);
     }
 
-    /// <summary>Черта на уровне порога. Порог вне видимой шкалы не рисуется: черта у кромки соврала бы.</summary>
-    private void Mark(Canvas canvas, RectF content, float low, float high, double at, Color color)
+    /// <summary>
+    /// Черта на уровне метки. Метки нет вовсе (<c>null</c>) — и черты нет: они независимы, и
+    /// одинокая жёлтая законна (решение владельца 11.08.2026). Метка вне видимой шкалы тоже не
+    /// рисуется: черта у кромки соврала бы.
+    /// </summary>
+    private void Mark(Canvas canvas, RectF content, float low, float high, double? mark, Color color)
     {
-        if (at <= low || at >= high) return;
+        if (mark is not { } at || at <= low || at >= high) return;
 
         float y = content.Bottom - (float)(at - low) / (high - low) * content.Height();
 

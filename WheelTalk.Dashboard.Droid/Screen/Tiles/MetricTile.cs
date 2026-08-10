@@ -197,4 +197,16 @@ public readonly record struct TileExtremum(bool Lowest);
 /// <c>true</c> — хуже, когда больше (ШИМ, ток, температура); <c>false</c> — когда меньше
 /// (напряжение, заряд).
 /// </param>
-public readonly record struct TileLimits(double Warn, double Danger, bool Rising);
+/// <param name="Warn">Жёлтая метка. <c>null</c> — её нет вовсе.</param>
+/// <param name="Danger">Красная метка. <c>null</c> — её нет вовсе.</param>
+/// <remarks>
+/// <b>Метки независимы</b> (решение владельца 11.08.2026): ставится любая — только жёлтая, только
+/// красная, обе или ни одной. Прежде одинокая метка молча отбрасывалась, и сохранить одну было
+/// нельзя.
+/// <para>
+/// От этого зависит и шкала жара: при <b>двух</b> метках она натянута между ними — ноль у жёлтой,
+/// единица у красной; при <b>одной</b> идёт от нуля до уставки (растущая величина) либо от уставки
+/// до нуля (падающая), а цвет к концу шкалы приходит тот, чья метка стоит.
+/// </para>
+/// </remarks>
+public readonly record struct TileLimits(double? Warn, double? Danger, bool Rising);

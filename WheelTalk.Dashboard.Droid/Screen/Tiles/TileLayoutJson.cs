@@ -163,11 +163,20 @@ public static partial class TileLayoutJson
             })
         : null;
 
-    /// <summary>Свои пороги плитки. Не-числа — как отсутствие: пороги возьмутся из настроек тревог.</summary>
-    private static TileLimits? ToLimits(LimitsDto? dto) =>
-        dto is not null && double.IsFinite(dto.Warn) && double.IsFinite(dto.Danger)
-            ? new TileLimits(dto.Warn, dto.Danger, Rising: !dto.Falling)
-            : null;
+    /// <summary>
+    /// Свои метки плитки. Не-число — как отсутствие этой метки; пропали обе — метки возьмутся из
+    /// настроек тревог. Метки независимы (решение владельца 11.08.2026), поэтому одинокая читается
+    /// и живёт: прежде пара считалась неразделимой, и половина настройки терялась при чтении.
+    /// </summary>
+    private static TileLimits? ToLimits(LimitsDto? dto)
+    {
+        if (dto is null) return null;
+
+        double? warn = dto.Warn is { } low && double.IsFinite(low) ? low : null;
+        double? danger = dto.Danger is { } high && double.IsFinite(high) ? high : null;
+
+        return warn is null && danger is null ? null : new TileLimits(warn, danger, Rising: !dto.Falling);
+    }
 
     internal sealed class TileDto
     {
@@ -224,8 +233,16 @@ public static partial class TileLayoutJson
 
     internal sealed class LimitsDto
     {
-        public double Warn { get; set; }
-        public double Danger { get; set; }
+        /// <summary>
+        /// Жёлтая метка. <c>null</c> — её нет вовсе: метки независимы, и одинокая красная так же
+        /// законна, как одинокая жёлтая (решение владельца 11.08.2026). Отсюда <c>double?</c>, а не
+        /// <c>double</c>: у нуля свой смысл — «не предупреждать».
+        /// </summary>
+        public double? Warn { get; set; }
+
+        /// <summary>Красная метка. <c>null</c> — её нет вовсе.</summary>
+        public double? Danger { get; set; }
+
         public bool Falling { get; set; }
     }
 

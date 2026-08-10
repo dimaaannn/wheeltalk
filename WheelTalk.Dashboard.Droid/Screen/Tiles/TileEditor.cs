@@ -36,8 +36,14 @@ internal static class TileEditor
     {
         var sizes = TilesLayout.Sizes;
         var windows = TilesLayout.ChartWindows;
-        var all = MetricCatalogue.All;
-        var charted = all.Where(metric => metric.Column is not null).ToList();
+        // Величина, снятая с предложения (мин-максы, решение владельца 11.08.2026), остаётся в
+        // списке, пока стоит на этой самой плитке: иначе открытие меню молча подменило бы её
+        // первой из списка — правка размера стоила бы человеку его величины.
+        IReadOnlyList<MetricDescriptor> Offered(IEnumerable<MetricDescriptor> source) =>
+            [.. source.Where(metric => metric.Offered || metric.Id == tile?.MetricId)];
+
+        var all = Offered(MetricCatalogue.All);
+        var charted = Offered(MetricCatalogue.All.Where(metric => metric.Column is not null));
 
         bool chart = tile?.Kind == TileKind.Chart;
         bool empty = tile is null || tile.Kind == TileKind.Empty;
@@ -336,13 +342,21 @@ internal static class TileEditor
         position >= 1 && position <= MetricRounding.Choices.Count ? MetricRounding.Choices[position - 1] : null;
 
     /// <summary>
-    /// Свои пороги плитки. Пустое поле — не ноль, а «нет своего»: ноль в настройках тревог означает
-    /// «не предупреждать», и путать эти два ответа нельзя. Пуст хоть один — берём пороги из настроек.
+    /// Свои метки плитки. Пустое поле — не ноль, а «этой метки нет»: ноль в настройках тревог
+    /// означает «не предупреждать», и путать эти два ответа нельзя.
+    /// <para>
+    /// <b>Метки независимы</b> (решение владельца 11.08.2026): сохраняется любая — только жёлтая,
+    /// только красная, обе. Прежде одинокая молча пропадала: правило требовало обе, и поставить
+    /// одну было нельзя. Пусты обе — берутся пороги из настроек тревог.
+    /// </para>
     /// </summary>
-    private static TileLimits? Limits(EditText warn, EditText danger, bool falling) =>
-        Read(warn) is { } low && Read(danger) is { } high
-            ? new TileLimits(low, high, !falling)
-            : null;
+    private static TileLimits? Limits(EditText warn, EditText danger, bool falling)
+    {
+        double? low = Read(warn);
+        double? high = Read(danger);
+
+        return low is null && high is null ? null : new TileLimits(low, high, !falling);
+    }
 
     private static double? Read(EditText field) =>
         double.TryParse(field.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out double value)
