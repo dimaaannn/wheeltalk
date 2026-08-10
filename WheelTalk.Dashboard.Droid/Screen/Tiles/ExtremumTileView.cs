@@ -66,7 +66,8 @@ internal sealed class ExtremumTileView : TileView
 
         // Пометка ▲▼ рядом с подписью: у крайних своё поведение — тап их сбрасывает, — и выглядеть
         // они обязаны иначе (план плиток §5). Место под неё уже учтено в подборе кегля.
-        BindFrame($"{label} {(options.Lowest ? "▼" : "▲")}", size, showLabel, heatBar);
+        BindFrame($"{label} {(options.Lowest ? "▼" : "▲")}", size, showLabel,
+            heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
         ApplyForm(face.Form, size);
         _value.SetTextSize(ComplexUnitType.Sp, face.ValueSp);
         _value.Gravity = face.Form == TileForm.Row
@@ -80,7 +81,12 @@ internal sealed class ExtremumTileView : TileView
             layout.Height = face.Form == TileForm.Row ? ViewGroup.LayoutParams.MatchParent : 0;
             layout.Weight = 1f;
             layout.TopMargin = face.Form == TileForm.Row ? 0 : Context.Dp(TilesLayout.ValueTopMarginDp);
-            layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : 0;
+
+            // Поля ужимает только квадрат — ровно на столько, на сколько его расширил подбор
+            // кегля (ValueBleedDp). Прямоугольные породы живут со своими полями, как их приняли.
+            int bleed = face.Form == TileForm.Square ? -Context.Dp(TilesLayout.ValueBleedDp) : 0;
+            layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : bleed;
+            layout.RightMargin = face.Form == TileForm.Row ? 0 : bleed;
             _value.LayoutParameters = layout;
         }
 

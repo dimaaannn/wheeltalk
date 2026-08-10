@@ -28,17 +28,46 @@ internal static class MetricNumber
     public static double? Value(MetricDescriptor metric, TelemetrySnapshot? snapshot) =>
         snapshot is null ? null : metric.Read(snapshot);
 
+    /// <summary>Сколько разрядов до точки закладывать квадратной плитке, пока величина не показала больше.</summary>
+    public const int SeedDigits = 3;
+
     /// <summary>
-    /// Самая широкая строка, какую эта величина способна показать: пять разрядов до точки и её
-    /// собственные знаки после. По ней подбирается кегль класса — <b>не по живому показанию</b>:
-    /// иначе «9.9» сменилось бы на «10.0», и весь класс перерисовался бы мельче прямо на ходу.
+    /// Разряды прямоугольной породы — пять, как их приняли: одометр (99999 км) и знак минуса живут
+    /// в них же. Число от этого мельче, чем могло бы, и это <b>принятый вид</b>, а не недосмотр:
+    /// попытка сделать его крупнее «заодно» вылезла за низ плитки (стенд 10.08.2026).
+    /// </summary>
+    public const int RectangleDigits = 5;
+
+    /// <summary>
+    /// Строка, по ширине которой подбирается кегль класса, — <b>не живое показание</b>: иначе «9.9»
+    /// сменилось бы на «10.0», и весь класс перерисовался бы мельче прямо на ходу.
     /// <para>
-    /// Пять разрядов — одометр (99999 км), самая длинная величина каталога; знак минуса в них же:
-    /// отрицательный ток короче на разряд.
+    /// Разрядов до точки — <paramref name="digits"/>, и это <b>не потолок величины, а увиденное</b>.
+    /// Пять разрядов «на всякий случай» стоили четвертной плитке двух третей кегля: температура
+    /// «41» набиралась так, будто на ней стоит «88888.8». Ширина растёт вслед за показанием
+    /// (<see cref="Digits"/>) и никогда не падает — значит и кегль не скачет вверх-вниз, а один раз
+    /// садится под то, что колесо действительно показывает.
     /// </para>
     /// </summary>
-    public static string Widest(MetricDescriptor metric) =>
-        metric.Decimals > 0 ? "88888." + new string('8', metric.Decimals) : "88888";
+    public static string Widest(MetricDescriptor metric, int digits)
+    {
+        string whole = new('8', System.Math.Max(SeedDigits, digits));
+        return metric.Decimals > 0 ? whole + "." + new string('8', metric.Decimals) : whole;
+    }
+
+    /// <summary>
+    /// Сколько разрядов до точки в этом показании. Знак минуса считается разрядом: он занимает
+    /// столько же, сколько цифра, — начертание моноширинное.
+    /// </summary>
+    public static int Digits(double? value)
+    {
+        if (value is not { } number) return 0;
+
+        int digits = (int)System.Math.Floor(System.Math.Log10(System.Math.Max(1, System.Math.Abs(number)))) + 1;
+        return number < 0 ? digits + 1 : digits;
+    }
+
+    /// <summary>Текст показания без единицы — им сравнивают, менялось ли значение.</summary>
 
     /// <summary>Текст показания без единицы — им сравнивают, менялось ли значение.</summary>
     public static string Text(double? value, string format) =>

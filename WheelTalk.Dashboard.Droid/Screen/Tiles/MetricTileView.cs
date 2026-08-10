@@ -64,7 +64,10 @@ internal sealed class MetricTileView : TileView
         // процентов плитки, а величину называет подпись (план плиток §4).
         _unit = TileTypography.UnitOn(new TileClass(size.Columns, size.Rows), unit);
 
-        BindFrame(label, size, showLabel, heatBar);
+        // Шкалы жара нет у величины без порогов: одометру и наклону не от чего греться, и
+        // объявлять шкалу, на которой никогда ничего не появится, — обман. Тогда рамка обычная,
+        // замкнутая, как была до шкалы.
+        BindFrame(label, size, showLabel, heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
         Apply(face, size);
 
         _shown = "";
@@ -89,7 +92,12 @@ internal sealed class MetricTileView : TileView
             layout.Height = face.Form == TileForm.Row ? ViewGroup.LayoutParams.MatchParent : 0;
             layout.Weight = 1f;
             layout.TopMargin = face.Form == TileForm.Row ? 0 : Context.Dp(TilesLayout.ValueTopMarginDp);
-            layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : 0;
+
+            // Поля ужимает только квадрат — ровно на столько, на сколько его расширил подбор
+            // кегля (ValueBleedDp). Прямоугольные породы живут со своими полями, как их приняли.
+            int bleed = face.Form == TileForm.Square ? -Context.Dp(TilesLayout.ValueBleedDp) : 0;
+            layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : bleed;
+            layout.RightMargin = face.Form == TileForm.Row ? 0 : bleed;
             _value.LayoutParameters = layout;
         }
     }

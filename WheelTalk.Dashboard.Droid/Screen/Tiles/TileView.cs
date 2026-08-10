@@ -38,10 +38,23 @@ internal abstract class TileView : LinearLayout
     /// <summary>Какого цвета рамка тревоги сейчас — чтобы не перекрашивать её тем же самым.</summary>
     private Color _fill;
 
-    /// <summary>Полоска жара по низу: рамка говорит «плохо», полоска — «насколько», и говорит формой.</summary>
-    private readonly Paint _heatBarPaint = new() { AntiAlias = true };
-    private readonly RectF _heatBar = new();
-    private readonly RectF _heatTrack = new();
+    /// <summary>
+    /// Рамка жара — своя, а не штрих подложки: её низ обязан уметь <b>не рисоваться</b>, когда
+    /// нижней стороной служит шкала (решение владельца 10.08.2026). <c>GradientDrawable</c> рисует
+    /// контур только целиком, поэтому рамка перешла сюда.
+    /// </summary>
+    private readonly Paint _framePaint = new() { AntiAlias = true };
+    private readonly Android.Graphics.Path _frame = new();
+    private readonly RectF _frameBox = new();
+
+    /// <summary>Метки начала и конца шкалы — на концах прямого участка низа.</summary>
+    private readonly Paint _tickPaint = new() { AntiAlias = true };
+
+    /// <summary>Прямой участок низа, между закруглениями: по нему идёт шкала, углы она не трогает.</summary>
+    private float _scaleFrom;
+    private float _scaleTo;
+    private float _scaleY;
+
     private double _heat;
 
     /// <summary>Круг «убрать» и ручка перетаскивания — видны только в правке, обе нажимаемы.</summary>
@@ -56,6 +69,12 @@ internal abstract class TileView : LinearLayout
 
     /// <summary>Показывать ли полоску жара — выбор человека на этой плитке (умолчание «да»).</summary>
     private bool _showHeatBar = true;
+
+    /// <summary>
+    /// Подпись квадратной плитки: она не строка разметки, а метка в углу, и рисуется здесь же.
+    /// Пусто — плитка не квадратная либо подпись выключена.
+    /// </summary>
+    private string _cornerLabel = "";
 
     protected TileView(Context context, DashboardOptions options) : base(context)
     {
@@ -81,7 +100,13 @@ internal abstract class TileView : LinearLayout
 
         _handlePaint.Color = Color.Argb(TilesLayout.HandleAlpha, palette.Ink.R, palette.Ink.G, palette.Ink.B);
 
-        _heatBarPaint.SetStyle(Paint.Style.Fill);
+        _framePaint.SetStyle(Paint.Style.Stroke);
+        _framePaint.StrokeWidth = context.Dp(TilesLayout.HeatStrokeDp);
+        _framePaint.StrokeCap = Paint.Cap.Butt;
+
+        _tickPaint.SetStyle(Paint.Style.Fill);
+        _tickPaint.Color = Color.Argb(TilesLayout.HeatTickAlpha, palette.Ink.R, palette.Ink.G, palette.Ink.B);
+
         _editPaint.Color = Color.Argb(TilesLayout.HandleAlpha, palette.Ink.R, palette.Ink.G, palette.Ink.B);
 
         _outlinePaint.SetStyle(Paint.Style.Stroke);
@@ -136,7 +161,8 @@ internal abstract class TileView : LinearLayout
         if (_fill == stroke) return;
 
         _fill = stroke;
-        _filled.SetStroke(Context!.Dp(TilesLayout.HeatStrokeDp), stroke);
+        _framePaint.Color = stroke;
+        Invalidate();
     }
 
     /// <summary>
@@ -206,6 +232,20 @@ internal abstract class TileView : LinearLayout
     /// </summary>
     protected void ApplyForm(TileForm form, TileSize size)
     {
+        // Квадрат: подпись уходит меткой в угол, а разметку целиком забирает число — ради этого
+        // квадратную плитку и заводят (решение владельца 10.08.2026). Строкой она бы съела у числа
+        // высоту, а числу в квадрате места и так не хватает: упирается оно в ширину.
+        if (form == TileForm.Square)
+        {
+            _cornerLabel = Label.Visibility == ViewStates.Visible ? Label.Text ?? "" : "";
+            Label.Visibility = ViewStates.Gone;
+            Orientation = Android.Widget.Orientation.Vertical;
+            SetGravity(GravityFlags.Top);
+            Invalidate();
+            return;
+        }
+
+        _cornerLabel = "";
         bool row = form == TileForm.Row;
         Orientation = row ? Android.Widget.Orientation.Horizontal : Android.Widget.Orientation.Vertical;
         SetGravity(row ? GravityFlags.CenterVertical : GravityFlags.Top);
@@ -259,16 +299,20 @@ internal abstract class TileView : LinearLayout
         _handle.LineTo(width - side, height);
         _handle.Close();
 
-        // Полоска жара — по низу, в тех же полях, что и содержимое: её высота уже вычтена из
-        // бюджета кегля, и налезать ей не на что.
-        float barInset = Context.Dp(TilesLayout.HeatBarInsetDp);
-        float bar = Context.Dp(TilesLayout.HeatBarDp);
-        float pad = Context.Dp(TilesLayout.PaddingDp);
-        _heatTrack.Set(pad, height - barInset - bar, width - pad, height - barInset);
-        _heatBar.Set(_heatTrack);
+        // Рамка идёт по краю внутрь, как шла у подложки: линия центрируется на границе, поэтому
+        // прямоугольник отступает на половину её толщины.
+        float half = _framePaint.StrokeWidth / 2;
+        _frameBox.Set(half, half, width - half, height - half);
 
-        float remove = Context.Dp(TilesLayout.RemoveSizeDp);
-        _remove.Set(width - barInset - remove, barInset, width - barInset, barInset + remove);
+        // Шкала жара — нижняя сторона рамки, и только её прямой участок: закругления она не
+        // трогает, иначе «начало» и «конец» шкалы приходились бы на дугу и длина заливки врала бы.
+        _scaleY = _frameBox.Bottom;
+        _scaleFrom = _frameBox.Left + _radius;
+        _scaleTo = _frameBox.Right - _radius;
+
+        float pad = Context.Dp(TilesLayout.PaddingDp);
+        float circle = Context.Dp(TilesLayout.RemoveSizeDp);
+        _remove.Set(width - pad - circle, pad, width - pad, pad + circle);
 
         // Контур рисуется по середине линии, поэтому отступает от края на её половину — иначе
         // внешняя половина обрезалась бы краем плитки.
@@ -285,7 +329,8 @@ internal abstract class TileView : LinearLayout
     {
         base.DispatchDraw(canvas);
 
-        if (!_empty && _showHeatBar && _heat > 0) DrawHeatBar(canvas);
+        if (!_empty) DrawFrame(canvas);
+        if (_cornerLabel.Length > 0) DrawCornerLabel(canvas);
 
         if (!_editing) return;
 
@@ -299,21 +344,99 @@ internal abstract class TileView : LinearLayout
     }
 
     /// <summary>
-    /// Жар полоской: дорожка во всю ширину и по ней — залитая часть, равная доле до тревоги. Рамка
-    /// уже сказала «плохо», полоска говорит «насколько» — и говорит длиной, а не только цветом, что
-    /// и отличает её от рамки при дейтеранопии (план плиток §5).
+    /// Рамка жара, и шкала — её нижняя сторона (решение владельца 10.08.2026). Полоска над низом
+    /// плитки читалась как рамка соседа снизу; став самой рамкой, она перестала быть вторым
+    /// элементом у того же края.
+    /// <para>
+    /// Когда шкала включена, <b>прямой участок низа не рисуется вовсе</b>: иначе длина заливки
+    /// теряется в сплошной линии и «насколько близко» снова отвечает один цвет. Углы при этом
+    /// целы — рамка остаётся рамкой, а не разорванной скобкой.
+    /// </para>
+    /// <para>
+    /// При жаре ноль рамки нет вовсе (цвет прозрачный), а метки шкалы стоят: шкала объявлена — на
+    /// ней просто нечего заливать.
+    /// </para>
     /// </summary>
-    private void DrawHeatBar(Canvas canvas)
+    private void DrawFrame(Canvas canvas)
     {
-        var tint = MetricHeat.Tint(_heat, Palette);
-        float radius = _heatTrack.Height() / 2;
+        if (_heat > 0)
+        {
+            BuildFrame(_showHeatBar);
+            canvas.DrawPath(_frame, _framePaint);
+        }
 
-        _heatBarPaint.Color = Color.Argb(TilesLayout.HeatTrackAlpha, Palette.Ink.R, Palette.Ink.G, Palette.Ink.B);
-        canvas.DrawRoundRect(_heatTrack, radius, radius, _heatBarPaint);
+        if (!_showHeatBar) return;
 
-        _heatBar.Right = _heatTrack.Left + (_heatTrack.Width() * (float)Math.Clamp(_heat, 0, 1));
-        _heatBarPaint.Color = Color.Argb(MetricHeat.Alpha(_heat), tint.R, tint.G, tint.B);
-        canvas.DrawRoundRect(_heatBar, radius, radius, _heatBarPaint);
+        DrawScaleTicks(canvas);
+
+        if (_heat <= 0) return;
+
+        // Заливка растёт от левой метки к правой — тем же цветом и той же толщиной, что и рамка:
+        // при полном жаре она смыкается с ней в единое целое.
+        float end = _scaleFrom + ((_scaleTo - _scaleFrom) * (float)Math.Clamp(_heat, 0, 1));
+        canvas.DrawLine(_scaleFrom, _scaleY, end, _scaleY, _framePaint);
+    }
+
+    /// <summary>
+    /// Путь рамки. Замкнутый — обычная рамка; разомкнутый — та же рамка без прямого участка низа:
+    /// от левого нижнего закругления против часовой стрелки до правого нижнего.
+    /// </summary>
+    private void BuildFrame(bool openBottom)
+    {
+        _frame.Reset();
+
+        if (!openBottom)
+        {
+            _frame.AddRoundRect(_frameBox, _radius, _radius, Android.Graphics.Path.Direction.Cw!);
+            return;
+        }
+
+        float d = _radius * 2;
+        var corner = new RectF();
+
+        _frame.MoveTo(_scaleFrom, _frameBox.Bottom);
+        corner.Set(_frameBox.Left, _frameBox.Bottom - d, _frameBox.Left + d, _frameBox.Bottom);
+        _frame.ArcTo(corner, 90, 90);
+
+        corner.Set(_frameBox.Left, _frameBox.Top, _frameBox.Left + d, _frameBox.Top + d);
+        _frame.ArcTo(corner, 180, 90);
+
+        _frame.LineTo(_scaleTo, _frameBox.Top);
+        corner.Set(_frameBox.Right - d, _frameBox.Top, _frameBox.Right, _frameBox.Top + d);
+        _frame.ArcTo(corner, 270, 90);
+
+        _frame.LineTo(_frameBox.Right, _frameBox.Bottom - _radius);
+        corner.Set(_frameBox.Right - d, _frameBox.Bottom - d, _frameBox.Right, _frameBox.Bottom);
+        _frame.ArcTo(corner, 0, 90);
+    }
+
+    /// <summary>
+    /// Подпись квадратной плитки — меткой в верхнем углу, поверх поля. Своей строки не берёт: в
+    /// квадрате число и есть главный житель.
+    /// </summary>
+    private void DrawCornerLabel(Canvas canvas)
+    {
+        _tickPaint.Color = Color.Argb(255, Palette.Dim.R, Palette.Dim.G, Palette.Dim.B);
+        _tickPaint.TextSize = Context!.Dp(TilesLayout.SquareLabelSp);
+        canvas.DrawText(_cornerLabel, Context.Dp(TilesLayout.PaddingDp),
+            Context.Dp(TilesLayout.PaddingDp) + _tickPaint.TextSize, _tickPaint);
+
+        // Кисть меток общая — вернуть ей свой цвет обязана та же рука, что заняла.
+        _tickPaint.Color = Color.Argb(TilesLayout.HeatTickAlpha, Palette.Ink.R, Palette.Ink.G, Palette.Ink.B);
+    }
+
+    /// <summary>
+    /// Метки начала и конца шкалы. Стоят всегда, пока шкала включена, — и при нулевом жаре тоже:
+    /// без них при частичной заливке не видно, где шкала кончается, а без шкалы вовсе не видно, что
+    /// она есть.
+    /// </summary>
+    private void DrawScaleTicks(Canvas canvas)
+    {
+        float w = Context!.Dp(TilesLayout.HeatTickWidthDp);
+        float h = Context.Dp(TilesLayout.HeatTickHeightDp);
+
+        canvas.DrawRect(_scaleFrom - (w / 2), _scaleY - (h / 2), _scaleFrom + (w / 2), _scaleY + (h / 2), _tickPaint);
+        canvas.DrawRect(_scaleTo - (w / 2), _scaleY - (h / 2), _scaleTo + (w / 2), _scaleY + (h / 2), _tickPaint);
     }
 
     /// <summary>
@@ -338,7 +461,7 @@ internal abstract class TileView : LinearLayout
 
         // Ручка — три черты у нижнего правого угла: за неё берутся, чтобы двигать плитку.
         float right = Width - Context.Dp(TilesLayout.PaddingDp);
-        float bottom = Height - Context.Dp(TilesLayout.PaddingDp) - Context.Dp(TilesLayout.HeatBarDp);
+        float bottom = Height - Context.Dp(TilesLayout.PaddingDp) - Context.Dp(TilesLayout.HeatStrokeDp);
         float wide = Context.Dp(TilesLayout.HandleSizeDp);
         for (int i = 0; i < 3; i++)
         {

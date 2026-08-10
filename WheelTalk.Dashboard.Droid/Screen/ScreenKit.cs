@@ -1,4 +1,4 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Content.Res;
 using Android.Graphics;
 
@@ -13,6 +13,14 @@ public static class ScreenKit
 {
     public static int Dp(this Context context, float dp) =>
         (int)Math.Round(dp * context.Resources!.DisplayMetrics!.Density);
+
+    /// <summary>
+    /// Кегль в пикселях. Отдельно от <see cref="Dp"/> намеренно: sp растёт вместе с системным
+    /// шрифтом, dp — нет, и подменять одно другим значит считать бюджет текста по величине, которая
+    /// к тексту отношения не имеет.
+    /// </summary>
+    public static float Sp(this Context context, float sp) =>
+        sp * context.Resources!.DisplayMetrics!.ScaledDensity;
 
     public static bool IsDarkTheme(this Context context) =>
         (context.Resources!.Configuration!.UiMode & UiMode.NightMask) == UiMode.NightYes;

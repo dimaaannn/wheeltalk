@@ -612,6 +612,13 @@ public sealed class TilesScreen : IMainScreen
 
         private readonly PaintRuler _ruler;
 
+        /// <summary>
+        /// Сколько разрядов до точки величина показала <b>на самом деле</b>. Растёт и никогда не
+        /// падает: кегль класса, севший под увиденное, не должен прыгать обратно от того, что
+        /// одометр на секунду показал меньше.
+        /// </summary>
+        private readonly Dictionary<string, int> _digits = new(StringComparer.Ordinal);
+
         public TileAdapter(Context context, DashboardOptions options, Func<string, string> translate,
             ITileLayoutStore? layoutStore, IReadOnlyList<MetricTile> layout)
         {
@@ -641,29 +648,41 @@ public sealed class TilesScreen : IMainScreen
         /// </summary>
         private void Remeasure()
         {
-            var metrics = new TileMetrics(
+            var metrics = Metrics();
+            _faces = TileTypography.Measure(Texts(metrics), metrics, _ruler, _editing);
+            foreach (var view in _views) view.Invalidate();
+        }
+
+        /// <summary>Все размеры сетки и полей — в одном месте, чтобы бюджет считался по ним, а не по памяти.</summary>
+        private TileMetrics Metrics()
+        {
+            return new TileMetrics(
                 CellWidthPx: CellWidth(),
                 RowHeightPx: _context.Dp(TilesLayout.RowHeightDp),
                 GapPx: _context.Dp(TilesLayout.GapDp),
                 PaddingPx: _context.Dp(TilesLayout.PaddingDp),
-                LabelHeightPx: _context.Dp(TilesLayout.LabelSp) * TilesLayout.InkRatio,
-                HeatBarPx: _context.Dp(TilesLayout.HeatBarDp + TilesLayout.HeatBarInsetDp * 2),
+                // Подпись меряется в sp, а не в dp: при увеличенном системном шрифте она выше, и
+                // числу обязано достаться меньше — иначе оно вылезет ровно на эту разницу.
+                LabelHeightPx: _context.Sp(TilesLayout.LabelSp) * TilesLayout.InkRatio,
+                // Шкала жара переехала в саму рамку (решение владельца 10.08.2026) и своего места
+                // у содержимого больше не занимает — из бюджета вычитается только толщина рамки,
+                // чтобы число не садилось на её линию.
+                HeatBarPx: _context.Dp(TilesLayout.HeatStrokeDp),
                 EditReservePx: _context.Dp(TilesLayout.EditReserveDp),
                 EditFooterPx: _context.Dp(TilesLayout.EditFooterDp),
                 GapUnitPx: _context.Dp(TilesLayout.UnitGapDp),
                 GapLabelPx: _context.Dp(TilesLayout.RowGapDp),
-                MarkPx: _context.Dp(TilesLayout.MarkDp))
+                MarkPx: _context.Dp(TilesLayout.MarkDp),
+                ValueBleedPx: _context.Dp(TilesLayout.ValueBleedDp))
             {
                 RowLabelSp = TilesLayout.RowLabelSp,
                 MinValueSp = TilesLayout.ValueMinSp,
                 MaxValueSp = TilesLayout.ValueMaxSp,
                 UnitScale = TilesLayout.UnitScale,
-                InkRatio = TilesLayout.InkRatio,
                 RowLabelShare = TilesLayout.RowLabelShare,
+                SquareRatio = TilesLayout.SquareRatio,
+                SquareLabelPx = _context.Sp(TilesLayout.SquareLabelSp) * TilesLayout.InkRatio,
             };
-
-            _faces = TileTypography.Measure(Texts(), metrics, _ruler, _editing);
-            foreach (var view in _views) view.Invalidate();
         }
 
         /// <summary>
@@ -684,16 +703,25 @@ public sealed class TilesScreen : IMainScreen
         /// (<see cref="MetricNumber.Widest"/>): иначе кегль скакал бы на ходу — «9.9» сменилось на
         /// «10.0», и весь класс перерисовался мельче.
         /// </summary>
-        private IEnumerable<TileText> Texts()
+        private IEnumerable<TileText> Texts(TileMetrics metrics)
         {
             foreach (var (tile, metric) in _tiles)
             {
                 if (metric is null) continue;
 
+                var shape = new TileClass(tile.Size.Columns, tile.Size.Rows);
                 string unit = metric.UnitKey is { } key ? _translate(key) : "";
+
+                // Породы считаются по-разному, и общей строки у них нет: квадрат садится под то,
+                // что колесо показало на самом деле, прямоугольные — под принятые пять разрядов.
+                // Один бюджет на двоих однажды уже сломал строки (решение владельца 10.08.2026).
+                int digits = TileTypography.IsSquare(shape, metrics)
+                    ? _digits.GetValueOrDefault(metric.Id)
+                    : MetricNumber.RectangleDigits;
+
                 yield return new TileText(
-                    new TileClass(tile.Size.Columns, tile.Size.Rows),
-                    MetricNumber.Widest(metric),
+                    shape,
+                    MetricNumber.Widest(metric, digits),
                     unit,
                     Label(metric, tile.Size),
                     tile.Kind == TileKind.Extremum);
@@ -905,6 +933,23 @@ public sealed class TilesScreen : IMainScreen
             if (ReferenceEquals(_snapshot, snapshot)) return;
 
             _snapshot = snapshot;
+
+            // Показание выросло в разрядах — бюджет ширины пересчитывается один раз и навсегда:
+            // иначе длинное число обрезалось бы краем плитки (гейт «ничего не срезано»).
+            bool grown = false;
+            foreach (var (tile, metric) in _tiles)
+            {
+                if (metric is null || tile.Kind == TileKind.Empty) continue;
+
+                int digits = MetricNumber.Digits(MetricNumber.Value(metric, snapshot));
+                if (digits <= _digits.GetValueOrDefault(metric.Id)) continue;
+
+                _digits[metric.Id] = digits;
+                grown = true;
+            }
+
+            if (grown) Remeasure();
+
             foreach (var view in _views) view.Render(snapshot);
         }
 

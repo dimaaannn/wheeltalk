@@ -135,7 +135,8 @@ internal sealed class ChartTileView : TileView
         _value.Visibility = options.ShowValue ? ViewStates.Visible : ViewStates.Gone;
         _range.Text = Describe(options.Window);
 
-        BindFrame(label, size, showLabel, heatBar);
+        BindFrame(label, size, showLabel,
+            heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
         Render(null);
     }
 

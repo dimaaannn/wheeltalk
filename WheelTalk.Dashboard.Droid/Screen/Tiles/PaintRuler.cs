@@ -25,6 +25,19 @@ internal sealed class PaintRuler(float density) : ITextRuler
 
     public static Typeface Sans => Typeface.Default!;
 
+    /// <summary>
+    /// Высота строки — <b>по метрикам начертания</b>, а не по поправке на глазок: от подъёма до
+    /// спуска, то есть ровно столько, сколько займёт <c>TextView</c>. Кегль приходит в sp, ответ —
+    /// в пикселях, как и у ширины: единицы у мерилки одни, и перепутать их снаружи больше нечем.
+    /// </summary>
+    public float Height(float sizeSp)
+    {
+        _mono.SetTypeface(Mono);
+        _mono.TextSize = sizeSp * density;
+        var metrics = _mono.GetFontMetrics()!;
+        return metrics.Descent - metrics.Ascent;
+    }
+
     public float Width(string text, float sizeSp, bool mono)
     {
         var paint = mono ? _mono : _sans;
