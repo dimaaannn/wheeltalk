@@ -1,4 +1,5 @@
 ﻿using Android.Content;
+using Android.App;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.Util;
@@ -72,6 +73,15 @@ public sealed class TilesScreen : IMainScreen
     /// <summary>Список едет прямо сейчас: пока едет, графики не перечитываются (план 31 §3.2).</summary>
     private bool _scrolling;
 
+    /// <summary>
+    /// Открытое поверх экрана окно — полноэкранный просмотр графика либо меню плитки. Держится
+    /// <b>здесь</b>, потому что диалог висит на окне активности, а не на нашей ветви вью: брошенный,
+    /// он переживает свою активность и утекает вместе с ней (дамп владельца 10.08.2026 —
+    /// <c>WindowLeaked</c> со стеком от тапа по плитке). Одно на двоих: два таких окна разом не
+    /// открыть — оба открываются тем же тапом, который тут же и занят.
+    /// </summary>
+    private Dialog? _overlay;
+
     /// <summary>Раскладка на входе в режим правки: к ней возвращает «отменить» и кнопка «назад».</summary>
     private IReadOnlyList<MetricTile> _beforeEditing = [];
 
@@ -118,7 +128,8 @@ public sealed class TilesScreen : IMainScreen
         _link = new LinkBadgeDrawable { Options = options, NameOnLive = false };
         _root = new TilesRoot(context, _hint, _link, options.Palette.Ink,
             () => OnIntent?.Invoke(MainScreenIntent.ShowSheet),
-            () => OnIntent?.Invoke(MainScreenIntent.ShowConnection));
+            () => OnIntent?.Invoke(MainScreenIntent.ShowConnection),
+            CloseOverlay);
         _root.AddView(_list, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
         _root.AddView(_buttons, new FrameLayout.LayoutParams(
@@ -331,9 +342,22 @@ public sealed class TilesScreen : IMainScreen
             && _adapter.TileAt(position) is { Kind: TileKind.Chart, Chart: { } options } tile
             && MetricCatalogue.Find(tile.MetricId) is { } metric)
         {
-            ChartViewer.Show(_context, _options, history, metric, _translate(metric.LabelKey),
+            _overlay = ChartViewer.Show(_context, _options, history, metric, _translate(metric.LabelKey),
                 metric.UnitKey is { } unit ? _translate(unit) : "", options, tile.Limits, tile.Decimals);
         }
+    }
+
+    /// <summary>
+    /// Экран уходит из окна — открытое поверх него окно уходит с ним. Это и есть починка того, что
+    /// осталось в дампе владельца 10.08.2026: активность уничтожили с открытым просмотром графика,
+    /// и её окно утекло (<c>WindowLeaked</c>) вместе с диалогом, ветвью вью, чартом и его данными.
+    /// Закрытие заодно снимает и догоняющее заполнение — просмотр гасит свою задачу по
+    /// <c>DismissEvent</c>.
+    /// </summary>
+    private void CloseOverlay()
+    {
+        if (_overlay is { IsShowing: true } overlay) overlay.Dismiss();
+        _overlay = null;
     }
 
     /// <param name="position">Правим плитку с этим номером либо <c>null</c> — заводим новую.</param>
@@ -341,7 +365,7 @@ public sealed class TilesScreen : IMainScreen
     {
         var tile = position is { } index ? _adapter.TileAt(index) : null;
 
-        TileEditor.Show(_context, _translate, tile,
+        _overlay = TileEditor.Show(_context, _translate, tile,
             saved =>
             {
                 if (position is { } index)
@@ -407,10 +431,22 @@ public sealed class TilesScreen : IMainScreen
     /// </summary>
     private sealed class TilesRoot(
         Context context, SheetHintDrawable hint, LinkBadgeDrawable link, Color ink,
-        Action onHintTapped, Action onLinkTapped)
+        Action onHintTapped, Action onLinkTapped, Action onDetached)
         : FrameLayout(context)
     {
         private readonly RectF _bounds = new();
+
+        /// <summary>
+        /// Уход из окна — единственная весть об конце экрана, которая доходит до библиотеки:
+        /// <c>OnDestroy</c> принадлежит активности, а её у экрана нет. Приходит она и при смене
+        /// экрана корешком, и при уничтожении активности — оба случая одинаково требуют убрать
+        /// открытое поверх окно.
+        /// </summary>
+        protected override void OnDetachedFromWindow()
+        {
+            onDetached();
+            base.OnDetachedFromWindow();
+        }
 
         /// <summary>Инсет статус-бара: плашка стоит под ним, как у панели (`DashboardView.LinkArea`).</summary>
         public int TopInset { get; set; }

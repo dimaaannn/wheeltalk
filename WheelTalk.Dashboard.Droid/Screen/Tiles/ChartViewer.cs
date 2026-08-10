@@ -34,7 +34,14 @@ internal static class ChartViewer
     /// Округление той плитки, с которой сюда пришли: просмотр открыт по ней, и показывать в нём
     /// величину подробнее, чем на самой плитке, значило бы дать два ответа на один вопрос.
     /// </param>
-    public static void Show(Context context, DashboardOptions dashboard, IMetricHistory history,
+    /// <returns>
+    /// Показанный диалог — <b>хозяину экрана</b>. Просмотр живёт на окне активности, и брошенный
+    /// без присмотра он утекает вместе со всей своей ветвью, графиком и данными: 10.08.2026
+    /// активность была уничтожена с открытым просмотром, и в дампе владельца остался
+    /// <c>WindowLeaked</c> со стеком ровно от тапа по плитке. Закрывает его тот, кто открыл
+    /// (<see cref="TilesScreen"/>), когда экран уходит из окна.
+    /// </returns>
+    public static Dialog Show(Context context, DashboardOptions dashboard, IMetricHistory history,
         MetricDescriptor metric, string label, string unit, TileChart options, TileLimits? limits,
         int? decimals)
     {
@@ -83,9 +90,18 @@ internal static class ChartViewer
 
         var dialog = new Dialog(context, Android.Resource.Style.ThemeBlackNoTitleBarFullScreen);
         dialog.SetContentView(root);
+
+        // Заполнение живёт ровно столько, сколько окно. История читается из базы и возвращается
+        // через десятки миллисекунд, а то и позже закрытия просмотра — и тогда рисовать некуда: за
+        // графиком стоят peer-объекты уничтоженной активности, а сама задача держит их живыми.
+        var alive = new CancellationTokenSource();
+        dialog.DismissEvent += (_, _) => alive.Cancel();
         dialog.Show();
 
-        _ = FillAsync(context, chart, zones, dashboard, history, metric, label, from, to, options, limits);
+        _ = FillAsync(context, chart, zones, dashboard, history, metric, label, from, to, options, limits,
+            alive.Token);
+
+        return dialog;
     }
 
     private static LineChart BuildChart(Context context, DashboardPalette palette, DateTimeOffset from,
@@ -119,11 +135,27 @@ internal static class ChartViewer
         return chart;
     }
 
+    /// <param name="alive">
+    /// Пока просмотр открыт. Отменён — работать больше не над чем и трогать нечего: чтение
+    /// прерывается, а догнавшее продолжение молча уходит.
+    /// </param>
     private static async Task FillAsync(Context context, LineChart chart, ChartZonesView zones,
         DashboardOptions dashboard, IMetricHistory history, MetricDescriptor metric, string label,
-        DateTimeOffset from, DateTimeOffset to, TileChart options, TileLimits? limits)
+        DateTimeOffset from, DateTimeOffset to, TileChart options, TileLimits? limits,
+        CancellationToken alive)
     {
-        var points = await history.ReadAsync(metric.Id, from, to, TilesLayout.ViewerPoints, CancellationToken.None);
+        IReadOnlyList<MetricPoint> points;
+        try
+        {
+            points = await history.ReadAsync(metric.Id, from, to, TilesLayout.ViewerPoints, alive);
+        }
+        catch (OperationCanceledException)
+        {
+            // Просмотр закрыли, пока читалась история: обычный конец задачи, а не беда.
+            return;
+        }
+
+        if (alive.IsCancellationRequested) return;
 
         // Обрезка по крайним значениям — та же, что у плитки: иначе ось уходит ниже нуля, и заливка
         // рисует полосу под ним во всю ширину экрана.
@@ -143,6 +175,8 @@ internal static class ChartViewer
 
         chart.Post(() =>
         {
+            if (alive.IsCancellationRequested) return;
+
             chart.Data = data;
             chart.Invalidate();
             zones.Invalidate();

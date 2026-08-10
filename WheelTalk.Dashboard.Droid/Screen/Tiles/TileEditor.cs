@@ -25,7 +25,13 @@ internal static class TileEditor
     /// <param name="tile">Правим эту плитку либо <c>null</c> — заводим новую.</param>
     /// <param name="save">Что вышло из меню: новая плитка либо изменённая старая.</param>
     /// <param name="remove">Убрать плитку. <c>null</c> у новой — убирать ещё нечего.</param>
-    public static void Show(Context context, Func<string, string> translate, MetricTile? tile,
+    /// <returns>
+    /// Показанное меню — хозяину экрана: диалог висит на окне активности, и брошенный он утекает
+    /// вместе с ней (тот же корень, что у полноэкранного просмотра, — <see cref="ChartViewer.Show"/>;
+    /// в стеке <c>WindowLeaked</c> они и не различаются, оба стоят как <c>Dialog.show</c> из тапа по
+    /// плитке).
+    /// </returns>
+    public static Dialog Show(Context context, Func<string, string> translate, MetricTile? tile,
         Action<MetricTile> save, Action? remove)
     {
         var sizes = TilesLayout.Sizes;
@@ -235,7 +241,7 @@ internal static class TileEditor
 
         if (remove is not null) dialog.SetNeutralButton(translate("TilesTileRemove"), (_, _) => remove());
 
-        dialog.Show();
+        return dialog.Show()!;
     }
 
     private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, int kind, int chosen,
