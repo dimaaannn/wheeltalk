@@ -154,3 +154,34 @@ jobs:
             --draft \
             --title "WheelTalk ${{ steps.apk.outputs.version }}" \
             --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Билд владельцу в личку
+        # Секрета TELEGRAM_DM_CHAT_ID нет — шаг сюда не попадает вовсе, а не падает: личный
+        # экземпляр APK — удобство, не условие выпуска, черновик релиза выше уже на месте.
+        if: github.event_name == 'push' && secrets.TELEGRAM_DM_CHAT_ID != ''
+        continue-on-error: true   # недоступный Telegram не должен ронять релизную сборку
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_DM_CHAT_ID }}
+          CAPTION: "${{ github.ref_name }} — черновик собран"
+          APK: ${{ steps.apk.outputs.path }}
+        run: |
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "Нет секрета TELEGRAM_BOT_TOKEN — личный APK отправлять нечем, пропускаю."
+            exit 0
+          fi
+
+          # Файл — глазами до отправки: пустой $APK даёт curl загадочное «(26)», разбирали уже
+          # в telegram.yml, второй раз на этот грабль не наступаем.
+          ls -la "$APK"
+
+          # Тот же sendDocument, что и в анонс канала, но подпись короткая и без публичного
+          # текста релиза — это личный экземпляр владельцу, не объявление для всех.
+          if ! curl -sS --fail-with-body \
+            --form-string chat_id="$CHAT_ID" \
+            --form-string caption="$CAPTION" \
+            -F document=@"$APK" \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendDocument"; then
+            echo "Отправка APK владельцу в личку не прошла — черновик релиза это не отменяет."
+            exit 1
+          fi
