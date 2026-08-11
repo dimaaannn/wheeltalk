@@ -151,4 +151,21 @@ public class DividerTests
             "public bool DividerAt(int position) => _tiles[position].Tile.Kind == TileKind.Divider;",
             RepoFiles.Read(Tiles + "TilesScreen.cs"));
     }
+
+    /// <summary>
+    /// Путь человека: «выбрал вид в меню → элемент появился в раскладке». Оба обрыва этого пути
+    /// уже случались молча (11.08.2026): вид не был вписан в список пунктов меню, а
+    /// <c>TileAdapter.Entry</c> отвергал плитку без величины, зная исключение только для пустой, —
+    /// и «нажал ОК — ничего не произошло» доехало до владельца при зелёных замках ядра.
+    /// </summary>
+    [Fact]
+    public void A_divider_reaches_the_layout_from_the_menu()
+    {
+        string editor = RepoFiles.Read(Tiles + "TileEditor.cs");
+        Assert.Contains("translate(\"TilesKindDivider\")]", editor);
+        Assert.Contains("if (kind == 5) return MetricTile.Divider()", editor);
+
+        Assert.Contains("tile.Kind is TileKind.Empty or TileKind.Divider",
+            RepoFiles.Read(Tiles + "TilesScreen.cs"));
+    }
 }

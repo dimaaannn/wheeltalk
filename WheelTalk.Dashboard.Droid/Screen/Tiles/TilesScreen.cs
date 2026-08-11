@@ -1091,7 +1091,10 @@ public sealed class TilesScreen : IMainScreen
         /// </summary>
         private static (MetricTile Tile, MetricDescriptor? Metric)? Entry(MetricTile tile)
         {
-            if (tile.Kind == TileKind.Empty) return (tile, null);
+            // Пустому месту и разделителю величина не положена по виду — без этой ветки Add тихо
+            // глотал разделитель: Find("") давал null, и «нажал ОК — ничего не произошло»
+            // (баг владельца 11.08.2026).
+            if (tile.Kind is TileKind.Empty or TileKind.Divider) return (tile, null);
 
             return MetricCatalogue.Find(tile.MetricId) is { } metric ? (tile, metric) : null;
         }
