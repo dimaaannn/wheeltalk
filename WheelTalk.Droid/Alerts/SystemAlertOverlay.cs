@@ -40,6 +40,15 @@ public sealed class SystemAlertOverlay : IDisposable
     private AlertOverlayView? _view;
     private bool _lastAttempt;
 
+    /// <summary>
+    /// Мост на главный поток: <see cref="AlertBanner.Changed"/> стреляет из потока тревоги
+    /// (AlarmTone), а окна живут строго на главном — прямой <c>AddView</c> оттуда ронял процесс
+    /// SIGABRT'ом при первой же тревоге (поймано прогоном 12.08.2026). Внутренний
+    /// <see cref="AlertOverlay"/> прыгает через <c>RunOnUiThread</c> хозяина; здесь хозяина нет —
+    /// мост свой.
+    /// </summary>
+    private readonly Android.OS.Handler _main = new(Android.OS.Looper.MainLooper!);
+
     public SystemAlertOverlay(
         AlertBanner banner,
         AlertOverlay ownScreens,
@@ -76,6 +85,12 @@ public sealed class SystemAlertOverlay : IDisposable
     /// </summary>
     private void Evaluate()
     {
+        if (Android.OS.Looper.MyLooper() != Android.OS.Looper.MainLooper)
+        {
+            _main.Post(Evaluate);
+            return;
+        }
+
         string text = _banner.Text;
         bool attempt = text.Length > 0 && _channels.OverlayOtherApps && !_ownScreens.HostVisible
             && Android.Provider.Settings.CanDrawOverlays(Application.Context);
