@@ -1,4 +1,8 @@
 using Android.App;
+using Android.Content;
+using Android.Graphics;
+using Android.Graphics.Drawables;
+using Android.Views;
 
 namespace WheelTalk.Droid.Ui;
 
@@ -33,6 +37,32 @@ public sealed class OwnedWindow
         Close();
         _shown = builder.Show()!;
         return _shown;
+    }
+
+    /// <summary>
+    /// Лист снизу: окно во всю ширину, прижатое к нижнему краю, с прозрачным фоном — скругление
+    /// рисует само содержимое (макет 2c настроек). Собирается здесь, а не у хозяина, по той же
+    /// причине, по которой здесь живёт <see cref="Show"/>: окно, которое каждый создаёт сам, кто-то
+    /// однажды и забудет закрыть.
+    /// </summary>
+    public Dialog ShowSheet(Context context, View content)
+    {
+        Close();
+
+        var sheet = new Dialog(context);
+        sheet.RequestWindowFeature((int)WindowFeatures.NoTitle);
+        sheet.SetContentView(content);
+
+        if (sheet.Window is { } window)
+        {
+            window.SetBackgroundDrawable(new ColorDrawable(Color.Transparent));
+            window.SetLayout(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+            window.SetGravity(GravityFlags.Bottom);
+        }
+
+        sheet.Show();
+        _shown = sheet;
+        return sheet;
     }
 
     /// <summary>Закрыть, если ещё открыто. Зовётся хозяином на конце его жизни.</summary>

@@ -224,6 +224,13 @@ public sealed class SettingDescriptor
 
     public int Decimals { get; init; }
 
+    /// <summary>
+    /// Ноль у этой ручки значит «выключено» и показывается словом, а не цифрой. Признак живёт в
+    /// дескрипторе, чтобы разметка не держала список исключений: страница спрашивает настройку, а
+    /// не помнит шесть ключей сама.
+    /// </summary>
+    public bool ZeroDisables { get; init; }
+
     /// <summary>Stored values for <see cref="SettingKind.Choice"/>, in the order they are offered.</summary>
     public IReadOnlyList<string> Choices { get; init; } = [];
 

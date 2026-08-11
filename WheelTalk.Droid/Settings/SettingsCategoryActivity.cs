@@ -13,6 +13,7 @@ using Google.Android.Material.Chip;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Settings;
+using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Resources.Strings;
@@ -64,7 +65,24 @@ public sealed class SettingsCategoryActivity : Activity
     public const string ExtraKey = "key";
 
     private static readonly Color OverrideColor = Color.ParseColor("#FF8F00");
-    private static readonly Color BorderColor = Color.ParseColor("#40808080");
+    private static readonly Color BorderColor = Color.ParseColor("#4A4A4A");
+
+    /// <summary>Карточка раздела: заливка, обводка, черта между строками и слово заголовка (макет 2b).</summary>
+    private static readonly Color SectionFill = Color.ParseColor("#282828");
+
+    private static readonly Color SectionBorder = Color.ParseColor("#3A3A3A");
+
+    private static readonly Color RowDivider = Color.ParseColor("#333333");
+
+    private static readonly Color SectionTitleColor = Color.ParseColor("#9A9A9A");
+
+    private static readonly Color HintColor = Color.ParseColor("#8A8A8A");
+
+    /// <summary>Отбивка зависимой строки — та вертикальная черта, по которой видно, чья она.</summary>
+    private static readonly Color DependantBar = Color.ParseColor("#3F3F3F");
+
+    /// <summary>Акцент выбранного: тот же, что у корешков экранов и кнопок «Готово».</summary>
+    private static readonly Color AccentColor = Color.ParseColor("#AC99EA");
 
     /// <summary>Подсветка строки, к которой привели: гаснет сама через <see cref="HighlightMs"/>.</summary>
     private static readonly Color HighlightColor = Color.ParseColor("#33FF8F00");
@@ -106,6 +124,13 @@ public sealed class SettingsCategoryActivity : Activity
     /// <summary>Куда встать при открытии: раздел и строка из <see cref="ExtraSection"/>/<see cref="ExtraKey"/>. Срабатывает один раз.</summary>
     private string? _pendingSection;
     private string? _pendingKey;
+
+    /// <summary>
+    /// «Дополнительно» раскрыто. Поле страницы, а не настройка: раскрытое состояние живёт до ухода
+    /// со страницы и не сохраняется (план настроек §3.3). Переживает перестроение — иначе правка
+    /// соседней строки схлопывала бы список под пальцем.
+    /// </summary>
+    private bool _advancedShown;
 
     /// <summary>
     /// Окна поверх экрана — правка значения, выбор варианта, меню строки, ответ действия. Держатся
@@ -281,15 +306,19 @@ public sealed class SettingsCategoryActivity : Activity
 
         var group = new MaterialButtonToggleGroup(this) { SingleSelection = true, SelectionRequired = true };
 
+        // Кегль 14sp и цель 48 dp (план настроек §3.1): двенадцатым читалось хуже, чем строки под
+        // ним, а по высоте переключатель не дотягивал до наименьшей цели касания.
         _globalButton = new MaterialButton(this) { Text = AppStrings.SettingsLayerGlobal };
-        _globalButton.SetTextSize(ComplexUnitType.Sp, 12);
+        _globalButton.SetTextSize(ComplexUnitType.Sp, 14);
         _globalButton.Click += (_, _) => SetScope(LayeredSettings.GlobalScope);
-        group.AddView(_globalButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        group.AddView(_globalButton, new LinearLayout.LayoutParams(0, this.Dp(48), 1f));
 
-        _wheelButton = new MaterialButton(this) { Text = _wheel.Address };
-        _wheelButton.SetTextSize(ComplexUnitType.Sp, 12);
+        // «Колесо C8:3E», а не весь MAC: полный адрес занимал половину переключателя, а различают
+        // колёса по первым парам не хуже.
+        _wheelButton = new MaterialButton(this) { Text = WheelLayerName() };
+        _wheelButton.SetTextSize(ComplexUnitType.Sp, 14);
         _wheelButton.Click += (_, _) => SetScope(_wheel.Address);
-        group.AddView(_wheelButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        group.AddView(_wheelButton, new LinearLayout.LayoutParams(0, this.Dp(48), 1f));
 
         container.AddView(group, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
         return container;
@@ -400,49 +429,142 @@ public sealed class SettingsCategoryActivity : Activity
             });
         }
 
-        bool dividedAdvanced = false;
-        bool any = false;
-        foreach (var section in _binder.Page(_page, _viewScope))
+        // Разделы — карточками, «дополнительные» — отдельной стопкой под свёрнутой строкой
+        // (план настроек §3.2 и §3.3). Порядок и состав разделов прежние, из каталога.
+        var sections = _binder.Page(_page, _viewScope).ToList();
+        var plain = sections.Where(section => !section.First().Advanced).ToList();
+        var advanced = sections.Where(section => section.First().Advanced).ToList();
+
+        foreach (var section in plain) _content.AddView(SectionCard(section), CardParams());
+
+        if (advanced.Count > 0)
         {
-            any = true;
-            bool advanced = section.First().Advanced;
-            if (advanced && !dividedAdvanced)
-            {
-                dividedAdvanced = true;
-                _content.AddView(UiKit.Divider(this), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, this.Dp(1))
-                {
-                    TopMargin = this.Dp(16),
-                });
+            _content.AddView(AdvancedRow(advanced), CardParams());
 
-                var advancedLabel = new TextView(this) { Text = AppStrings.SettingsAdvanced };
-                advancedLabel.SetTextSize(ComplexUnitType.Sp, 12);
-                advancedLabel.Alpha = 0.6f;
-                _content.AddView(advancedLabel, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-                {
-                    TopMargin = this.Dp(4),
-                });
+            if (_advancedShown)
+            {
+                foreach (var section in advanced) _content.AddView(SectionCard(section), CardParams());
             }
-
-            var header = new TextView(this) { Text = TranslateExtension.Get(section.Key) };
-            header.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
-            header.SetTextSize(ComplexUnitType.Sp, 15);
-            header.SetTextColor(UiKit.PlainText(this));
-            _content.AddView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-            {
-                TopMargin = this.Dp(16),
-                BottomMargin = this.Dp(2),
-            });
-            _sectionAnchors[section.Key] = header;
-
-            foreach (var descriptor in section) _content.AddView(BuildRow(descriptor));
         }
 
-        if (!any)
+        if (sections.Count == 0)
         {
             var empty = new TextView(this) { Text = AppStrings.SettingsEmpty };
             empty.Alpha = 0.7f;
             _content.AddView(empty);
         }
+    }
+
+    private LinearLayout.LayoutParams CardParams() =>
+        new(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent) { TopMargin = this.Dp(14) };
+
+    /// <summary>
+    /// Раздел — карточка с заголовком и строками через черту, а не жирная надпись посреди списка
+    /// (план настроек §3.2). Заголовок был границей только на словах: границы у него не было, и на
+    /// «Отображении» двадцать строк читались одной стеной.
+    /// </summary>
+    private View SectionCard(IGrouping<string, SettingDescriptor> section)
+    {
+        var card = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
+        card.Background = CardBackground();
+
+        var header = new TextView(this) { Text = TranslateExtension.Get(section.Key).ToUpperInvariant() };
+        header.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        header.SetTextSize(ComplexUnitType.Sp, 13);
+        header.SetTextColor(SectionTitleColor);
+        header.LetterSpacing = 0.09f;
+        header.SetPadding(this.Dp(16), this.Dp(12), this.Dp(16), this.Dp(8));
+        card.AddView(header);
+
+        // Якорь прокрутки — сама карточка, а не заголовок внутри неё: чипы ведут к разделу, и
+        // встать он должен своим верхним краем, а не серединой.
+        _sectionAnchors[section.Key] = card;
+
+        foreach (var descriptor in section)
+        {
+            card.AddView(RowLine(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, this.Dp(1)));
+            card.AddView(BuildRow(descriptor));
+        }
+
+        return card;
+    }
+
+    /// <summary>Черта между строками карточки. Своя, а не общая <c>UiKit.Divider</c>: у той свой цвет и своя альфа, а здесь линия задана макетом.</summary>
+    private View RowLine()
+    {
+        var line = new View(this);
+        line.SetBackgroundColor(RowDivider);
+        return line;
+    }
+
+    /// <summary>
+    /// «Дополнительно · N настроек» — одна свёрнутая строка вместо черты с подписью посреди списка:
+    /// та делила список, но ничего не прятала (план настроек §3.3). Раскрытое состояние живёт до
+    /// ухода со страницы и переживает перестроение.
+    /// </summary>
+    private View AdvancedRow(List<IGrouping<string, SettingDescriptor>> advanced)
+    {
+        int count = advanced.Sum(section => section.Count());
+
+        var row = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+        row.SetGravity(GravityFlags.CenterVertical);
+        row.SetPadding(this.Dp(16), this.Dp(15), this.Dp(16), this.Dp(15));
+        row.Background = FrameBackground();
+        row.Clickable = true;
+        row.Click += (_, _) =>
+        {
+            _advancedShown = !_advancedShown;
+            Rebuild();
+        };
+
+        var words = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
+
+        var title = new TextView(this) { Text = AppStrings.SettingsAdvanced };
+        title.SetTextSize(ComplexUnitType.Sp, 17);
+        title.SetTextColor(Color.ParseColor("#D8D8D8"));
+        words.AddView(title);
+
+        var howMany = new TextView(this)
+        {
+            Text = Plural.Of(count,
+                AppStrings.SettingsSummaryCount1, AppStrings.SettingsSummaryCount2, AppStrings.SettingsSummaryCount5),
+        };
+        howMany.SetTextSize(ComplexUnitType.Sp, 13);
+        howMany.SetTextColor(HintColor);
+        words.AddView(howMany, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
+            TopMargin = this.Dp(4),
+        });
+
+        row.AddView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+        var chevron = new TextView(this) { Text = _advancedShown ? "⌃" : "⌄" };
+        chevron.SetTextSize(ComplexUnitType.Sp, 18);
+        chevron.SetTextColor(HintColor);
+        row.AddView(chevron);
+
+        return row;
+    }
+
+    private Drawable CardBackground()
+    {
+        var drawable = new GradientDrawable();
+        drawable.SetShape(ShapeType.Rectangle);
+        drawable.SetCornerRadius(this.Dp(14));
+        drawable.SetColor(SectionFill);
+        drawable.SetStroke(this.Dp(1), SectionBorder);
+        return drawable;
+    }
+
+    /// <summary>Рамка без заливки — у свёрнутой строки «Дополнительно»: она не раздел, и весом выглядеть как раздел не должна.</summary>
+    private Drawable FrameBackground()
+    {
+        var drawable = new GradientDrawable();
+        drawable.SetShape(ShapeType.Rectangle);
+        drawable.SetCornerRadius(this.Dp(14));
+        drawable.SetStroke(this.Dp(1), SectionBorder);
+        return drawable;
     }
 
     /// <summary>
@@ -455,72 +577,68 @@ public sealed class SettingsCategoryActivity : Activity
         var resolved = _binder.Read(descriptor, _viewScope);
 
         var card = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
-        card.SetPadding(0, this.Dp(8), 0, this.Dp(8));
+        card.SetPadding(this.Dp(16), this.Dp(12), this.Dp(16), this.Dp(14));
 
         var top = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
         top.SetGravity(GravityFlags.CenterVertical);
 
-        var title = new TextView(this) { Text = TranslateExtension.Get(descriptor.LabelKey) };
-        title.SetTextSize(ComplexUnitType.Sp, 15);
-        title.SetTextColor(UiKit.PlainText(this));
-        top.AddView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
-
-        // Ползунок ведут пальцем во всю его длину, поэтому он идёт отдельной строкой под подписью,
-        // а не в узкую колонку справа, где живут значения.
-        var editor = BuildEditor(descriptor, resolved);
-        bool ownRow = descriptor.Kind == SettingKind.Slider;
-        if (!ownRow) top.AddView(editor);
-
-        if (CanOpenMenu(descriptor, resolved))
+        // Зависимая строка стоит с отбивкой и чертой слева: видно, чья она (план настроек §3.4).
+        // Сама логика видимости не меняется — это только вид.
+        if (descriptor.IsVisible is not null)
         {
-            var menu = new TextView(this) { Text = AppStrings.SettingsRowMenu };
-            menu.SetTextSize(ComplexUnitType.Sp, 18);
-            menu.Alpha = 0.6f;
-            menu.SetPadding(this.Dp(12), 0, 0, 0);
-            menu.Clickable = true;
-            menu.Click += (_, _) => ShowRowMenu(descriptor, resolved);
-            top.AddView(menu);
+            top.SetPadding(this.Dp(14), 0, 0, 0);
+            top.Background = DependantEdge();
         }
 
-        card.AddView(top);
+        bool inPlace = EditsInPlace(descriptor);
 
-        if (ownRow)
+        var words = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
+
+        var title = new TextView(this) { Text = TranslateExtension.Get(descriptor.LabelKey) };
+        title.SetTextSize(ComplexUnitType.Sp, 17);
+        title.SetTextColor(UiKit.PlainText(this));
+        words.AddView(title);
+
+        // У строки, правящейся на месте, подсказка уезжает под ползунок, к диапазону: наверху её
+        // место занимают «−», значение и «+» (макет 2b).
+        if (!inPlace && descriptor.HintKey is { } hintKey)
         {
-            card.AddView(editor, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            var hint = new TextView(this) { Text = TranslateExtension.Get(hintKey) };
+            hint.SetTextSize(ComplexUnitType.Sp, 13);
+            hint.SetTextColor(HintColor);
+            words.AddView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
             {
                 TopMargin = this.Dp(4),
             });
         }
 
-        string? meta = BuildMeta(descriptor, resolved);
-        if (meta is not null)
-        {
-            var metaLabel = new TextView(this) { Text = meta };
-            metaLabel.SetTextSize(ComplexUnitType.Sp, 12);
-            if (resolved.IsOverridden)
-            {
-                metaLabel.SetTextColor(OverrideColor);
-                metaLabel.Alpha = 1f;
-            }
-            else
-            {
-                metaLabel.Alpha = 0.6f;
-            }
+        top.AddView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-            card.AddView(metaLabel, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        // Ползунок прослушивания ведут пальцем во всю его длину, поэтому он идёт отдельной строкой
+        // под подписью, а не в узкую колонку справа, где живут значения.
+        bool ownRow = descriptor.Kind == SettingKind.Slider;
+
+        if (inPlace) AddInPlaceNumber(card, top, descriptor, resolved);
+        else if (!ownRow && !ShowsChoiceButtons(descriptor)) top.AddView(BuildEditor(descriptor, resolved));
+
+        card.AddView(top, 0);
+
+        if (ownRow)
+        {
+            card.AddView(BuildEditor(descriptor, resolved), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
             {
-                TopMargin = this.Dp(2),
+                TopMargin = this.Dp(4),
             });
         }
 
-        if (descriptor.HintKey is { } hintKey)
+        // Выбор из двух-трёх показывается сразу кнопками под подписью — без диалога (план §3.5).
+        if (ShowsChoiceButtons(descriptor))
         {
-            var hint = new TextView(this) { Text = TranslateExtension.Get(hintKey) };
-            hint.SetTextSize(ComplexUnitType.Sp, 12);
-            hint.Alpha = 0.55f;
-            card.AddView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+            card.AddView(ChoiceButtons(descriptor, resolved), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
             {
-                TopMargin = this.Dp(2),
+                TopMargin = this.Dp(10),
             });
         }
 
@@ -539,6 +657,17 @@ public sealed class SettingsCategoryActivity : Activity
         }
 
         if (BuildRelatedLinks(descriptor) is { } links) card.AddView(links);
+
+        // Слой меняется долгим нажатием по всей строке, а не только по окну значения: у
+        // переключателя и у выбора кнопками окна значения нет вовсе, а меню «⋮» ушло (план §4.3).
+        if (HasLayers(descriptor))
+        {
+            card.LongClick += (_, e) =>
+            {
+                ShowStorageSheet(descriptor, resolved);
+                e.Handled = true;
+            };
+        }
 
         _rowCards[descriptor.Key] = card;
         return card;
@@ -575,29 +704,157 @@ public sealed class SettingsCategoryActivity : Activity
         return row;
     }
 
-    /// <summary>Layer the value came from, plus — for numbers, always — the range: "70 % · Колесо AA:BB". Snap of МAUI's ScopeLabel/rows, minus the menu they needed a second glance to notice.</summary>
-    private string? BuildMeta(SettingDescriptor descriptor, ResolvedSetting resolved)
-    {
-        // У действия, прослушивания и справки нет ни значения в слоях, ни слоя, из которого оно пришло.
-        if (descriptor.ReportedByWheel
-            || descriptor.Kind is SettingKind.Action or SettingKind.Slider or SettingKind.Note)
-        {
-            return null;
-        }
+    /// <summary>
+    /// Правится ли строка на месте: «−», значение, «+» и ползунок прямо в строке (план §4.1).
+    /// Мерка — сколько шагов в диапазоне: до сотни значение перебирается кнопкой за разумное время,
+    /// дальше нужен лист с полем ввода. Смена порога стоила четырёх касаний, стала одного.
+    /// </summary>
+    private static bool EditsInPlace(SettingDescriptor descriptor) =>
+        descriptor.Kind == SettingKind.Number
+        && !descriptor.ReportedByWheel
+        && descriptor.Step > 0
+        && (descriptor.Maximum - descriptor.Minimum) / descriptor.Step <= 100;
 
-        string origin = resolved.Origin switch
+    /// <summary>
+    /// Правка числа на месте: кластер «− значение +» встаёт справа от подписи, ползунок и строка
+    /// «подсказка · диапазон» — под ними, во всю ширину карточки.
+    /// <para>
+    /// Кнопки пишут сразу (<see cref="Commit"/>, то есть с перестроением), <b>ползунок — по
+    /// отпусканию</b>: перестроение на каждый шаг оборвало бы сам жест. Это та же оговорка, что
+    /// сделана для прослушивания, только там <c>Set</c> идёт вовсе мимо перестроения.
+    /// </para>
+    /// </summary>
+    private void AddInPlaceNumber(LinearLayout card, LinearLayout top, SettingDescriptor descriptor, ResolvedSetting resolved)
+    {
+        double current = Math.Clamp(
+            SettingsFormat.ParseNumber(resolved.Value ?? descriptor.Current()), descriptor.Minimum, descriptor.Maximum);
+        double span = descriptor.Maximum - descriptor.Minimum;
+        int steps = Math.Max(1, (int)Math.Round(span / descriptor.Step));
+
+        var readout = new TextView(this) { Text = ValueWord(descriptor, current), Gravity = GravityFlags.Center };
+        readout.SetTextSize(ComplexUnitType.Sp, 19);
+        readout.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        readout.SetTextColor(resolved.IsOverridden ? OverrideColor : UiKit.PlainText(this));
+        readout.SetMinimumWidth(this.Dp(64));
+
+        // Слой у такой строки меняется долгим нажатием на значение — тем же листом, но без ползунка
+        // (план §4.3): меню «⋮» ушло, а место для ряда «Где хранить» в строке взять негде.
+        readout.Clickable = true;
+        readout.LongClick += (_, e) =>
         {
-            SettingOrigin.Wheel => string.Format(CultureInfo.CurrentCulture, AppStrings.SettingsLayerWheel, _wheel.Address),
-            SettingOrigin.Global => AppStrings.SettingsLayerGlobal,
-            _ => AppStrings.SettingsLayerFactory,
+            ShowStorageSheet(descriptor, resolved);
+            e.Handled = true;
         };
 
-        if (descriptor.Kind != SettingKind.Number) return origin;
+        var cluster = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+        cluster.SetGravity(GravityFlags.CenterVertical);
+        cluster.AddView(StepButton("−", () => StepBy(descriptor, current, -1)));
+        cluster.AddView(readout, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+        {
+            LeftMargin = this.Dp(10),
+            RightMargin = this.Dp(10),
+        });
+        cluster.AddView(StepButton("+", () => StepBy(descriptor, current, +1)));
+        top.AddView(cluster);
 
+        var slider = new SeekBar(this)
+        {
+            Max = steps,
+            Progress = span > 0 ? (int)Math.Round((current - descriptor.Minimum) / span * steps) : 0,
+        };
+        slider.SetMinimumHeight(this.Dp(48));
+        slider.ProgressChanged += (_, e) =>
+        {
+            if (e.FromUser) readout.Text = ValueWord(descriptor, At(descriptor, e.Progress, steps));
+        };
+        slider.StopTrackingTouch += (_, e) =>
+            Commit(descriptor, SettingsFormat.Store(descriptor, At(descriptor, e.SeekBar?.Progress ?? 0, steps)));
+
+        card.AddView(slider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
+            TopMargin = this.Dp(6),
+        });
+
+        var footer = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+
+        var hint = new TextView(this)
+        {
+            Text = descriptor.HintKey is { } hintKey ? TranslateExtension.Get(hintKey) : "",
+        };
+        hint.SetTextSize(ComplexUnitType.Sp, 13);
+        hint.SetTextColor(HintColor);
+        footer.AddView(hint, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+        var range = new TextView(this) { Text = RangeText(descriptor) };
+        range.SetTextSize(ComplexUnitType.Sp, 13);
+        range.SetTextColor(HintColor);
+        footer.AddView(range, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+        {
+            LeftMargin = this.Dp(10),
+        });
+
+        card.AddView(footer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
+            TopMargin = this.Dp(6),
+        });
+    }
+
+    /// <summary>Значение под этим делением ползунка — округлённое по шагу и прижатое к границам.</summary>
+    private static double At(SettingDescriptor descriptor, int progress, int steps)
+    {
+        double span = descriptor.Maximum - descriptor.Minimum;
+        double raw = descriptor.Minimum + (double)progress / steps * span;
+        return Math.Clamp(SettingsFormat.Snap(descriptor, raw), descriptor.Minimum, descriptor.Maximum);
+    }
+
+    private void StepBy(SettingDescriptor descriptor, double current, int direction)
+    {
+        double next = Math.Clamp(
+            SettingsFormat.Snap(descriptor, current + direction * descriptor.Step), descriptor.Minimum, descriptor.Maximum);
+        Commit(descriptor, SettingsFormat.Store(descriptor, next));
+    }
+
+    /// <summary>Квадратная кнопка шага. 38 dp — цель касания у ± по макету; ползунку своя, 48 dp.</summary>
+    private View StepButton(string sign, Action tapped)
+    {
+        var button = new TextView(this) { Text = sign, Gravity = GravityFlags.Center };
+        button.SetTextSize(ComplexUnitType.Sp, 22);
+        button.SetTextColor(Color.ParseColor("#DDDDDD"));
+        button.Clickable = true;
+        button.Click += (_, _) => tapped();
+        button.Background = Framed(this.Dp(9), this.Dp(1), BorderColor);
+        button.LayoutParameters = new LinearLayout.LayoutParams(this.Dp(38), this.Dp(38));
+        return button;
+    }
+
+    /// <summary>
+    /// Чем сказано значение: числом с единицей либо словом «выкл.», если у ручки ноль выключает
+    /// (<see cref="SettingDescriptor.ZeroDisables"/>). Правило одно на все шесть таких ручек и живёт
+    /// в дескрипторе, а не списком исключений в разметке (план §3.4).
+    /// </summary>
+    private static string ValueWord(SettingDescriptor descriptor, double value) =>
+        descriptor.ZeroDisables && value == 0 ? AppStrings.SettingsValueOff : SettingsFormat.Display(descriptor, value);
+
+    private static string RangeText(SettingDescriptor descriptor)
+    {
         string range = $"{SettingsFormat.Store(descriptor, descriptor.Minimum)}–{SettingsFormat.Store(descriptor, descriptor.Maximum)}";
-        return descriptor.UnitKey is { } unit
-            ? $"{range} {TranslateExtension.Get(unit)} · {origin}"
-            : $"{range} · {origin}";
+        return descriptor.UnitKey is { } unit ? $"{range} {TranslateExtension.Get(unit)}" : range;
+    }
+
+    /// <summary>
+    /// Отбивка зависимой строки: черта слева во всю её высоту. Обводка нужна одна, левая, — три
+    /// остальные уводятся за край вставкой, потому что своей «границы слева» у
+    /// <see cref="GradientDrawable"/> нет.
+    /// </summary>
+    private Drawable DependantEdge()
+    {
+        var bar = new GradientDrawable();
+        bar.SetShape(ShapeType.Rectangle);
+        bar.SetColor(Color.Transparent);
+        bar.SetStroke(this.Dp(2), DependantBar);
+        return new InsetDrawable(bar, 0, -this.Dp(2), -this.Dp(2), -this.Dp(2));
     }
 
     private View BuildEditor(SettingDescriptor descriptor, ResolvedSetting resolved)
@@ -625,23 +882,23 @@ public sealed class SettingsCategoryActivity : Activity
             case SettingKind.Number:
             {
                 double current = Math.Clamp(SettingsFormat.ParseNumber(value), descriptor.Minimum, descriptor.Maximum);
-                var readout = Outlined(SettingsFormat.Display(descriptor, current), resolved.IsOverridden);
-                readout.Click += (_, _) => EditNumber(descriptor, current);
-                return readout;
+                var readout = Outlined(descriptor, ValueWord(descriptor, current), resolved, descriptor.ZeroDisables && current == 0);
+                readout.Click += (_, _) => ShowNumberSheet(descriptor, resolved, current);
+                return ValueBlock(readout, descriptor, resolved);
             }
 
             case SettingKind.Choice:
             {
-                var readout = Outlined(SettingsFormat.ChoiceLabel(descriptor, value), resolved.IsOverridden);
+                var readout = Outlined(descriptor, SettingsFormat.ChoiceLabel(descriptor, value), resolved, dashed: false);
                 readout.Click += (_, _) => EditChoice(descriptor, value);
-                return readout;
+                return ValueBlock(readout, descriptor, resolved);
             }
 
             case SettingKind.Text:
             {
-                var readout = Outlined(value.Length > 0 ? value : AppStrings.SettingsTextEmpty, resolved.IsOverridden);
+                var readout = Outlined(descriptor, value.Length > 0 ? value : AppStrings.SettingsTextEmpty, resolved, dashed: false);
                 readout.Click += (_, _) => EditText(descriptor, value);
-                return readout;
+                return ValueBlock(readout, descriptor, resolved);
             }
 
             case SettingKind.Slider:
@@ -679,23 +936,150 @@ public sealed class SettingsCategoryActivity : Activity
         }
     }
 
-    private TextView Outlined(string text, bool overridden)
+    /// <summary>
+    /// Окно значения. Переопределённое — обводка 2 dp янтарём (подпись «своё» добавляет
+    /// <see cref="ValueBlock"/>), заводское — тонкая серая, «выключено» — пунктир и приглушённое
+    /// слово: рамка сама говорит, что число тут не работает (план §3.4).
+    /// </summary>
+    private TextView Outlined(SettingDescriptor descriptor, string text, ResolvedSetting resolved, bool dashed)
     {
         var view = new TextView(this) { Text = text };
-        view.SetTextSize(ComplexUnitType.Sp, 14);
-        view.SetTextColor(UiKit.PlainText(this));
-        view.SetPadding(this.Dp(10), this.Dp(4), this.Dp(10), this.Dp(4));
+        view.SetTextSize(ComplexUnitType.Sp, dashed ? 15 : 17);
+        view.SetTypeface(dashed ? Typeface.Default : Typeface.DefaultBold, dashed ? TypefaceStyle.Normal : TypefaceStyle.Bold);
+        view.SetTextColor(dashed ? HintColor : UiKit.PlainText(this));
+        view.SetPadding(this.Dp(12), this.Dp(7), this.Dp(12), this.Dp(7));
         view.Clickable = true;
-        view.Background = EditorBackground(overridden);
+        view.Background = EditorBackground(resolved.IsOverridden, dashed);
+
+        // Слой меняется долгим нажатием на само значение: меню «⋮» ушло, а лист без ползунка даёт
+        // тот же ряд «Где хранить» (план §4.3).
+        view.LongClick += (_, e) =>
+        {
+            ShowStorageSheet(descriptor, resolved);
+            e.Handled = true;
+        };
+
         return view;
     }
 
-    private Drawable EditorBackground(bool overridden)
+    /// <summary>Значение и, если оно своё, подпись «своё» под ним — тем же янтарём, что обводка.</summary>
+    private View ValueBlock(View readout, SettingDescriptor descriptor, ResolvedSetting resolved)
+    {
+        if (!resolved.IsOverridden) return readout;
+
+        var block = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
+        block.SetGravity(GravityFlags.End);
+        block.AddView(readout);
+
+        var own = new TextView(this) { Text = AppStrings.SettingsValueOwn };
+        own.SetTextSize(ComplexUnitType.Sp, 12);
+        own.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        own.SetTextColor(OverrideColor);
+        block.AddView(own, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+        {
+            TopMargin = this.Dp(5),
+            Gravity = GravityFlags.End,
+        });
+
+        return block;
+    }
+
+    private Drawable EditorBackground(bool overridden, bool dashed)
     {
         var drawable = new GradientDrawable();
         drawable.SetShape(ShapeType.Rectangle);
-        drawable.SetCornerRadius(this.Dp(6));
+        drawable.SetCornerRadius(this.Dp(9));
+
+        if (dashed)
+        {
+            drawable.SetStroke(this.Dp(1), BorderColor, this.Dp(4), this.Dp(3));
+            return drawable;
+        }
+
         drawable.SetStroke(this.Dp(overridden ? 2 : 1), overridden ? OverrideColor : BorderColor);
+        return drawable;
+    }
+
+    /// <summary>Выбор показывается кнопками, пока их не больше трёх: диалог ради двух вариантов — три касания вместо одного (план §3.5).</summary>
+    private static bool ShowsChoiceButtons(SettingDescriptor descriptor) =>
+        descriptor.Kind == SettingKind.Choice && !descriptor.ReportedByWheel && descriptor.Choices.Count is > 0 and <= 3;
+
+    /// <summary>
+    /// Варианты кнопками в строку. У палитры к подписи добавляются три её же цвета
+    /// (<see cref="DashboardPalette.Calm"/>/<see cref="DashboardPalette.Caution"/>/<see cref="DashboardPalette.Danger"/>):
+    /// имя «Ванг» ничего не говорит тому, кто их не видел (план §3.5).
+    /// </summary>
+    private View ChoiceButtons(SettingDescriptor descriptor, ResolvedSetting resolved)
+    {
+        string value = resolved.Value ?? descriptor.Current();
+
+        var row = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+
+        foreach (string choice in descriptor.Choices)
+        {
+            bool picked = choice == value;
+
+            var button = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+            button.SetGravity(GravityFlags.Center);
+            button.SetPadding(this.Dp(10), this.Dp(10), this.Dp(10), this.Dp(10));
+            button.Background = Framed(this.Dp(10), this.Dp(picked ? 2 : 1), picked ? AccentColor : BorderColor);
+            button.Clickable = true;
+            button.Click += (_, _) => Commit(descriptor, choice);
+
+            if (DashboardPalette.All.FirstOrDefault(palette => palette.Name == choice) is { } swatch)
+            {
+                button.AddView(Swatches(swatch), new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
+                {
+                    RightMargin = this.Dp(8),
+                });
+            }
+
+            var label = new TextView(this) { Text = SettingsFormat.ChoiceLabel(descriptor, choice) };
+            label.SetTextSize(ComplexUnitType.Sp, 15);
+            label.SetTextColor(picked ? UiKit.PlainText(this) : Color.ParseColor("#CFCFCF"));
+            if (picked) label.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+            button.AddView(label);
+
+            row.AddView(button, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f)
+            {
+                LeftMargin = row.ChildCount > 0 ? this.Dp(8) : 0,
+            });
+        }
+
+        return row;
+    }
+
+    /// <summary>Три полоски цветов палитры — то, чем она отличается от соседки, показанное, а не названное.</summary>
+    private View Swatches(DashboardPalette palette)
+    {
+        var strip = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+
+        foreach (var color in new[] { palette.Calm, palette.Caution, palette.Danger })
+        {
+            var swatch = new View(this);
+            var fill = new GradientDrawable();
+            fill.SetShape(ShapeType.Rectangle);
+            fill.SetCornerRadius(this.Dp(2));
+            fill.SetColor(color);
+            swatch.Background = fill;
+            strip.AddView(swatch, new LinearLayout.LayoutParams(this.Dp(12), this.Dp(20))
+            {
+                LeftMargin = strip.ChildCount > 0 ? this.Dp(3) : 0,
+            });
+        }
+
+        return strip;
+    }
+
+    /// <summary>Скруглённая рамка без заливки — общий вид кнопок листа, шага и вариантов.</summary>
+    private Drawable Framed(int radius, int stroke, Color color)
+    {
+        var drawable = new GradientDrawable();
+        drawable.SetShape(ShapeType.Rectangle);
+        drawable.SetCornerRadius(radius);
+        drawable.SetStroke(stroke, color);
         return drawable;
     }
 
@@ -736,91 +1120,338 @@ public sealed class SettingsCategoryActivity : Activity
     }
 
     /// <summary>
-    /// "диалог со слайдером/EditText" for wide ranges (settings-redesign.md §4).
+    /// Лист правки числа — для широких диапазонов, где ± кнопкой не набрать (макет 2c, план §4.2):
+    /// крупное значение, ползунок с подписями концов, поле для точного ввода и ряд «Где хранить».
+    /// Диалога с меню «⋮» больше нет — слой выбирается здесь же.
     /// </summary>
-    private void EditNumber(SettingDescriptor descriptor, double current)
+    private void ShowNumberSheet(SettingDescriptor descriptor, ResolvedSetting resolved, double current)
     {
-        var container = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
-        int padH = this.Dp(20);
-        container.SetPadding(padH, this.Dp(8), padH, 0);
+        double span = descriptor.Maximum - descriptor.Minimum;
+        int steps = descriptor.Step > 0 ? Math.Max(1, (int)Math.Round(span / descriptor.Step)) : 100;
+        double value = current;
 
-        if (descriptor.HintKey is { } hintKey)
-        {
-            var hint = new TextView(this) { Text = TranslateExtension.Get(hintKey) };
-            hint.SetTextSize(ComplexUnitType.Sp, 13);
-            hint.Alpha = 0.75f;
-            container.AddView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-            {
-                BottomMargin = this.Dp(8),
-            });
-        }
+        var sheet = SheetRoot();
+        sheet.AddView(SheetGrabber());
+        sheet.AddView(SheetTitle(TranslateExtension.Get(descriptor.LabelKey)));
 
-        var range = new TextView(this)
+        if (descriptor.HintKey is { } hintKey) sheet.AddView(SheetHint(TranslateExtension.Get(hintKey)));
+
+        var readout = new TextView(this) { Text = ValueWord(descriptor, value), Gravity = GravityFlags.Center };
+        readout.SetTextSize(ComplexUnitType.Sp, 44);
+        readout.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        readout.SetTextColor(UiKit.PlainText(this));
+
+        var slider = new SeekBar(this)
         {
-            Text = string.Format(
-                CultureInfo.CurrentCulture,
-                AppStrings.SettingsRange,
-                SettingsFormat.Display(descriptor, descriptor.Minimum),
-                SettingsFormat.Display(descriptor, descriptor.Maximum)),
+            Max = steps,
+            Progress = span > 0 ? (int)Math.Round((value - descriptor.Minimum) / span * steps) : 0,
         };
-        range.SetTextSize(ComplexUnitType.Sp, 12);
-        range.Alpha = 0.7f;
-        container.AddView(range, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-        {
-            BottomMargin = this.Dp(6),
-        });
 
-        var input = new EditText(this) { Text = SettingsFormat.Store(descriptor, current) };
+        var input = new EditText(this) { Text = SettingsFormat.Store(descriptor, value) };
         var inputType = InputTypes.ClassNumber | InputTypes.NumberFlagDecimal;
         if (descriptor.Minimum < 0) inputType |= InputTypes.NumberFlagSigned;
         input.InputType = inputType;
-        container.AddView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
-        double span = descriptor.Maximum - descriptor.Minimum;
-        int steps = descriptor.Step > 0 ? Math.Max(1, (int)Math.Round(span / descriptor.Step)) : 100;
-        var slider = new SeekBar(this) { Max = steps };
-        slider.Progress = span > 0 ? (int)Math.Round((current - descriptor.Minimum) / span * steps) : 0;
-        container.AddView(slider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
-        {
-            TopMargin = this.Dp(8),
-        });
-
-        // Слайдер и поле правят одно и то же число — guard, а не два независимых источника правды,
-        // иначе ввод в поле дёргал бы слайдер обратно на каждый символ.
+        // Слайдер, поле и крупное число правят одно и то же — сторож, а не три источника правды,
+        // иначе ввод в поле дёргал бы ползунок обратно на каждый символ. Перенесено из EditNumber
+        // как есть, вместе с заменой запятой на точку и разбором по инвариантной культуре.
         bool syncing = false;
+
+        void ShowValue(double next, bool fromInput)
+        {
+            value = Math.Clamp(next, descriptor.Minimum, descriptor.Maximum);
+            readout.Text = ValueWord(descriptor, value);
+
+            syncing = true;
+            if (span > 0) slider.Progress = (int)Math.Round((value - descriptor.Minimum) / span * steps);
+            if (!fromInput)
+            {
+                string text = SettingsFormat.Store(descriptor, value);
+                input.Text = text;
+                input.SetSelection(text.Length);
+            }
+
+            syncing = false;
+        }
+
+        var numberRow = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+        numberRow.SetGravity(GravityFlags.CenterVertical);
+        numberRow.AddView(SheetStep("−", () => ShowValue(SettingsFormat.Snap(descriptor, value - descriptor.Step), false)));
+        numberRow.AddView(readout, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        numberRow.AddView(SheetStep("+", () => ShowValue(SettingsFormat.Snap(descriptor, value + descriptor.Step), false)));
+        sheet.AddView(numberRow, SheetGap(this.Dp(22)));
+
         slider.ProgressChanged += (_, e) =>
         {
-            if (!e.FromUser || syncing || span <= 0) return;
-            syncing = true;
-            double v = descriptor.Minimum + (double)e.Progress / steps * span;
-            string text = SettingsFormat.Store(descriptor, SettingsFormat.Snap(descriptor, v));
-            input.Text = text;
-            input.SetSelection(text.Length);
-            syncing = false;
+            if (e.FromUser && !syncing) ShowValue(At(descriptor, e.Progress, steps), false);
         };
+        sheet.AddView(slider, SheetGap(this.Dp(16)));
+
+        var ends = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+
+        // У ручки, где ноль выключает, левый конец шкалы так и сказан словом: «0» там значит не
+        // «мало», а «зоны нет вовсе».
+        var low = new TextView(this)
+        {
+            Text = descriptor.ZeroDisables && descriptor.Minimum == 0
+                ? $"0 — {AppStrings.SettingsValueOff}"
+                : SettingsFormat.Display(descriptor, descriptor.Minimum),
+        };
+        low.SetTextSize(ComplexUnitType.Sp, 13);
+        low.SetTextColor(HintColor);
+        ends.AddView(low, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+        var high = new TextView(this) { Text = SettingsFormat.Display(descriptor, descriptor.Maximum) };
+        high.SetTextSize(ComplexUnitType.Sp, 13);
+        high.SetTextColor(HintColor);
+        ends.AddView(high);
+        sheet.AddView(ends, SheetGap(this.Dp(10)));
+
         input.TextChanged += (_, _) =>
         {
-            if (syncing || span <= 0) return;
-            syncing = true;
-            double v = SettingsFormat.ParseNumber((input.Text ?? "").Replace(',', '.'));
-            double clamped = Math.Clamp(v, descriptor.Minimum, descriptor.Maximum);
-            slider.Progress = (int)Math.Round((clamped - descriptor.Minimum) / span * steps);
-            syncing = false;
+            if (syncing) return;
+            ShowValue(SettingsFormat.ParseNumber((input.Text ?? "").Replace(',', '.')), true);
+        };
+        sheet.AddView(input, SheetGap(this.Dp(10)));
+
+        sheet.AddView(StorageRow(descriptor, resolved), SheetGap(this.Dp(20)));
+
+        sheet.AddView(SheetButtons(AppStrings.SettingsAccept, () =>
+            Commit(descriptor, SettingsFormat.Store(descriptor, Math.Clamp(
+                SettingsFormat.Snap(descriptor, value), descriptor.Minimum, descriptor.Maximum)))), SheetGap(this.Dp(22)));
+
+        _windows.ShowSheet(this, sheet);
+    }
+
+    /// <summary>
+    /// Тот же лист без числа — им меняют слой у строк, правящихся на месте, и у переключателей
+    /// (план §4.3): меню «⋮» ушло, а ряд «Где хранить» показать всё равно где-то надо.
+    /// </summary>
+    /// <summary>
+    /// Есть ли у строки слои вовсе. У сообщённого колесом, сеансовой, действия, прослушивания и
+    /// справки значения в слоях нет — и хранить им нечего.
+    /// </summary>
+    private static bool HasLayers(SettingDescriptor descriptor) =>
+        !descriptor.ReportedByWheel
+        && !descriptor.Transient
+        && descriptor.Kind is not (SettingKind.Action or SettingKind.Slider or SettingKind.Note);
+
+    private void ShowStorageSheet(SettingDescriptor descriptor, ResolvedSetting resolved)
+    {
+        if (!HasLayers(descriptor)) return;
+
+        var sheet = SheetRoot();
+        sheet.AddView(SheetGrabber());
+        sheet.AddView(SheetTitle(TranslateExtension.Get(descriptor.LabelKey)));
+        sheet.AddView(SheetHint(SettingsFormat.ValueText(descriptor, resolved)));
+        sheet.AddView(StorageRow(descriptor, resolved), SheetGap(this.Dp(20)));
+        sheet.AddView(SheetButtons(AppStrings.SettingsAccept, () => { }), SheetGap(this.Dp(22)));
+
+        _windows.ShowSheet(this, sheet);
+    }
+
+    /// <summary>
+    /// Ряд «Где хранить»: <b>Заводское · Общее · Это колесо</b>, отмечен тот слой, откуда значение
+    /// пришло (план §4.3). Команды — те же три, что были в меню строки, и запреты те же: у
+    /// <see cref="SettingDescriptor.WheelOnly"/> нет «Общего», у <see cref="SettingDescriptor.GlobalOnly"/>
+    /// — «Этого колеса».
+    /// <para>
+    /// «Заводское» снимает <b>один</b> слой, а не оба разом: своё значение возвращает к общему, и
+    /// только у общего — к заводскому. Это семантика слоёв, и трогать её план запрещает.
+    /// </para>
+    /// </summary>
+    private View StorageRow(SettingDescriptor descriptor, ResolvedSetting resolved)
+    {
+        var block = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
+
+        block.AddView(SheetSectionTitle(AppStrings.SettingsWhereToStore));
+
+        var row = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+        row.SetPadding(0, this.Dp(10), 0, 0);
+
+        void Add(string caption, bool picked, Action tapped) =>
+            row.AddView(StorageChip(caption, picked, tapped), new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WrapContent, 1f)
+            {
+                LeftMargin = row.ChildCount > 0 ? this.Dp(8) : 0,
+            });
+
+        Add(AppStrings.SettingsLayerFactory, resolved.Origin == SettingOrigin.Factory, () =>
+        {
+            if (resolved.IsOverridden) _binder.ClearOverride(descriptor, _viewScope);
+            else _binder.ClearGlobal(descriptor);
+            Rebuild();
+        });
+
+        if (!descriptor.WheelOnly)
+        {
+            Add(AppStrings.SettingsLayerGlobal, resolved.Origin == SettingOrigin.Global, () =>
+            {
+                if (resolved.IsOverridden) _binder.PromoteToGlobal(descriptor, _viewScope);
+                else _binder.Set(descriptor, resolved.Value ?? descriptor.Current(), LayeredSettings.GlobalScope);
+                Rebuild();
+            });
+        }
+
+        if (!descriptor.GlobalOnly && _wheel.Address.Length > 0)
+        {
+            Add(WheelLayerName(), resolved.Origin == SettingOrigin.Wheel, () =>
+            {
+                _binder.Set(descriptor, resolved.Value ?? descriptor.Current(), _wheel.Address);
+                Rebuild();
+            });
+        }
+
+        block.AddView(row);
+        return block;
+    }
+
+    /// <summary>
+    /// Как зовётся слой колеса там, где места мало: «Колесо C8:3E» — тем же ключом, что и полное
+    /// имя, но с укороченным адресом. Полный MAC в треть ряда не встаёт, а различают колёса по
+    /// первым парам не хуже, чем по всем шести.
+    /// </summary>
+    private string WheelLayerName() =>
+        string.Format(CultureInfo.CurrentCulture, AppStrings.SettingsLayerWheel, ShortMac(_wheel.Address));
+
+    private static string ShortMac(string address) =>
+        address.Length >= 5 ? address[..5] : address;
+
+    private View StorageChip(string caption, bool picked, Action tapped)
+    {
+        var chip = new TextView(this) { Text = caption, Gravity = GravityFlags.Center };
+        chip.SetTextSize(ComplexUnitType.Sp, 14);
+        chip.SetTextColor(picked ? OverrideColor : Color.ParseColor("#CFCFCF"));
+        if (picked) chip.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        chip.SetPadding(0, this.Dp(11), 0, this.Dp(11));
+        chip.Background = Framed(this.Dp(10), this.Dp(picked ? 2 : 1), picked ? OverrideColor : BorderColor);
+        chip.Clickable = true;
+        chip.Click += (_, _) =>
+        {
+            _windows.Close();
+            tapped();
+        };
+        return chip;
+    }
+
+    // ---- Кирпичи листа ------------------------------------------------------------------------
+
+    private LinearLayout SheetRoot()
+    {
+        var sheet = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
+        sheet.SetPadding(this.Dp(20), this.Dp(14), this.Dp(20), this.Dp(26));
+
+        var background = new GradientDrawable();
+        background.SetShape(ShapeType.Rectangle);
+        float radius = this.Dp(22);
+        background.SetCornerRadii([radius, radius, radius, radius, 0, 0, 0, 0]);
+        background.SetColor(SectionFill);
+        sheet.Background = background;
+
+        return sheet;
+    }
+
+    private View SheetGrabber()
+    {
+        var grabber = new View(this);
+        var fill = new GradientDrawable();
+        fill.SetShape(ShapeType.Rectangle);
+        fill.SetCornerRadius(this.Dp(2));
+        fill.SetColor(BorderColor);
+        grabber.Background = fill;
+        grabber.LayoutParameters = new LinearLayout.LayoutParams(this.Dp(40), this.Dp(4))
+        {
+            Gravity = GravityFlags.CenterHorizontal,
+            BottomMargin = this.Dp(18),
+        };
+        return grabber;
+    }
+
+    private TextView SheetTitle(string text)
+    {
+        var title = new TextView(this) { Text = text };
+        title.SetTextSize(ComplexUnitType.Sp, 22);
+        title.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        title.SetTextColor(UiKit.PlainText(this));
+        return title;
+    }
+
+    private TextView SheetHint(string text)
+    {
+        var hint = new TextView(this) { Text = text };
+        hint.SetTextSize(ComplexUnitType.Sp, 14);
+        hint.SetTextColor(Color.ParseColor("#9A9A9A"));
+        hint.LayoutParameters = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
+        {
+            TopMargin = this.Dp(6),
+        };
+        return hint;
+    }
+
+    private TextView SheetSectionTitle(string text)
+    {
+        var caption = new TextView(this) { Text = text.ToUpperInvariant() };
+        caption.SetTextSize(ComplexUnitType.Sp, 13);
+        caption.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        caption.SetTextColor(SectionTitleColor);
+        caption.LetterSpacing = 0.05f;
+        return caption;
+    }
+
+    private View SheetStep(string sign, Action tapped)
+    {
+        var button = new TextView(this) { Text = sign, Gravity = GravityFlags.Center };
+        button.SetTextSize(ComplexUnitType.Sp, 28);
+        button.SetTextColor(Color.ParseColor("#DDDDDD"));
+        button.Clickable = true;
+        button.Click += (_, _) => tapped();
+        button.Background = Framed(this.Dp(12), this.Dp(1), BorderColor);
+        button.LayoutParameters = new LinearLayout.LayoutParams(this.Dp(54), this.Dp(54));
+        return button;
+    }
+
+    /// <summary>«Отмена» и «Готово»: отмена только закрывает лист — значение пишется по «Готово».</summary>
+    private View SheetButtons(string accept, Action accepted)
+    {
+        var row = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+
+        var cancel = new TextView(this) { Text = AppStrings.Cancel, Gravity = GravityFlags.Center };
+        cancel.SetTextSize(ComplexUnitType.Sp, 16);
+        cancel.SetTextColor(Color.ParseColor("#CFCFCF"));
+        cancel.SetPadding(0, this.Dp(15), 0, this.Dp(15));
+        cancel.Clickable = true;
+        cancel.Click += (_, _) => _windows.Close();
+        row.AddView(cancel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+        var done = new TextView(this) { Text = accept, Gravity = GravityFlags.Center };
+        done.SetTextSize(ComplexUnitType.Sp, 16);
+        done.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
+        done.SetTextColor(Color.ParseColor("#1F1F1F"));
+        done.SetPadding(0, this.Dp(15), 0, this.Dp(15));
+        done.Clickable = true;
+        done.Click += (_, _) =>
+        {
+            _windows.Close();
+            accepted();
         };
 
-        _windows.Show(new AlertDialog.Builder(this)!
-            .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
-            .SetView(container)!
-            .SetPositiveButton(AppStrings.SettingsAccept, (_, _) =>
-            {
-                // Запятая — то, что даёт русская раскладка цифровой клавиатуры; разбор идёт по
-                // инвариантной культуре (то же обоснование, что в MAUI-эталоне).
-                double parsed = SettingsFormat.ParseNumber((input.Text ?? "").Replace(',', '.'));
-                double snapped = Math.Clamp(SettingsFormat.Snap(descriptor, parsed), descriptor.Minimum, descriptor.Maximum);
-                Commit(descriptor, SettingsFormat.Store(descriptor, snapped));
-            })!
-            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!);
+        var fill = new GradientDrawable();
+        fill.SetShape(ShapeType.Rectangle);
+        fill.SetCornerRadius(this.Dp(12));
+        fill.SetColor(AccentColor);
+        done.Background = fill;
+
+        row.AddView(done, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.4f)
+        {
+            LeftMargin = this.Dp(10),
+        });
+
+        return row;
     }
+
+    private LinearLayout.LayoutParams SheetGap(int top) =>
+        new(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent) { TopMargin = top };
 
     private void EditChoice(SettingDescriptor descriptor, string value)
     {
@@ -888,35 +1519,6 @@ public sealed class SettingsCategoryActivity : Activity
             .SetTitle(TranslateExtension.Get(descriptor.LabelKey))!
             .SetMessage(message)!
             .SetPositiveButton(AppStrings.SettingsAccept, (_, _) => { })!);
-
-    private bool CanOpenMenu(SettingDescriptor descriptor, ResolvedSetting resolved) =>
-        !descriptor.ReportedByWheel && resolved.Origin != SettingOrigin.Factory;
-
-    /// <summary>Same two commands and the same "one layer down, not straight to factory" semantics as the MAUI original's OpenRowMenu.</summary>
-    private void ShowRowMenu(SettingDescriptor descriptor, ResolvedSetting resolved)
-    {
-        // У настройки колеса общего значения не бывает вовсе: снятие своего числа возвращает к
-        // заводскому, а «сделать значением по умолчанию» ей не предлагается — это и есть та самая
-        // коллизия, от которой её берегут. Отказ сидит и в ядре; здесь — чтобы не предлагать того,
-        // что всё равно не будет сделано.
-        bool overridden = resolved.IsOverridden;
-        bool shareable = overridden && !descriptor.WheelOnly;
-        string restore = shareable ? AppStrings.SettingsUseGlobal : AppStrings.SettingsUseFactory;
-        string[] actions = shareable ? [restore, AppStrings.SettingsMakeGlobal] : [restore];
-        string origin = overridden ? AppStrings.SettingsOverridden : AppStrings.SettingsGlobalValue;
-
-        _windows.Show(new AlertDialog.Builder(this)!
-            .SetTitle($"{TranslateExtension.Get(descriptor.LabelKey)} — {origin}")!
-            .SetItems(actions, (_, e) =>
-            {
-                string chosen = actions[e.Which];
-                if (chosen == restore && overridden) _binder.ClearOverride(descriptor, _viewScope);
-                else if (chosen == restore) _binder.ClearGlobal(descriptor);
-                else if (chosen == AppStrings.SettingsMakeGlobal) _binder.PromoteToGlobal(descriptor, _viewScope);
-                Rebuild();
-            })!
-            .SetNegativeButton(AppStrings.Cancel, (_, _) => { })!);
-    }
 
     private void Commit(SettingDescriptor descriptor, string value)
     {

@@ -81,7 +81,7 @@
   <data name="SettingsPageWarnings" xml:space="preserve"><value>Предупреждения</value></data>
   <data name="SettingsPageApplication" xml:space="preserve"><value>Приложение</value></data>
   <data name="SettingsPageDisplay" xml:space="preserve"><value>Отображение</value></data>
-  <data name="SettingsDisplayHint" xml:space="preserve"><value>«Отображение» — вид приборной панели: шкалы, цифры, палитра.</value></data>
+  <data name="SettingsDisplayHint" xml:space="preserve"><value>Значение можно задать общим для всех колёс или своим у этого — где какое, видно на строке.</value></data>
   <data name="SettingsPageExperimental" xml:space="preserve"><value>Тестовые функции</value></data>
   <data name="SettingsPageExperimentalNotice" xml:space="preserve"><value>Наши доработки, которых нет в оригинальном приложении и которые ещё не проверены на дороге. Работают полностью — здесь ничего не выключено, страница только помечает. Со временем они могут измениться, а обкатанные переедут на постоянные страницы; заданные значения переезд переживут.</value></data>
   <data name="SettingsScopeGlobal" xml:space="preserve"><value>Колесо не выбрано — правится общее значение</value></data>
@@ -103,6 +103,10 @@
   <data name="SettingsSummaryCount2" xml:space="preserve"><value>{0} настройки</value></data>
   <data name="SettingsSummaryCount5" xml:space="preserve"><value>{0} настроек</value></data>
   <data name="SettingsSectionsHint" xml:space="preserve"><value>Разделы</value></data>
+  <data name="SettingsOwnValuesCount" xml:space="preserve"><value>{0} своих</value></data>
+  <data name="SettingsValueOwn" xml:space="preserve"><value>своё</value></data>
+  <data name="SettingsValueOff" xml:space="preserve"><value>выкл.</value></data>
+  <data name="SettingsWhereToStore" xml:space="preserve"><value>Где хранить</value></data>
   <data name="SectionCurrent" xml:space="preserve"><value>Ток и напряжение</value></data>
   <data name="SectionBattery" xml:space="preserve"><value>Заряд и батарея</value></data>
   <data name="SectionReported" xml:space="preserve"><value>Сообщает колесо</value></data>

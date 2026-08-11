@@ -28,12 +28,16 @@ public class WindowOwnershipTests
     /// <summary>Окно строится и показывается — значит либо его показывает хозяин, либо оно отдаётся хозяину наружу.</summary>
     private const string HandsItOut = "public static Dialog Show(";
 
+    /// <summary>Сам хозяин: окна собираются внутри него, в этом его работа, и правило к нему не относится.</summary>
+    private const string TheOwner = "public sealed class OwnedWindow";
+
     [Fact]
     public void Every_window_is_shown_by_an_owner_or_handed_to_one()
     {
         foreach (var (path, source) in Sources())
         {
             if (source.Contains(HandsItOut, StringComparison.Ordinal)) continue;
+            if (source.Contains(TheOwner, StringComparison.Ordinal)) continue;
 
             foreach (Match window in Regex.Matches(source, @"new (?:AlertDialog\.Builder|Dialog)\("))
             {
