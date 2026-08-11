@@ -156,9 +156,11 @@ jobs:
             --notes-file "$RUNNER_TEMP/notes.md"
 
       - name: Билд владельцу в личку
-        # Секрета TELEGRAM_DM_CHAT_ID нет — шаг сюда не попадает вовсе, а не падает: личный
-        # экземпляр APK — удобство, не условие выпуска, черновик релиза выше уже на месте.
-        if: github.event_name == 'push' && secrets.TELEGRAM_DM_CHAT_ID != ''
+        # Контекст secrets в if шага НЕДОСТУПЕН — «Unrecognized named-value: secrets» валит весь
+        # воркфлоу на разборе, до сборки дело не доходит (грабль выпуска b17, 11.08.2026). Потому
+        # наличие секретов проверяется внутри run через env: нет секрета — шаг тихо выходит, а не
+        # падает: личный экземпляр APK — удобство, не условие выпуска.
+        if: github.event_name == 'push'
         continue-on-error: true   # недоступный Telegram не должен ронять релизную сборку
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -166,6 +168,11 @@ jobs:
           CAPTION: "${{ github.ref_name }} — черновик собран"
           APK: ${{ steps.apk.outputs.path }}
         run: |
+          if [ -z "$CHAT_ID" ]; then
+            echo "Нет секрета TELEGRAM_DM_CHAT_ID — личный APK не заказан, пропускаю."
+            exit 0
+          fi
+
           if [ -z "$BOT_TOKEN" ]; then
             echo "Нет секрета TELEGRAM_BOT_TOKEN — личный APK отправлять нечем, пропускаю."
             exit 0
