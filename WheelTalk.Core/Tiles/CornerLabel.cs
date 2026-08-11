@@ -21,26 +21,38 @@ public readonly record struct CornerFit(float WordSp, string Word);
 /// плитки, и мельчая, он перестаёт делать единственную свою работу — узнаваться с одного взгляда.
 /// Место под него вычитается из полоски до всякого счёта.
 /// </para>
+/// <para>
+/// <b>Слово набирается заглавными</b> (слова владельца 11.08.2026): «СКОР.», «ШИМ», «НАПР.» —
+/// подпись в углу называет плитку, а не читается наравне с числом, и капс отличает её от показания
+/// вернее всякого кегля. Поднимается слово <b>здесь</b>, а не у рисующего: капсом оно и мерится, и
+/// возвращается — разойтись мерке с рисунком негде. Ключи ресурсов остаются как были: заглавные —
+/// это способ показа, а не второе имя величины.
+/// </para>
 /// </summary>
 public static class CornerLabel
 {
     /// <summary>Многоточие — одним знаком, а не тремя точками: три отняли бы у слова три места.</summary>
     public const string Ellipsis = "…";
 
-    /// <param name="word">Слово подписи — уже короткое, если у величины есть короткое имя.</param>
+    /// <param name="word">
+    /// Слово подписи — уже короткое, если у величины есть короткое имя. Регистр приходит любой:
+    /// набирается и возвращается оно заглавными.
+    /// </param>
     /// <param name="room">Ширина, оставшаяся слову: полоска подписи без знака и просвета за ним.</param>
     /// <param name="wordSp">Заказанный кегль слова.</param>
     /// <param name="minSp">Пол читаемости: мельче слово не набирают даже ради того, чтобы влезло.</param>
     public static CornerFit Fit(string word, float room, float wordSp, float minSp, ITextRuler ruler)
     {
-        if (word.Length == 0 || room <= 0) return new CornerFit(wordSp, "");
+        string caps = word.ToUpperInvariant();
+
+        if (caps.Length == 0 || room <= 0) return new CornerFit(wordSp, "");
 
         for (float size = wordSp; size > minSp; size--)
         {
-            if (ruler.Width(word, size, mono: false) <= room) return new CornerFit(size, word);
+            if (ruler.Width(caps, size, mono: false) <= room) return new CornerFit(size, caps);
         }
 
-        return new CornerFit(minSp, Cut(word, room, minSp, ruler));
+        return new CornerFit(minSp, Cut(caps, room, minSp, ruler));
     }
 
     /// <summary>

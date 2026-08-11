@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using WheelTalk.Core.Tiles;
 using WheelTalk.Tests.TestSupport;
 
@@ -15,6 +17,8 @@ namespace WheelTalk.Tests.Tiles;
 /// </summary>
 public class CornerLabelTests
 {
+    private const string Tiles = "WheelTalk.Dashboard.Droid/Screen/Tiles/";
+
     /// <summary>Знак ширины не меняет: он смысловой и не ужимается никогда.</summary>
     private const float MarkScale = 1.5f;
 
@@ -28,37 +32,65 @@ public class CornerLabelTests
 
     /// <summary>
     /// Место под слово на четвертной плитке владельца: 360 dp, колонка 29, плитка 3×1 — 81 dp без
-    /// полей 65, минус знак ▲ своим крупным кеглем с просветом.
+    /// угловых отступов 69, минус знак ▲ своим крупным кеглем с просветом. Отступ угла свой, малый
+    /// (<c>TilesLayout.CornerInsetDp</c>), а не общее поле плитки, — оттого места на 4 dp больше,
+    /// чем было.
     /// </summary>
     private static float Room(float labelSp)
     {
         var ruler = new Ruler();
 
-        return 65 - ruler.Width("▲ ", labelSp * MarkScale, mono: false);
+        return 69 - ruler.Width("▲ ", labelSp * MarkScale, mono: false);
     }
 
     /// <summary>
     /// Слова его раскладки — те, что стоят на четвертных: короткие для скорости и напряжения
-    /// заведены этим же заходом, остальные были. Ни одно не вылезает за полоску.
+    /// заведены этим же заходом, остальные были. Ни одно не вылезает за полоску, и каждое выходит
+    /// <b>заглавными</b> (слова владельца 11.08.2026).
     /// </summary>
     [Theory]
-    [InlineData("Скор.")]
-    [InlineData("Напр.")]
-    [InlineData("ШИМ")]
-    [InlineData("Ток")]
-    [InlineData("Мощн.")]
-    [InlineData("Темп.")]
-    [InlineData("Мотор")]
-    public void Every_word_of_the_owners_layout_fits_the_corner(string word)
+    [InlineData("Скор.", "СКОР.")]
+    [InlineData("Напр.", "НАПР.")]
+    [InlineData("ШИМ", "ШИМ")]
+    [InlineData("Ток", "ТОК")]
+    [InlineData("Мощн.", "МОЩН.")]
+    [InlineData("Темп.", "ТЕМП.")]
+    [InlineData("Мотор", "МОТОР")]
+    public void Every_word_of_the_owners_layout_fits_the_corner(string word, string caps)
     {
         const float labelSp = 10;
         var ruler = new Ruler();
 
         var fit = CornerLabel.Fit(word, Room(labelSp), labelSp, 8, ruler);
 
+        Assert.Equal(caps, fit.Word);
         Assert.True(ruler.Width(fit.Word, fit.WordSp, mono: false) <= Room(labelSp),
             $"«{word}» набрано {fit.WordSp} sp и не влезло в {Room(labelSp):F1} dp");
         Assert.DoesNotContain(CornerLabel.Ellipsis, fit.Word);
+    }
+
+    /// <summary>
+    /// Капс — не украшение рисующего, а часть посадки: слово поднимается <b>до</b> замера, и на
+    /// экран уходит ровно то, что мерили. Мерь строчными, рисуй заглавными — и подпись вылезет за
+    /// полоску ровно на разницу их ширин, молча, как уже вылезала.
+    /// </summary>
+    [Fact]
+    public void The_word_is_measured_in_the_same_caps_it_is_drawn_in()
+    {
+        var ruler = new Ruler();
+
+        var fit = CornerLabel.Fit("Скорость", room: 39, wordSp: 10, minSp: 8, ruler);
+
+        // Наружу уходит поднятое слово — оно же и мерено: ужалось до 9, потому что заглавным своим
+        // кеглем в это место не село.
+        Assert.Equal("СКОРОСТЬ", fit.Word);
+        Assert.Equal(9, fit.WordSp);
+        Assert.True(ruler.Width(fit.Word, fit.WordSp, mono: false) <= 39);
+
+        // Режется тоже поднятое: огрызок с многоточием — заглавный, как и всё слово.
+        var cut = CornerLabel.Fit("Электродвигатель", room: 20, wordSp: 10, minSp: 8, ruler);
+
+        Assert.Equal("ЭЛЕК" + CornerLabel.Ellipsis, cut.Word);
     }
 
     /// <summary>
@@ -74,7 +106,7 @@ public class CornerLabelTests
         var fit = CornerLabel.Fit("Температура", Room(labelSp), labelSp, 8, new Ruler());
 
         Assert.True(fit.WordSp < labelSp, "слово обязано ужаться");
-        Assert.Equal("Температура", fit.Word);
+        Assert.Equal("ТЕМПЕРАТУРА", fit.Word);
     }
 
     /// <summary>
@@ -102,31 +134,80 @@ public class CornerLabelTests
     }
 
     /// <summary>
-    /// Полоска перестроена под крупный знак <b>целиком</b>: её высота считается по нему, и тем же
-    /// числом отступает число — иначе знак «воткнут в старую разметку», а подпись спорит с
-    /// показанием (слова владельца 11.08.2026).
+    /// Полоска построена под крупный знак <b>целиком</b> и считается <b>одной формулой в одном
+    /// месте</b>: по ней отступает число и по ней же идёт бюджет подбора кегля. Два счёта об одном
+    /// — то, чем полоска уже ломалась: знак вырос, а разметка осталась прежней (владелец
+    /// 11.08.2026).
     /// </summary>
     [Fact]
-    public void The_strip_is_built_for_the_big_mark_and_the_number_starts_below_it()
+    public void The_strip_is_one_count_for_the_layout_and_for_the_budget()
     {
-        string view = RepoFiles.Read("WheelTalk.Dashboard.Droid/Screen/Tiles/TileView.cs");
-
+        // Формула живёт в раскладке: угловой отступ, крупный знак, поправка начертания — и общее
+        // поле, которого подпись не занимает, потому что сидит выше него.
         Assert.Contains(
-            "Context!.Dp(TilesLayout.SquareLabelSp * TilesLayout.MarkScale) * TilesLayout.InkRatio",
-            view);
+            "CornerInsetDp + (SquareLabelSp * MarkScale * InkRatio) - PaddingDp",
+            RepoFiles.Read(Tiles + "TilesLayout.cs"));
+
+        // Оба потребителя берут её готовой: своей арифметики у них нет — ни у разметки, ни у бюджета.
+        string view = RepoFiles.Read(Tiles + "TileView.cs");
+        Assert.Contains("CornerStripPx() => Context!.Dp(TilesLayout.CornerStripDp)", view);
         Assert.Contains("CornerLabel.Fit(", view);
 
-        // Тем же числом живёт и бюджет подбора кегля — счёт один на разметку и на подбор.
         Assert.Contains(
-            "_context.Sp(TilesLayout.SquareLabelSp * TilesLayout.MarkScale) * TilesLayout.InkRatio",
-            RepoFiles.Read("WheelTalk.Dashboard.Droid/Screen/Tiles/TilesScreen.cs"));
+            "SquareLabelPx = _context.Dp(TilesLayout.CornerStripDp)",
+            RepoFiles.Read(Tiles + "TilesScreen.cs"));
 
         foreach (string drawer in (string[])["MetricTileView.cs", "ExtremumTileView.cs", "TripTileView.cs"])
         {
-            Assert.Contains(
-                "TileForm.Square => CornerStripPx(),",
-                RepoFiles.Read("WheelTalk.Dashboard.Droid/Screen/Tiles/" + drawer));
+            Assert.Contains("TileForm.Square => CornerStripPx(),", RepoFiles.Read(Tiles + drawer));
         }
+    }
+
+    /// <summary>
+    /// Подпись прижата к углу <b>своим малым отступом</b>: он меньше общего поля — иначе прижимать
+    /// было бы нечего, — и не меньше рамки с зазором, чтобы слово не легло на её линию (слова
+    /// владельца 11.08.2026). Полоса жара идёт нижней стороной рамки и верхнего угла не касается,
+    /// так что этот зазор от неё не зависит.
+    /// </summary>
+    [Fact]
+    public void The_corner_inset_is_smaller_than_the_padding_and_clears_the_frame()
+    {
+        float inset = Knob("CornerInsetDp");
+        float frame = Knob("HeatStrokeDp");
+        float padding = Knob("PaddingDp");
+
+        Assert.True(inset < padding, $"угловой отступ {inset} dp не меньше общего поля {padding} dp");
+        Assert.True(inset >= frame + 2, $"подпись в {inset} dp прижата к рамке в {frame} dp без зазора");
+
+        // Рисует подпись по этому отступу, а не по общему полю: рисование и есть то место, где
+        // прижатие либо случилось, либо нет.
+        string corner = RepoFiles.MethodBody(
+            RepoFiles.Read(Tiles + "TileView.cs"), "private void DrawCornerLabel(Canvas canvas)");
+
+        Assert.Contains("Context!.Dp(TilesLayout.CornerInsetDp)", corner);
+        Assert.DoesNotContain("TilesLayout.PaddingDp", corner);
+    }
+
+    /// <summary>
+    /// Число ручки раскладки, прочитанное из её исходника: либо само число, либо сумма — «другая
+    /// ручка + число», как задан угловой отступ (рамка плюс зазор). Сверяются <b>числа</b>, а не
+    /// написание: android-библиотеку отсюда не поднять, но правило про зазор — арифметическое.
+    /// </summary>
+    private static float Knob(string name)
+    {
+        var found = Regex.Match(
+            RepoFiles.Read(Tiles + "TilesLayout.cs"), $@"public static \w+ {name} => ([^;]+);");
+
+        Assert.True(found.Success, $"в TilesLayout нет ручки {name}");
+
+        float sum = 0;
+        foreach (string term in found.Groups[1].Value.Split('+'))
+        {
+            string value = term.Trim().TrimEnd('f');
+            sum += float.TryParse(value, CultureInfo.InvariantCulture, out float number) ? number : Knob(value);
+        }
+
+        return sum;
     }
 
     /// <summary>

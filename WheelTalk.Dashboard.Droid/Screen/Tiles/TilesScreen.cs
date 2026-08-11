@@ -871,11 +871,12 @@ public sealed class TilesScreen : IMainScreen
                 UnitScale = TilesLayout.UnitScale,
                 RowLabelShare = TilesLayout.RowLabelShare,
                 SquareRatio = TilesLayout.SquareRatio,
-                // Полоска метки в углу считается по <b>крупному</b> знаку: пометка ▲▼ в полтора
-                // раза выше подписи (решение владельца 11.08.2026), и числу достаётся то, что
-                // осталось под самой высокой из двух частей, а не под словом.
-                SquareLabelPx =
-                    _context.Sp(TilesLayout.SquareLabelSp * TilesLayout.MarkScale) * TilesLayout.InkRatio,
+                // Полоска метки в углу — тем же числом, каким плитка отступает число
+                // (TilesLayout.CornerStripDp): счёт один на разметку и на подбор, и считается он в
+                // одном месте. Меряется в dp, а не в sp: подпись в углу рисуется чистой плотностью
+                // (DrawCornerLabel), и системный множитель шрифта на неё не действует — резервируя
+                // sp, бюджет отнимал бы у числа то, чего подпись не занимает.
+                SquareLabelPx = _context.Dp(TilesLayout.CornerStripDp),
             };
         }
 

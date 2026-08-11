@@ -123,8 +123,10 @@ public class TileMarksTests
         Assert.Contains("word * TilesLayout.MarkScale", corner);
         Assert.Contains("_tickPaint.TextSize = sign;", corner);
 
+        // Бюджет полоски — по крупному знаку: множитель стоит в самой формуле раскладки, а бюджет
+        // берёт её готовой (<c>CornerLabelTests</c> стережёт, что счёт один на всех).
         Assert.Contains(
-            "_context.Sp(TilesLayout.SquareLabelSp * TilesLayout.MarkScale) * TilesLayout.InkRatio",
-            RepoFiles.Read(Tiles + "TilesScreen.cs"));
+            "CornerInsetDp + (SquareLabelSp * MarkScale * InkRatio) - PaddingDp",
+            RepoFiles.Read(Tiles + "TilesLayout.cs"));
     }
 }
