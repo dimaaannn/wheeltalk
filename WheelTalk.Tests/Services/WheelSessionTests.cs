@@ -274,6 +274,75 @@ public class WheelSessionTests
         await session.DisconnectAsync();
     }
 
+    /// <summary>
+    /// <b>Наш сон — не молчание колеса.</b> Пока система морозит процесс (сон экрана, Doze), кадры
+    /// не обрабатываются и время последнего кадра стареет вместе со сном, хотя колесо шлёт исправно.
+    /// Сторож, разбуженный одним запоздалым тиком, принимал секунды <b>нашего</b> сна за молчание
+    /// колеса и рвал живую связь: владелец просыпался на плашку «переподключение», которая через
+    /// пару секунд чинилась сама (11.08.2026, тянулось с прошлых версий).
+    /// <para>
+    /// Улику опознаёт сам сторож: разрыв между его тиками много больше их периода — это время, в
+    /// которое не работали мы. Молчание считается заново, колесу даётся обычный таймаут на кадр.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_frozen_process_is_not_a_silent_wheel()
+    {
+        var time = new SleepyTimeProvider();
+        var (session, transport) = Build(time, new ConnectionOptions { DataTimeout = TimeSpan.FromSeconds(15) });
+
+        await session.ConnectAsync(Mac);
+        transport.Deliver(ShermanLPacket);
+        Assert.Equal(ConnectionState.Connected, session.CurrentState);
+
+        // Телефон уснул на пять минут: часы ушли, тиков не было, кадры остались неразобранными.
+        time.Sleep(TimeSpan.FromMinutes(5));
+        time.Tick();
+
+        Assert.Equal(ConnectionState.Connected, session.CurrentState);
+
+        // И кадр после пробуждения приходит в пределах обычного таймаута — связь была жива всё это
+        // время, рвать её было не за что.
+        time.Sleep(TimeSpan.FromSeconds(10));
+        transport.Deliver(ShermanLPacket);
+        time.Tick();
+
+        Assert.Equal(ConnectionState.Connected, session.CurrentState);
+
+        await session.DisconnectAsync();
+    }
+
+    /// <summary>
+    /// Амнистия — фора, а не помилование: если и после пробуждения кадров нет дольше таймаута,
+    /// связь рвётся честно, следующим же тиком. Иначе уснувший телефон стал бы способом никогда не
+    /// заметить настоящее стойло.
+    /// </summary>
+    [Fact]
+    public async Task Silence_after_the_sleep_still_counts_as_a_drop()
+    {
+        var time = new SleepyTimeProvider();
+        var (session, transport) = Build(time, new ConnectionOptions
+        {
+            DataTimeout = TimeSpan.FromSeconds(15),
+            RetryDelay = TimeSpan.FromSeconds(5),
+        });
+
+        await session.ConnectAsync(Mac);
+        transport.Deliver(ShermanLPacket);
+
+        time.Sleep(TimeSpan.FromMinutes(5));
+        time.Tick();
+        Assert.Equal(ConnectionState.Connected, session.CurrentState);
+
+        // Фора кончилась, а колесо так и молчит — это уже его молчание, а не наш сон.
+        time.Sleep(TimeSpan.FromSeconds(16));
+        time.Tick();
+
+        Assert.NotEqual(ConnectionState.Connected, session.CurrentState);
+
+        await session.DisconnectAsync();
+    }
+
     /// <summary>Кадры идут — сторож молчит, сколько бы времени ни прошло.</summary>
     [Fact]
     public async Task A_wheel_that_keeps_talking_is_never_dropped()
@@ -464,8 +533,17 @@ public class WheelSessionTests
     private static (WheelSession Session, FakeTransport Transport, FakeTimeProvider Time) Build(
         ConnectionOptions? options = null)
     {
-        var transport = new FakeTransport();
         var time = new FakeTimeProvider();
+        var (session, transport) = Build(time, options);
+
+        return (session, transport, time);
+    }
+
+    /// <summary>Та же сессия на чужих часах — там, где замку нужна своя модель времени.</summary>
+    private static (WheelSession Session, FakeTransport Transport) Build(
+        TimeProvider time, ConnectionOptions? options = null)
+    {
+        var transport = new FakeTransport();
         var session = new WheelSession(
             transport,
             new AppWheelConfig(),
@@ -475,7 +553,7 @@ public class WheelSessionTests
             new WheelDetector(NullLogger<WheelDetector>.Instance),
             NullLoggerFactory.Instance);
 
-        return (session, transport, time);
+        return (session, transport);
     }
 
     /// <summary>

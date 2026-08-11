@@ -76,6 +76,25 @@ public sealed partial class WheelSession : IDisposable
     /// </summary>
     private long _lastDataAt;
 
+    /// <summary>
+    /// Когда сторож тикал в последний раз. По нему он отличает <b>наш сон от молчания колеса</b>:
+    /// пока процесс заморожен, кадры не обрабатываются и <see cref="_lastDataAt"/> стареет, хотя
+    /// колесо шлёт исправно, — и на пробуждении сторож рвал живую связь по ложной улике (владелец:
+    /// «просыпаюсь — плашка переподключения, через пару секунд само чинится»).
+    /// </summary>
+    private long _lastCheckAt;
+
+    /// <summary>
+    /// Во сколько раз разрыв между тиками должен превысить их период, чтобы считаться заморозкой
+    /// процесса, а не молчанием колеса. Два — наименьшее, что при работающем процессе случиться не
+    /// может: чтобы пропустить целый период, таймеру надо голодать дольше самого таймаута.
+    /// <para>
+    /// Цена ошибки в одну сторону — разорванная живая связь и погоня на пустом месте, в другую —
+    /// приговор настоящему стойлу, отложенный на один период. Порог выбран ближе к дешёвой ошибке.
+    /// </para>
+    /// </summary>
+    private const int SleepFactor = 2;
+
     private ITimer? _watchdog;
 
     /// <summary>
@@ -458,6 +477,7 @@ public sealed partial class WheelSession : IDisposable
         StopWatchdog();
         if (_options.DataTimeout <= TimeSpan.Zero) return;
 
+        Interlocked.Exchange(ref _lastCheckAt, _timeProvider.GetTimestamp());
         _watchdog = _timeProvider.CreateTimer(_ => CheckFrames(), null,
             _options.DataTimeout, _options.DataTimeout);
     }
@@ -468,9 +488,29 @@ public sealed partial class WheelSession : IDisposable
         _watchdog = null;
     }
 
+    /// <summary>
+    /// Тик сторожа. Прежде чем судить о молчании, он <b>смотрит на самого себя</b>: сколько прошло
+    /// от прошлого тика. Пропущенное им время — это время, которого не было и у приёма кадров, и
+    /// молчанием колеса оно не является.
+    /// </summary>
     private void CheckFrames()
     {
+        long now = _timeProvider.GetTimestamp();
+        var sinceLastCheck = _timeProvider.GetElapsedTime(Interlocked.Exchange(ref _lastCheckAt, now));
+
         if (_state.Value != ConnectionState.Connected) return;
+
+        // Процесс замораживали (сон экрана, Doze): тик, который должен был прийти через период,
+        // пришёл много позже — значит всё это время не работали и мы, а не молчало колесо. Кадры
+        // при этом идут, но обрабатывать их некому, и _lastDataAt стареет наравне со сном. Улика
+        // ложная: молчание считаем заново и даём колесу обычный DataTimeout на кадр — не пришёл и
+        // он, следующий тик разорвёт связь честно.
+        if (sinceLastCheck >= _options.DataTimeout * SleepFactor)
+        {
+            LogWatchdogSlept(Address ?? "", (int)sinceLastCheck.TotalSeconds);
+            Interlocked.Exchange(ref _lastDataAt, now);
+            return;
+        }
 
         var silence = _timeProvider.GetElapsedTime(Interlocked.Read(ref _lastDataAt));
         if (silence < _options.DataTimeout) return;
@@ -574,6 +614,14 @@ public sealed partial class WheelSession : IDisposable
     [LoggerMessage(EventId = 1305, EventName = "Wheel.DataResumed", Level = LogLevel.Information,
         Message = "Wheel.DataResumed {Mac} — кадры пошли после {Seconds} с тишины")]
     private partial void LogDataResumed(string mac, int seconds);
+
+    /// <summary>
+    /// Отдельным событием, а не молчанием: в диагностике сон обязан быть виден и отличим от
+    /// настоящего стойла — иначе «связь чинилась сама» так и останется загадкой.
+    /// </summary>
+    [LoggerMessage(EventId = 1307, EventName = "Wheel.WatchdogSlept", Level = LogLevel.Information,
+        Message = "Wheel.WatchdogSlept {Mac} — процесс спал {Seconds} с, молчание не в счёт")]
+    private partial void LogWatchdogSlept(string mac, int seconds);
 
     // Протокола здесь больше нет: на момент старта сессии он ещё не известен — его назовёт
     // Protocol.Detected, когда придёт первый кадр.
