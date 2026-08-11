@@ -83,6 +83,54 @@ public class MetricCatalogueTests
     };
 
     /// <summary>
+    /// Пол — свойство величины, а не графика (владелец 11.08.2026): ШИМ, скорость, напряжение и
+    /// подобные меньше нуля не бывают, а ток, мощность, момент и температура — бывают (рекуперация,
+    /// мороз, наклон в другую сторону).
+    /// </summary>
+    [Theory]
+    [InlineData("speed")]
+    [InlineData("top_speed")]
+    [InlineData("speed_limit")]
+    [InlineData("pwm")]
+    [InlineData("max_pwm")]
+    [InlineData("hw_pwm")]
+    [InlineData("battery_level")]
+    [InlineData("voltage")]
+    [InlineData("cell_voltage")]
+    [InlineData("distance")]
+    [InlineData("distance_from_start")]
+    [InlineData("totaldistance")]
+    [InlineData("cpu_load")]
+    [InlineData("fan_status")]
+    [InlineData("sleep_timer")]
+    [InlineData("current_limit")]
+    public void A_floor_belongs_to_magnitudes_that_cannot_go_below_it(string id)
+    {
+        var metric = MetricCatalogue.Find(id);
+        Assert.NotNull(metric);
+
+        Assert.Equal(0, metric.Floor);
+    }
+
+    /// <summary>Ток, мощность, момент, температура и крен уходят в минус законно — пола у них нет.</summary>
+    [Theory]
+    [InlineData("current")]
+    [InlineData("phase_current")]
+    [InlineData("power")]
+    [InlineData("motor_power")]
+    [InlineData("torque")]
+    [InlineData("system_temp")]
+    [InlineData("temp2")]
+    [InlineData("tilt")]
+    public void A_floor_is_absent_for_magnitudes_that_may_go_negative(string id)
+    {
+        var metric = MetricCatalogue.Find(id);
+        Assert.NotNull(metric);
+
+        Assert.Null(metric.Floor);
+    }
+
+    /// <summary>
     /// Колонка в описании — обещание, что по величине можно построить график (план 23 §3.2). Пустая
     /// колонка — честное «графика нет»; выдуманная — падение запроса на шаге 6.
     /// </summary>

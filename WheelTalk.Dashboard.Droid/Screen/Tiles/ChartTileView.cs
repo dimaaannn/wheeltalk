@@ -185,7 +185,15 @@ internal sealed class ChartTileView : TileView
         // Масштаб по крайним значениям или от нуля — решает плитка (решение владельца 04.08.2026).
         // У напряжения и температуры размах мал против самого значения, и без обрезки линия у них
         // прямая; у тока и ШИМ, наоборот, важна доля от нуля.
-        if (_options.Zoom) _chart.AxisLeft!.ResetAxisMinimum();
+        if (_options.Zoom)
+        {
+            // Пол оси — свойство величины: ниже пола рисовать нечего, а авто-отступ уводил заливку
+            // под ноль (владелец 11.08.2026).
+            if (_metric?.Floor is { } floor && data is not null)
+                _chart.AxisLeft!.AxisMinimum = Math.Max((float)floor, data.YMin);
+            else
+                _chart.AxisLeft!.ResetAxisMinimum();
+        }
         else _chart.AxisLeft!.AxisMinimum = 0f;
 
         _chart.XAxis!.AxisMinimum = 0f;

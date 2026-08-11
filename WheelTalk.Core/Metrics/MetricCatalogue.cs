@@ -50,6 +50,7 @@ public static class MetricCatalogue
             Decimals = 1,
             Read = s => s.SpeedKmh,
             Column = "speed",
+            Floor = 0,
         },
         // ШИМ — целыми (владелец, 10.08.2026): десятая доля процента не говорит ничего, а разряд
         // ширины забирает у всего класса плиток.
@@ -60,6 +61,7 @@ public static class MetricCatalogue
             UnitKey = "UnitPercent",
             Read = s => s.Pwm,
             Column = "pwm",
+            Floor = 0,
         },
         // Максимумы колесо ведёт само, и в таблицу телеметрии они не пишутся: график по ним — это
         // график исходной величины. Живьём есть, графика нет.
@@ -75,6 +77,7 @@ public static class MetricCatalogue
             UnitKey = "UnitPercent",
             Read = s => s.MaxPwm,
             Offered = false,
+            Floor = 0,
         },
         new()
         {
@@ -84,6 +87,7 @@ public static class MetricCatalogue
             Decimals = 1,
             Read = s => s.TopSpeedKmh,
             Offered = false,
+            Floor = 0,
         },
         new()
         {
@@ -106,6 +110,7 @@ public static class MetricCatalogue
             Decimals = 1,
             Read = s => s.VoltageV,
             Column = "voltage",
+            Floor = 0,
         },
         // Вольт на банку — сотыми (владелец, 10.08.2026): здесь сотая доля и есть весь разговор,
         // от 3,20 до 4,20 В умещается всё состояние пакета.
@@ -126,6 +131,7 @@ public static class MetricCatalogue
             Read = s => CellVoltageResolver.Resolve(s.PackCells, s.VoltageV) is { IsKnown: true } cell
                 ? cell.Volts
                 : null,
+            Floor = 0,
         },
         // Токи — десятыми: величина в десятках ампер, и сотая меняется быстрее, чем на неё
         // успевают взглянуть.
@@ -164,6 +170,7 @@ public static class MetricCatalogue
             Column = "battery_level",
             // Проценты хранятся целыми, а не сотыми: колесо сообщает их целыми.
             ColumnScale = 1,
+            Floor = 0,
         },
 
         // ---- Температура -------------------------------------------------------------------
@@ -197,6 +204,7 @@ public static class MetricCatalogue
             Column = "distance",
             // Пробег база держит в метрах — так его сообщает колесо.
             ColumnScale = 0.001,
+            Floor = 0,
         },
         new()
         {
@@ -205,6 +213,7 @@ public static class MetricCatalogue
             UnitKey = "UnitKm",
             Decimals = 1,
             Read = s => s.DistanceFromStartKm,
+            Floor = 0,
         },
         new()
         {
@@ -214,6 +223,7 @@ public static class MetricCatalogue
             Read = s => s.TotalDistanceKm,
             Column = "totaldistance",
             ColumnScale = 0.001,
+            Floor = 0,
         },
 
         // ---- Что сообщает одно семейство ---------------------------------------------------
@@ -255,6 +265,7 @@ public static class MetricCatalogue
             Decimals = 1,
             Read = s => WheelReports.InMotionV2(s) ? s.CurrentLimit : null,
             Column = "current_limit",
+            Floor = 0,
         },
         new()
         {
@@ -282,6 +293,7 @@ public static class MetricCatalogue
             Read = s => WheelReports.KingSong(s) ? s.CpuLoad : null,
             Column = "cpu_load",
             ColumnScale = 1,
+            Floor = 0,
         },
         new()
         {
@@ -291,6 +303,7 @@ public static class MetricCatalogue
             Decimals = 1,
             Read = s => WheelReports.KingSong(s) ? s.SpeedLimit : null,
             Column = "speed_limit",
+            Floor = 0,
         },
         new()
         {
@@ -299,6 +312,7 @@ public static class MetricCatalogue
             UnitKey = "UnitPercent",
             Read = s => WheelReports.KingSong(s) ? s.Output : null,
             Column = "hw_pwm",
+            Floor = 0,
         },
         // Код, а не измерение: смысла за ним, кроме «крутится / не крутится», мы не знаем — и не
         // придумываем, ровно как с кодом зарядки на экране «Данные».
@@ -308,6 +322,7 @@ public static class MetricCatalogue
             LabelKey = "MetricFanStatus",
             Read = s => WheelReports.KingSong(s) ? s.FanStatus : null,
             Column = "fan_status",
+            Floor = 0,
         },
         // Таймер автовыключения сообщает только Veteran, и в таблице телеметрии его нет: он меняется
         // раз в минуту и графиком не бывает.
@@ -317,6 +332,7 @@ public static class MetricCatalogue
             LabelKey = "TelemetrySleep",
             UnitKey = "UnitSeconds",
             Read = s => WheelReports.Veteran(s) ? s.SleepTimerSec : null,
+            Floor = 0,
         },
     ];
 

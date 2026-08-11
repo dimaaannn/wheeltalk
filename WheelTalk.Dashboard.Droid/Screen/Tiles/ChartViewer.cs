@@ -157,9 +157,17 @@ internal static class ChartViewer
 
         if (alive.IsCancellationRequested) return;
 
+        if (ChartLine.Build(points, dashboard.Palette, label, from, options) is not { } data) return;
+
         // Обрезка по крайним значениям — та же, что у плитки: иначе ось уходит ниже нуля, и заливка
         // рисует полосу под ним во всю ширину экрана.
-        if (options.Zoom) chart.AxisLeft!.ResetAxisMinimum();
+        if (options.Zoom)
+        {
+            // Пол оси — свойство величины: ниже пола рисовать нечего, а авто-отступ уводил заливку
+            // под ноль (владелец 11.08.2026).
+            if (metric.Floor is { } floor) chart.AxisLeft!.AxisMinimum = Math.Max((float)floor, data.YMin);
+            else chart.AxisLeft!.ResetAxisMinimum();
+        }
         else chart.AxisLeft!.AxisMinimum = 0f;
 
         // Пороги чертой поперёк графика: видно, докуда дотянулся пик, не прикладывая палец к точкам.
@@ -179,8 +187,6 @@ internal static class ChartViewer
                 chart.AxisLeft.AddLimitLine(Mark(context, (float)danger, dashboard.Palette.Danger));
             }
         }
-
-        if (ChartLine.Build(points, dashboard.Palette, label, from, options) is not { } data) return;
 
         chart.Post(() =>
         {
