@@ -163,7 +163,15 @@ public sealed class WheelState
 
     public void SetWheelAlarm(bool value) => WheelAlarm = value;
 
-    public void SetAlert(string value) => Alert = value;
+    /// <summary>
+    /// Строка тревог колеса. <b>Обрезается здесь</b> — на нашем шве, а не в декодере: оригинал
+    /// собирает её словами с хвостовым пробелом (<c>"Speed2 "</c>, <c>GotwayDecoder</c> кадр 0x04),
+    /// и в журнал поездки уезжало <c>"Speed2 "</c> вместо <c>"Speed2"</c> (план 11 §5.6). Декодеры —
+    /// построчный порт, править их нельзя; <see cref="SetAlert"/> же — единственная дверь, через
+    /// которую тревога любого протокола входит в состояние, и одна обрезка тут закрывает вопрос
+    /// сразу у всех.
+    /// </summary>
+    public void SetAlert(string value) => Alert = value.Trim();
 
     /// <summary>Port of WheelData.setCurrent(int) minus max-current tracking (not part of this slice).</summary>
     public void SetCurrent(int value) => Current = value;
