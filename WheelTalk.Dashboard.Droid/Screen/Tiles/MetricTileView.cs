@@ -103,7 +103,14 @@ internal sealed class MetricTileView : TileView
             layout.Width = face.Form == TileForm.Row ? 0 : ViewGroup.LayoutParams.MatchParent;
             layout.Height = face.Form == TileForm.Row ? ViewGroup.LayoutParams.MatchParent : 0;
             layout.Weight = 1f;
-            layout.TopMargin = face.Form == TileForm.Row ? 0 : Context.Dp(TilesLayout.ValueTopMarginDp);
+            // В квадрате число начинается под угловой полоской, а не поверх неё: полоска
+            // построена под крупный знак, и делить с ней место числу нечем.
+            layout.TopMargin = face.Form switch
+            {
+                TileForm.Row => 0,
+                TileForm.Square => CornerStripPx(),
+                _ => Context.Dp(TilesLayout.ValueTopMarginDp),
+            };
 
             // Поля ужимает только квадрат — ровно на столько, на сколько его расширил подбор
             // кегля (ValueBleedDp). Прямоугольные породы живут со своими полями, как их приняли.

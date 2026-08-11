@@ -1,4 +1,4 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
@@ -93,7 +93,14 @@ internal sealed class TripTileView : TileView
             layout.Width = face.Form == TileForm.Row ? 0 : ViewGroup.LayoutParams.MatchParent;
             layout.Height = face.Form == TileForm.Row ? ViewGroup.LayoutParams.MatchParent : 0;
             layout.Weight = 1f;
-            layout.TopMargin = face.Form == TileForm.Row ? 0 : Context.Dp(TilesLayout.ValueTopMarginDp);
+            // В квадрате число начинается под угловой полоской, а не поверх неё: полоска
+            // построена под крупный знак, и делить с ней место числу нечем.
+            layout.TopMargin = face.Form switch
+            {
+                TileForm.Row => 0,
+                TileForm.Square => CornerStripPx(),
+                _ => Context.Dp(TilesLayout.ValueTopMarginDp),
+            };
 
             int bleed = face.Form == TileForm.Square ? -Context.Dp(TilesLayout.ValueBleedDp) : 0;
             layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : bleed;

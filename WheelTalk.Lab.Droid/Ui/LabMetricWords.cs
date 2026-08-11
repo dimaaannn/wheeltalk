@@ -31,6 +31,8 @@ public static class LabMetricWords
         // Короткие подписи четвертных плиток (план плиток §4): полное имя в 61 px содержимого не
         // влезает ни при каком кегле. Ключ у них тот же, что у полного, плюс «Short» — и стенд
         // обязан знать их наравне с приложением, иначе на четвертных стоит сырой ключ.
+        ["TelemetrySpeedShort"] = "Скор.",
+        ["TelemetryVoltageShort"] = "Напр.",
         ["TelemetryBoardTempShort"] = "Темп.",
         ["TelemetryMotorTempShort"] = "Мотор",
         ["TelemetryPhaseCurrentShort"] = "Фазный",

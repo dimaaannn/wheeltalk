@@ -279,6 +279,19 @@ internal abstract class TileView : LinearLayout
         SetRows(size.Rows);
     }
 
+    /// <summary>
+    /// Высота угловой полоски — <b>по крупному знаку</b>, а не по слову: знак ▲▼ в полтора раза
+    /// выше подписи, и полоска строится под него целиком. Ею же отступает число: полоска и число не
+    /// делят одно место, иначе знак «воткнут в старую разметку» — и ровно это владелец увидел
+    /// 11.08.2026, когда метка выросла, а разметка осталась прежней.
+    /// <para>
+    /// Тем же числом считается бюджет подбора кегля (<c>TileMetrics.SquareLabelPx</c>) — счёт один
+    /// на разметку и на подбор.
+    /// </para>
+    /// </summary>
+    protected int CornerStripPx() => (int)Math.Round(
+        Context!.Dp(TilesLayout.SquareLabelSp * TilesLayout.MarkScale) * TilesLayout.InkRatio);
+
     /// <summary>Показать или спрятать то, что вид добавил под подписью.</summary>
     protected abstract void ShowContent(bool visible);
 
@@ -516,6 +529,10 @@ internal abstract class TileView : LinearLayout
         float word = Context.Dp(TilesLayout.SquareLabelSp);
         float sign = word * TilesLayout.MarkScale;
 
+        // Место полоски: плитка без полей. Дальше в него сажается строка — канва сама не ужимает и
+        // не обрезает, и слово уезжало за край плитки молча (регресс, владелец 11.08.2026).
+        float room = Width - (2 * left);
+
         // Пометка ▲▼ крупнее подписи и здесь (решение владельца 11.08.2026): в прочих формах это
         // делает спан, а метка в углу рисуется руками — значит и знак рисуется своим кеглем,
         // отдельным вызовом. Обе части стоят на одной базовой линии, посаженной под крупный знак.
@@ -526,11 +543,20 @@ internal abstract class TileView : LinearLayout
         {
             _tickPaint.TextSize = sign;
             canvas.DrawText(mark, left, baseline, _tickPaint);
-            left += _tickPaint.MeasureText(mark + " ");
+
+            float taken = _tickPaint.MeasureText(mark + " ");
+            left += taken;
+            room -= taken;
         }
 
-        _tickPaint.TextSize = word;
-        canvas.DrawText(_cornerLabel[mark.Length..].TrimStart(), left, baseline, _tickPaint);
+        // Слово садится в остаток: сперва ужимается кегль до пола читаемости, и лишь потом слово
+        // честно обрезается многоточием — укоротить значит отнять смысл, уменьшить лишь вес.
+        var fit = CornerLabel.Fit(
+            _cornerLabel[mark.Length..].TrimStart(), room, word, Context.Dp(TilesLayout.LabelMinSp),
+            new PaintRuler.Ruler(_tickPaint));
+
+        _tickPaint.TextSize = fit.WordSp;
+        canvas.DrawText(fit.Word, left, baseline, _tickPaint);
 
         // Кисть меток общая — вернуть ей свой цвет обязана та же рука, что заняла.
         _tickPaint.Color = Color.Argb(TilesLayout.HeatTickAlpha, Palette.Ink.R, Palette.Ink.G, Palette.Ink.B);

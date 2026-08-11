@@ -407,6 +407,8 @@
   <data name="TelemetryAngle" xml:space="preserve"><value>Наклон</value></data>
   <data name="TelemetryVoltage" xml:space="preserve"><value>Напряжение</value></data>
   <data name="TelemetryCurrent" xml:space="preserve"><value>Ток</value></data>
+  <data name="TelemetrySpeedShort" xml:space="preserve"><value>Скор.</value></data>
+  <data name="TelemetryVoltageShort" xml:space="preserve"><value>Напр.</value></data>
   <data name="TelemetryBoardTempShort" xml:space="preserve"><value>Темп.</value></data>
   <data name="TelemetryMotorTempShort" xml:space="preserve"><value>Мотор</value></data>
   <data name="TelemetryPhaseCurrentShort" xml:space="preserve"><value>Фазный</value></data>

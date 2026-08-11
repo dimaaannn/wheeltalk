@@ -78,6 +78,38 @@ internal sealed class PaintRuler(float density) : ITextRuler
         return atHundred * sizeSp * density / MeasureAt;
     }
 
+    /// <summary>
+    /// Мерилка поверх <b>чужой готовой кисти</b> — той самой, которой сейчас и рисуют. Нужна там,
+    /// где текст кладут на канву руками (угловая подпись квадрата): правило посадки живёт в ядре и
+    /// меряет через <see cref="ITextRuler"/>, а мерить обязано тем же, чем рисует.
+    /// <para>
+    /// Кегль здесь приходит уже в пикселях: у канвы своих sp нет — кисть знает только размер, каким
+    /// её поставили.
+    /// </para>
+    /// </summary>
+    internal sealed class Ruler(Paint paint) : ITextRuler
+    {
+        public float Width(string text, float sizePx, bool mono)
+        {
+            float was = paint.TextSize;
+            paint.TextSize = sizePx;
+            float width = paint.MeasureText(text);
+            paint.TextSize = was;
+
+            return width;
+        }
+
+        public float Height(float sizePx)
+        {
+            float was = paint.TextSize;
+            paint.TextSize = sizePx;
+            var metrics = paint.GetFontMetrics()!;
+            paint.TextSize = was;
+
+            return metrics.Descent - metrics.Ascent;
+        }
+    }
+
     private void Prepare()
     {
         if (_typefacesSet) return;
