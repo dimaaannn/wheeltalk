@@ -91,6 +91,11 @@ public sealed class MainApplication : Application
         // места, где этот экземпляр есть под рукой, в приложении нет.
         RegisterActivityLifecycleCallbacks(Services.GetRequiredService<AlertOverlay>());
 
+        // Полоса поверх ЧУЖИХ приложений (решение владельца 11.08.2026). Не наблюдатель жизненного
+        // цикла — просто первое обращение к синглтону, чтобы его подписки на AlertOverlay и
+        // AlertBanner встали до первой же тревоги, а не по случайному первому чтению настроек.
+        Services.GetRequiredService<SystemAlertOverlay>();
+
         Services.GetRequiredService<ILogger<MainApplication>>().LogInformation("App.Started");
     }
 }

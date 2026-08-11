@@ -55,4 +55,10 @@
 	     приложение в магазин, разрешение надо либо обосновать, либо снять вместе с запросом —
 	     тогда просьба уходит на экран «О приложении». Оригинал объявляет его так же. -->
 	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+	<!-- Тревога поверх ЧУЖИХ приложений (SystemAlertOverlay) — решение владельца 11.08.2026, по
+	     умолчанию выключено. Объявление разрешения само по себе ничего не открывает: система всё
+	     равно спрашивает согласие отдельным экраном (ACTION_MANAGE_OVERLAY_PERMISSION), а без строки
+	     здесь этот экран не показать вовсе. -->
+	<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 </manifest>

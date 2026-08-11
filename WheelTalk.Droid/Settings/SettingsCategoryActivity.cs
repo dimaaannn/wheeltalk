@@ -1520,9 +1520,29 @@ public sealed class SettingsCategoryActivity : Activity
             .SetMessage(message)!
             .SetPositiveButton(AppStrings.SettingsAccept, (_, _) => { })!);
 
+    /// <summary>
+    /// Ключ ручки «Тревога поверх других приложений» (<c>AlertsPage</c>) — зашит здесь одним местом,
+    /// а не константой в общем коде: тумблеров, просящих системное разрешение при включении, пока
+    /// один, и заводить под него общий механизм незачем (решение владельца 11.08.2026).
+    /// </summary>
+    private const string OverlayOtherAppsKey = "AlertSignals:OverlayOtherApps";
+
     private void Commit(SettingDescriptor descriptor, string value)
     {
         _binder.Set(descriptor, value, _viewScope);
+
+        // Запрос — только на включении и только если системе ещё нечего показать: выключение и
+        // повторное включение уже разрешённого канала никого никуда не отправляют. Не дадут
+        // разрешение — флаг остаётся включённым, SystemAlertOverlay просто не покажется, пока его нет.
+        if (descriptor.Key == OverlayOtherAppsKey
+            && SettingsFormat.ParseBool(value)
+            && !Android.Provider.Settings.CanDrawOverlays(this))
+        {
+            StartActivity(new Intent(
+                Android.Provider.Settings.ActionManageOverlayPermission,
+                Android.Net.Uri.Parse("package:" + PackageName)));
+        }
+
         Rebuild();
     }
 

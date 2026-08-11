@@ -22,8 +22,15 @@ namespace WheelTalk.Droid.Alerts;
 /// Наложение кладётся в <c>android.R.id.content</c> поверх корня экрана (<c>AddContentView</c>) и
 /// ничего у разметки не отнимает: экраны собираются как собирались, тревога всплывает над ними и
 /// уходит, не сдвинув ни строки, и не забирая ни одного касания (см. <see cref="AlertOverlayView"/>).
-/// Своего окна (<c>TYPE_APPLICATION_OVERLAY</c>) не заводим — оно требует разрешения «поверх других
-/// приложений» и показывалось бы поверх чужих экранов тоже, а речь только о наших.
+/// Своего окна (<c>TYPE_APPLICATION_OVERLAY</c>) здесь по-прежнему нет — задача этого класса про
+/// НАШИ экраны, разрешения она не требует.
+/// </para>
+/// <para>
+/// Тревога поверх ЧУЖИХ приложений — решение владельца 11.08.2026 — живёт отдельным классом,
+/// <see cref="SystemAlertOverlay"/>: своё системное окно, своё разрешение, своя настройка,
+/// выключенная по умолчанию. Дублировать здесь её незачем — вместо этого он читает
+/// <see cref="HostVisible"/>, чтобы не всплыть поверх собственного экрана, когда тот и так уже
+/// показывает то же самое этим классом.
 /// </para>
 /// <para>
 /// Главный экран пропускается: там и полоса слов — часть рамки (<c>MainScreenView</c>), и полосы
@@ -38,6 +45,7 @@ public sealed class AlertOverlay : Java.Lang.Object, Application.IActivityLifecy
 
     private Activity? _host;
     private AlertOverlayView? _view;
+    private bool _hostVisible;
 
     public AlertOverlay(AlertBanner banner, DashboardOptions options)
     {
@@ -46,8 +54,20 @@ public sealed class AlertOverlay : Java.Lang.Object, Application.IActivityLifecy
         _banner.Changed += OnBannerChanged;
     }
 
+    /// <summary>
+    /// Хоть одна из наших активностей сейчас на переднем плане — включая главный экран, у которого
+    /// нет собственного <see cref="_host"/> (см. ниже): для <see cref="SystemAlertOverlay"/> и он
+    /// «наш экран», поверх которого системное окно не нужно.
+    /// </summary>
+    public bool HostVisible => _hostVisible;
+
+    /// <summary>Смена <see cref="HostVisible"/> — сигнал тому же, что слушает <see cref="AlertBanner.Changed"/>.</summary>
+    public event Action? HostVisibilityChanged;
+
     public void OnActivityResumed(Activity activity)
     {
+        SetHostVisible(true);
+
         if (activity is MainActivity) return;
 
         _host = activity;
@@ -57,6 +77,8 @@ public sealed class AlertOverlay : Java.Lang.Object, Application.IActivityLifecy
 
     public void OnActivityPaused(Activity activity)
     {
+        SetHostVisible(false);
+
         if (!ReferenceEquals(_host, activity)) return;
 
         // Наложение принадлежит окну ушедшего экрана и уходит вместе с ним: держать ссылку на
@@ -64,6 +86,21 @@ public sealed class AlertOverlay : Java.Lang.Object, Application.IActivityLifecy
         (_view?.Parent as ViewGroup)?.RemoveView(_view);
         _view = null;
         _host = null;
+    }
+
+    /// <summary>
+    /// Между уходом одной нашей активности и приходом следующей Android держит короткий миг без
+    /// резюмированной активности вовсе — системный порядок «пауза, потом резюм». Значит, на переходе
+    /// между двумя нашими же экранами <see cref="SystemAlertOverlay"/> может на мгновение решить, что
+    /// путь свободен, и тут же передумать: цена такого мигания — один лишний кадр системного окна, не
+    /// сорванная тревога, поэтому фильтровать его отдельно незачем.
+    /// </summary>
+    private void SetHostVisible(bool visible)
+    {
+        if (_hostVisible == visible) return;
+
+        _hostVisible = visible;
+        HostVisibilityChanged?.Invoke();
     }
 
     public void OnActivityCreated(Activity activity, Bundle? savedInstanceState) { }

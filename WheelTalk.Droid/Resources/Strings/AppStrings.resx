@@ -198,6 +198,8 @@
   <data name="SettingChannelVibration" xml:space="preserve"><value>Вибрация</value></data>
   <data name="SettingChannelTorch" xml:space="preserve"><value>Вспышка камеры</value></data>
   <data name="SettingChannelTorchHint" xml:space="preserve"><value>Моргает в такт тревоге по ШИМ. На предупреждение по скорости не реагирует.</value></data>
+  <data name="SettingChannelOverlay" xml:space="preserve"><value>Тревога поверх других приложений</value></data>
+  <data name="SettingChannelOverlayHint" xml:space="preserve"><value>Полоса тревоги видна даже когда открыто другое приложение. Требует разрешения системы</value></data>
   <data name="UnitKmh" xml:space="preserve"><value>км/ч</value></data>
   <data name="UnitVolts" xml:space="preserve"><value>В</value></data>
   <data name="UnitPercent" xml:space="preserve"><value>%</value></data>

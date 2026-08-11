@@ -39,6 +39,11 @@ public static class AlertsServiceCollectionExtensions
         services.AddSingleton<AlertBanner>();
         services.AddSingleton<AlertOverlay>();
 
+        // Полоса поверх ЧУЖИХ приложений (решение владельца 11.08.2026) — тоже один синглтон на
+        // приложение, но не наблюдатель жизненного цикла: подписывается на AlertOverlay сам,
+        // MainApplication лишь создаёт его первым обращением (см. OnCreate).
+        services.AddSingleton<SystemAlertOverlay>();
+
         return services;
     }
 }

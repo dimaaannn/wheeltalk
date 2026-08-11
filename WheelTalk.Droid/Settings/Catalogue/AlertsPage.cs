@@ -138,6 +138,21 @@ internal static class AlertsPage
                 Current = () => channels.Torch.ToString(),
                 Apply = text => channels.Torch = SettingsCatalogue.ParseBool(text),
             },
+            // Выключено по умолчанию и просит системное разрешение — единственная ручка здесь с
+            // побочным эффектом на весь телефон, а не только на это приложение (решение владельца
+            // 11.08.2026). Запрос разрешения — в SettingsCategoryActivity.Commit, по этому же ключу.
+            new()
+            {
+                Key = "AlertSignals:OverlayOtherApps",
+                Kind = SettingKind.Toggle,
+                Page = SettingsPage.Warnings,
+                SectionKey = "SectionChannels",
+                LabelKey = "SettingChannelOverlay",
+                HintKey = "SettingChannelOverlayHint",
+                GlobalOnly = true,
+                Current = () => channels.OverlayOtherApps.ToString(),
+                Apply = text => channels.OverlayOtherApps = SettingsCatalogue.ParseBool(text),
+            },
         ];
     }
 }
