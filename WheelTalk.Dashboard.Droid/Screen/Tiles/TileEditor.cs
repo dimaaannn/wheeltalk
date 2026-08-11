@@ -56,6 +56,7 @@ internal static class TileEditor
             TileKind.Extremum => 2,
             TileKind.Trip => 3,
             TileKind.Empty => 4,
+            TileKind.Divider => 5,
             null => 4,
             _ => 0,
         };
@@ -65,7 +66,7 @@ internal static class TileEditor
         // неё не бывает, — величина, подпись, пороги.
         var kindPick = Pick(context,
             [translate("TilesKindValue"), translate("TilesKindChart"), translate("TilesKindExtremum"),
-                translate("TilesKindTrip"), translate("TilesTileEmpty")],
+                translate("TilesKindTrip"), translate("TilesTileEmpty"), translate("TilesKindDivider")],
             kindOf(tile));
         var metricPick = Pick(context, Choices(translate, chart ? charted : all), 0);
         var sizePick = Pick(context, [.. sizes.Select(size => size.Describe())],
@@ -138,15 +139,6 @@ internal static class TileEditor
             Checked = tile?.ShowHeatBar != false,
         };
 
-        // Разделитель — свойством плитки, а не отдельным видом (решение владельца 11.08.2026): вид
-        // занял бы целую строку сетки ради одной линии. Спрашивается у всякой плитки, включая
-        // пустую: группу начинают и пустым местом.
-        var group = new CheckBox(context)
-        {
-            Text = translate("TilesTileGroup"),
-            Checked = tile?.GroupStart == true,
-        };
-
         // Округление — своё у каждой плитки, тем же правом, что пороги и полоса жара: одну и ту же
         // величину ставят и крупной, и справочной, и подробность у них разная. Первый пункт — «по
         // умолчанию», то есть размерность типа величины; он же стоит у новой плитки.
@@ -217,7 +209,9 @@ internal static class TileEditor
 
         kindPick.ItemSelected += (_, _) =>
         {
-            bool wantEmpty = kindPick.SelectedItemPosition == 4;
+            // Разделителю, как и пустому месту, не нужно ничего: ни величины, ни подписи, ни
+            // порогов — у него и содержимого нет.
+            bool wantEmpty = kindPick.SelectedItemPosition >= 4;
             bool wantChart = kindPick.SelectedItemPosition == 1;
             bool wantTrip = kindPick.SelectedItemPosition == 3;
             lowest.Visibility = kindPick.SelectedItemPosition == 2 ? ViewStates.Visible : ViewStates.Gone;
@@ -262,7 +256,6 @@ internal static class TileEditor
         content.AddView(sizePick);
         content.AddView(showLabel);
         content.AddView(heatBar);
-        content.AddView(group);
         content.AddView(lowest);
         content.AddView(roundingLine);
         content.AddView(chartOptions);
@@ -288,7 +281,6 @@ internal static class TileEditor
                 new TileExtremum(lowest.Checked),
                 Rounding(roundingPick.SelectedItemPosition),
                 caption.Text ?? "",
-                group.Checked,
                 // Имя плитки переживает правку: точка отсчёта дистанции хранится по нему, и
                 // рождённое заново имя означало бы сброшенный счёт после смены размера.
                 tile?.Id ?? "")))!
@@ -302,7 +294,7 @@ internal static class TileEditor
     /// <param name="named">Имя правимой плитки; пусто — плитка новая, имя ей даётся здесь.</param>
     private static MetricTile Result(IReadOnlyList<MetricDescriptor> metrics, int kind, int chosen,
         TileSize size, bool showLabel, bool heatBar, TileChart options, TileLimits? limits,
-        TileExtremum extremum, int? decimals, string caption, bool group, string named)
+        TileExtremum extremum, int? decimals, string caption, string named)
     {
         string tile = named.Length > 0 ? named : MetricTile.NewId();
 
@@ -312,18 +304,20 @@ internal static class TileEditor
             ? Odometer
             : chosen >= 0 && chosen < metrics.Count ? metrics[chosen].Id : "";
 
-        if (kind == 4 || id.Length == 0) return MetricTile.Empty(size) with { Id = tile, GroupStart = group };
+        if (kind == 5) return MetricTile.Divider() with { Id = tile };
+
+        if (kind == 4 || id.Length == 0) return MetricTile.Empty(size) with { Id = tile };
 
         return kind switch
         {
             1 => new MetricTile(id, TileKind.Chart, size, showLabel, options, limits, ShowHeatBar: heatBar,
-                Decimals: decimals, Caption: caption) { Id = tile, GroupStart = group },
+                Decimals: decimals, Caption: caption) { Id = tile },
             2 => new MetricTile(id, TileKind.Extremum, size, showLabel, Limits: limits, Extremum: extremum,
-                ShowHeatBar: heatBar, Decimals: decimals, Caption: caption) { Id = tile, GroupStart = group },
+                ShowHeatBar: heatBar, Decimals: decimals, Caption: caption) { Id = tile },
             3 => new MetricTile(id, TileKind.Trip, size, showLabel, Limits: limits, ShowHeatBar: heatBar,
-                Decimals: decimals, Caption: caption) { Id = tile, GroupStart = group },
+                Decimals: decimals, Caption: caption) { Id = tile },
             _ => new MetricTile(id, TileKind.Value, size, showLabel, Limits: limits, ShowHeatBar: heatBar,
-                Decimals: decimals, Caption: caption) { Id = tile, GroupStart = group },
+                Decimals: decimals, Caption: caption) { Id = tile },
         };
     }
 

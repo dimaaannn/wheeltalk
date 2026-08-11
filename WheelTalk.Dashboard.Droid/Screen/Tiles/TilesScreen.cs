@@ -539,7 +539,7 @@ public sealed class TilesScreen : IMainScreen
     /// </summary>
     private RecyclerView.LayoutManager LayoutManager(Context context)
     {
-        if (TilesLayout.PackTiles) return new TileGridLayoutManager(context, _adapter.SizeAt);
+        if (TilesLayout.PackTiles) return new TileGridLayoutManager(context, _adapter.SizeAt, _adapter.DividerAt);
 
         var grid = new GridLayoutManager(context, TilesLayout.Columns);
         grid.SetSpanSizeLookup(new TileSpans(_adapter.SizeAt));
@@ -934,6 +934,9 @@ public sealed class TilesScreen : IMainScreen
         /// <summary>Размер плитки для укладчика: сетке он нужен до того, как плитка построена.</summary>
         public TileSize SizeAt(int position) => _tiles[position].Tile.Size;
 
+        /// <summary>Разделитель ли это: у него своя, пониженная строка (решение владельца 11.08.2026).</summary>
+        public bool DividerAt(int position) => _tiles[position].Tile.Kind == TileKind.Divider;
+
         public MetricTile TileAt(int position) => _tiles[position].Tile;
 
         /// <summary>Режим правки одинаков для всех плиток сразу — правят раскладку, а не одну из них.</summary>
@@ -1103,6 +1106,7 @@ public sealed class TilesScreen : IMainScreen
             TileKind.Chart => 1,
             TileKind.Extremum => 2,
             TileKind.Trip => 3,
+            TileKind.Divider => 4,
             _ => 0,
         };
 
@@ -1113,6 +1117,7 @@ public sealed class TilesScreen : IMainScreen
                 1 => new ChartTileView(_context, _options, _translate),
                 2 => new ExtremumTileView(_context, _options),
                 3 => new TripTileView(_context, _options, _wheel),
+                4 => new DividerView(_context, _options),
                 _ => new MetricTileView(_context, _options),
             };
 
@@ -1140,8 +1145,11 @@ public sealed class TilesScreen : IMainScreen
 
             var (layout, metric) = _tiles[position];
 
-            // Черта группы — свойство всякой плитки, включая пустое место: группу начинают и им.
-            tile.Tile.GroupStart = layout.GroupStart;
+            if (tile.Tile is DividerView divider)
+            {
+                divider.Bind(layout.Size);
+                return;
+            }
 
             if (metric is null)
             {

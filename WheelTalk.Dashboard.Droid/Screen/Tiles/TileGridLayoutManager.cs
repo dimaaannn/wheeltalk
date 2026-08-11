@@ -1,6 +1,7 @@
-using Android.Content;
+﻿using Android.Content;
 using Android.Views;
 using AndroidX.RecyclerView.Widget;
+using WheelTalk.Core.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -29,7 +30,8 @@ namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 /// <c>View</c>, что адаптер и так держит для отрисовки кадра. Прокрутка двигает готовых детей.
 /// </para>
 /// </summary>
-internal sealed class TileGridLayoutManager(Context context, Func<int, TileSize> sizeAt) : RecyclerView.LayoutManager
+internal sealed class TileGridLayoutManager(
+    Context context, Func<int, TileSize> sizeAt, Func<int, bool> dividerAt) : RecyclerView.LayoutManager
 {
     private int _scroll;
     private int _contentHeight;
@@ -50,13 +52,34 @@ internal sealed class TileGridLayoutManager(Context context, Func<int, TileSize>
 
         int usable = Width - PaddingLeft - PaddingRight;
         int rowHeight = context.Dp(TilesLayout.RowHeightDp);
+        int dividerHeight = context.Dp(TilesLayout.DividerRowDp);
         int gap = context.Dp(TilesLayout.GapDp);
         var packer = new TilePacker(TilesLayout.Columns);
+
+        // Проход первый: разложить по клеткам и узнать, какие строки заняты разделителем. Высоту
+        // строк складывать по дороге нельзя — место элемента зависело бы от того, докуда дошёл
+        // проход, и низ раскладки ехал бы при каждой перестановке.
+        var placed = new List<(int Position, int Row, int Column, TileSize Size)>(ItemCount);
+        var heights = new List<float>();
 
         for (int position = 0; position < ItemCount; position++)
         {
             var size = sizeAt(position);
             var (row, column) = packer.Place(size);
+
+            placed.Add((position, row, column, size));
+
+            while (heights.Count < row + size.Rows) heights.Add(rowHeight);
+
+            // Разделитель занимает свою строку целиком и делает её ниже обычной: он и есть тот
+            // видимый зазор, ради которого заведён.
+            if (dividerAt(position)) heights[row] = dividerHeight;
+        }
+
+        var tops = TileRows.Tops(heights);
+
+        foreach (var (position, row, column, size) in placed)
+        {
             var view = recycler.GetViewForPosition(position);
             AddView(view);
 
@@ -64,15 +87,16 @@ internal sealed class TileGridLayoutManager(Context context, Func<int, TileSize>
             // иначе копился бы к правому краю, и последний столбик не дотягивал бы до него.
             int left = PaddingLeft + column * usable / TilesLayout.Columns + gap;
             int right = PaddingLeft + (column + size.Columns) * usable / TilesLayout.Columns - gap;
-            int top = PaddingTop + row * rowHeight + gap - _scroll;
-            int bottom = PaddingTop + (row + size.Rows) * rowHeight - gap - _scroll;
+            int top = PaddingTop + (int)tops[row] + gap - _scroll;
+            int bottom = PaddingTop + (int)tops[row + size.Rows] - gap - _scroll;
 
             view.Measure(
                 View.MeasureSpec.MakeMeasureSpec(right - left, MeasureSpecMode.Exactly),
                 View.MeasureSpec.MakeMeasureSpec(bottom - top, MeasureSpecMode.Exactly));
             LayoutDecorated(view, left, top, right, bottom);
 
-            _contentHeight = Math.Max(_contentHeight, PaddingTop + (row + size.Rows) * rowHeight + PaddingBottom);
+            _contentHeight = Math.Max(
+                _contentHeight, PaddingTop + (int)tops[row + size.Rows] + PaddingBottom);
         }
     }
 

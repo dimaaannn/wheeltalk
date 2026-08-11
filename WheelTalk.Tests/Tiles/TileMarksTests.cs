@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Tiles;
@@ -89,32 +89,6 @@ public class TileMarksTests
 
         Assert.Contains("Label.Text = \"\";", empty);
         Assert.Contains("_cornerLabel = \"\";", empty);
-    }
-
-    /// <summary>
-    /// Разделитель — свойство плитки, а не вид: черта рисуется по верхнему краю той плитки, с
-    /// которой группа начинается, и места не занимает (решение владельца 11.08.2026). Поле
-    /// необязательное: у раскладок, собранных раньше, его нет, и это ровно «группу не начинает».
-    /// <para>
-    /// Читается оно <b>во всех</b> ветках видов — пустое место тоже начинает группу; пропусти
-    /// ветку, и настройка исчезнет молча у плиток одного какого-то вида.
-    /// </para>
-    /// </summary>
-    [Fact]
-    public void A_group_line_is_a_property_of_the_tile_and_reaches_every_kind()
-    {
-        string json = RepoFiles.Read(Tiles + "TileLayoutJson.cs");
-
-        Assert.Contains("public bool Group { get; set; }", json);
-        Assert.Contains("Group = tile.GroupStart,", json);
-
-        // Пять веток чтения: пустое место, число, график, крайнее, дистанция.
-        Assert.Equal(5, Regex.Matches(json, @"GroupStart = dto\.Group").Count);
-
-        // Черта — по верхнему краю и во всю ширину, строки сетки не занимает.
-        Assert.Contains(
-            "if (_groupStart) canvas.DrawLine(0, 0, Width, 0, _outlinePaint);",
-            RepoFiles.Read(Tiles + "TileView.cs"));
     }
 
     /// <summary>

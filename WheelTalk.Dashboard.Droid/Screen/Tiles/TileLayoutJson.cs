@@ -61,7 +61,6 @@ public static partial class TileLayoutJson
     {
         Id = tile.Id,
         Caption = tile.Caption.Length > 0 ? tile.Caption : null,
-        Group = tile.GroupStart,
         Kind = tile.Kind switch
         {
             TileKind.Value => "value",
@@ -69,6 +68,7 @@ public static partial class TileLayoutJson
             TileKind.Extremum => "extremum",
             TileKind.Trip => "trip",
             TileKind.Empty => "empty",
+            TileKind.Divider => "divider",
             // Новый вид без строки формата должен упасть у разработчика при первом же сохранении,
             // а не молча записаться числом, которое прошлая версия прочтёт как мусор.
             _ => throw new ArgumentOutOfRangeException(nameof(tile), tile.Kind, "вид без имени в формате"),
@@ -125,27 +125,31 @@ public static partial class TileLayoutJson
         switch (dto.Kind)
         {
             case "empty":
-                return MetricTile.Empty(size) with { Id = id, GroupStart = dto.Group };
+                return MetricTile.Empty(size) with { Id = id };
+
+            // Разделителю ни величина, ни размер не нужны: он всегда во всю ширину и своей высоты.
+            case "divider":
+                return MetricTile.Divider() with { Id = id };
 
             case "value" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Value, size, dto.Label,
                     Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals,
-                    Caption: caption) { Id = id, GroupStart = dto.Group };
+                    Caption: caption) { Id = id };
 
             case "chart" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Chart, size, dto.Label,
                     ToChart(dto.Chart), ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar,
-                    Decimals: decimals, Caption: caption) { Id = id, GroupStart = dto.Group };
+                    Decimals: decimals, Caption: caption) { Id = id };
 
             case "extremum" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Extremum, size, dto.Label,
                     Limits: ToLimits(dto.Limits), Extremum: new TileExtremum(dto.Lowest),
-                    ShowHeatBar: dto.HeatBar, Decimals: decimals, Caption: caption) { Id = id, GroupStart = dto.Group };
+                    ShowHeatBar: dto.HeatBar, Decimals: decimals, Caption: caption) { Id = id };
 
             case "trip" when dto.Metric is { Length: > 0 }:
                 return new MetricTile(dto.Metric, TileKind.Trip, size, dto.Label,
                     Limits: ToLimits(dto.Limits), ShowHeatBar: dto.HeatBar, Decimals: decimals,
-                    Caption: caption) { Id = id, GroupStart = dto.Group };
+                    Caption: caption) { Id = id };
 
             default:
                 // Незнакомый вид или величина без имени: строить нечего.
@@ -194,12 +198,11 @@ public static partial class TileLayoutJson
         /// </summary>
         public string? Caption { get; set; }
 
-        /// <summary>
-        /// Начинать ли этой плиткой новую группу — черта над ней. Поля нет у раскладок, собранных
-        /// раньше, и это ровно «группу не начинает»: <c>false</c> здесь и есть прежний вид, а не
-        /// потеря настройки.
-        /// </summary>
-        public bool Group { get; set; }
+        // Поле «group» было и снято 11.08.2026: разделитель стал самостоятельным элементом, а
+        // свойство плитки владелец отверг. Объявления ему тут нет намеренно — незнакомое поле
+        // формат и так игнорирует (правило чтения выше), и раскладка, где оно лежит, читается без
+        // единой оговорки. Мёртвое объявление врало бы о составе формата и однажды всплыло бы
+        // вторым смыслом у того же имени.
 
         public string? Kind { get; set; }
         public string? Metric { get; set; }

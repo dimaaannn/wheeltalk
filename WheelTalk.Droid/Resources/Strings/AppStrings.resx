@@ -379,7 +379,7 @@
   <data name="TilesTileZoom" xml:space="preserve"><value>Обрезать по крайним значениям</value></data>
   <data name="TilesTileHeatBar" xml:space="preserve"><value>Полоса жара по низу</value></data>
   <data name="TilesTileLabel" xml:space="preserve"><value>Показывать подпись</value></data>
-  <data name="TilesTileGroup" xml:space="preserve"><value>Начинать новую группу</value></data>
+  <data name="TilesKindDivider" xml:space="preserve"><value>Разделитель</value></data>
   <data name="TilesTileRounding" xml:space="preserve"><value>Знаков после запятой</value></data>
   <data name="TilesRoundingDefault" xml:space="preserve"><value>По умолчанию</value></data>
   <data name="TilesTileFill" xml:space="preserve"><value>Заливка под линией</value></data>

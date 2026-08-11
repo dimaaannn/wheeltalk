@@ -83,8 +83,6 @@ internal abstract class TileView : LinearLayout
     /// </summary>
     private string _cornerLabel = "";
 
-    /// <summary>Начинает ли плитка группу — тогда по её верхнему краю идёт черта.</summary>
-    private bool _groupStart;
 
     protected TileView(Context context, DashboardOptions options) : base(context)
     {
@@ -195,20 +193,6 @@ internal abstract class TileView : LinearLayout
         }
     }
 
-    /// <summary>
-    /// Начинает ли плитка новую группу. Ставится при привязке — как и всё прочее, чем плитка
-    /// отличается от соседки; перерисовка нужна только на перемену.
-    /// </summary>
-    public bool GroupStart
-    {
-        set
-        {
-            if (_groupStart == value) return;
-
-            _groupStart = value;
-            Invalidate();
-        }
-    }
 
     /// <summary>Очередной снимок. Зовётся на каждом кадре, поэтому дешёвый: вид без чисел молчит.</summary>
     public virtual void Render(TelemetrySnapshot? snapshot)
@@ -437,10 +421,6 @@ internal abstract class TileView : LinearLayout
         if (!_empty) DrawFrame(canvas);
         if (_cornerLabel.Length > 0) DrawCornerLabel(canvas);
 
-        // Черта группы — по верхнему краю плитки, во всю её ширину. Места не занимает: разделитель
-        // здесь свойство плитки, а не вид (решение владельца 11.08.2026), и строку сетки ради одной
-        // линии никто не тратит.
-        if (_groupStart) canvas.DrawLine(0, 0, Width, 0, _outlinePaint);
 
         if (!_editing) return;
 
