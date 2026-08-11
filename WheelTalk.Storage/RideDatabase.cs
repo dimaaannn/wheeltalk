@@ -176,6 +176,48 @@ public sealed partial class RideDatabase
     /// срока в одном хранилище — это два ответа на вопрос «что у меня есть за прошлую неделю».
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Сносит поездки, законченные раньше срока хранения (план 11 §4.5). Ноль или меньше — не
+    /// удалять ничего: это <b>заводское</b> значение, потому что поездки ценны и стирать их молча
+    /// нельзя (см. <see cref="StorageOptions.RideRetention"/>).
+    /// <para>
+    /// <b>Открытая поездка не трогается никогда</b> — у неё нет конца, от которого считать срок, и
+    /// ровно она сейчас пишется. Брошенные к этому моменту уже закрыты (<see cref="CloseAbandonedRides"/>),
+    /// так что «открытая» здесь значит «идёт прямо сейчас».
+    /// </para>
+    /// <para>
+    /// Удаляется строка поездки — тем же одним путём, каким её удаляет человек из списка
+    /// (<c>RideStore.DeleteRide</c>): итоги лежат её же колонками и уходят с ней. Поток телеметрии
+    /// к поездке не привязан и живёт своим сроком — <see cref="PurgeOldTelemetry"/>.
+    /// </para>
+    /// <para>
+    /// <b>Зовётся не на открытии базы, а на старте приложения, после того как слои настроек легли
+    /// на опции.</b> Срок — настройка человека, а настройки лежат в этой самой базе: на открытии
+    /// его ещё некому прочитать, и чистка на открытии всегда работала бы по заводскому нулю.
+    /// </para>
+    /// </summary>
+    public void PurgeOldRides(TimeSpan retention, DateTimeOffset now)
+    {
+        if (!IsWritable || retention <= TimeSpan.Zero) return;
+
+        long cutoff = now.ToUnixTimeMilliseconds() - (long)retention.TotalMilliseconds;
+
+        try
+        {
+            using var connection = Connect();
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM ride WHERE ended_at IS NOT NULL AND ended_at < $cutoff;";
+            command.Parameters.AddWithValue("$cutoff", cutoff);
+
+            int removed = command.ExecuteNonQuery();
+            if (removed > 0) LogRidesPurged(_logger, removed, retention);
+        }
+        catch (Exception ex) when (ex is SqliteException or InvalidOperationException)
+        {
+            LogPurgeFailed(_logger, ex);
+        }
+    }
+
     private void PurgeOldTelemetry(SqliteConnection connection, long now, TimeSpan retention)
     {
         if (retention <= TimeSpan.Zero) return;
@@ -256,4 +298,13 @@ public sealed partial class RideDatabase
     [LoggerMessage(EventId = 1606, EventName = "Db.TelemetryPurged", Level = LogLevel.Information,
         Message = "Db.TelemetryPurged {Count} rows older than {Retention}")]
     private static partial void LogTelemetryPurged(ILogger logger, int count, TimeSpan retention);
+
+    /// <summary>Удалённую поездку не вернуть — в журнале обязана остаться строка о том, что её удалили мы.</summary>
+    [LoggerMessage(EventId = 1607, EventName = "Db.RidesPurged", Level = LogLevel.Warning,
+        Message = "Db.RidesPurged {Count} rides older than {Retention}")]
+    private static partial void LogRidesPurged(ILogger logger, int count, TimeSpan retention);
+
+    [LoggerMessage(EventId = 1608, EventName = "Db.RidePurgeFailed", Level = LogLevel.Warning,
+        Message = "Db.RidePurgeFailed — старые поездки не убраны")]
+    private static partial void LogPurgeFailed(ILogger logger, Exception error);
 }

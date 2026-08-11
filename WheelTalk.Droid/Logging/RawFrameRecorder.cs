@@ -110,6 +110,46 @@ public sealed partial class RawFrameRecorder : IDisposable
             LogStopped(_file.Path, _file.LinesWritten);
             _file.Dispose();
             _file = null;
+            Trim(_mac, keep: null);
+        }
+    }
+
+    /// <summary>
+    /// Убрать старые дампы под потолок (<see cref="LoggingOptions.RawDumpCapMb"/>, план 11 §4.5).
+    /// Зовётся <b>на закрытии файла и перед началом нового</b>, а не на кадре: кадров двадцать с
+    /// лишним в секунду, и обход каталога на каждом стоил бы дороже самой записи.
+    /// <para>
+    /// Что сносить, решает <see cref="RawDumpCap"/> — самое старое, никогда не трогая свежий дамп и
+    /// тот, в который пишут прямо сейчас. Отказ файловой системы уборку не роняет: дамп — дело
+    /// отладочное, и запись из-за неубранного соседа прерываться не должна.
+    /// </para>
+    /// </summary>
+    private void Trim(string mac, string? keep)
+    {
+        long cap = (long)_options.RawDumpCapMb * 1024 * 1024;
+        if (cap <= 0 || mac.Length == 0) return;
+
+        try
+        {
+            var folder = new DirectoryInfo(RideFiles.WheelFolder(mac));
+            var dumps = folder
+                .GetFiles(RideFiles.RawDumpMask)
+                .Select(file => new DumpFile(file.FullName, file.Length, file.LastWriteTimeUtc));
+
+            long freed = 0;
+            int removed = 0;
+            foreach (var file in RawDumpCap.Excess(dumps, cap, keep))
+            {
+                File.Delete(file.Path);
+                freed += file.Bytes;
+                removed++;
+            }
+
+            if (removed > 0) LogTrimmed(folder.FullName, removed, freed / (1024 * 1024));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogTrimFailed(ex, mac);
         }
     }
 
@@ -130,6 +170,10 @@ public sealed partial class RawFrameRecorder : IDisposable
             if (_file is null)
             {
                 _mac = mac;
+
+                // Место под новый дамп освобождается до его создания: иначе первый же потолочный
+                // обход считал бы пустой файл вместе с накопленным и снёс бы лишнее.
+                Trim(mac, keep: null);
                 _file = new BufferedLogFile(RideFiles.RawDump(mac, _timeProvider.GetLocalNow()), FlushEveryLines);
                 LogStarted(_file.Path);
             }
@@ -145,4 +189,16 @@ public sealed partial class RawFrameRecorder : IDisposable
     [LoggerMessage(EventId = 1511, EventName = "Raw.DumpStopped", Level = LogLevel.Information,
         Message = "Raw.DumpStopped {Path} {Frames} frames")]
     private partial void LogStopped(string path, int frames);
+
+    /// <summary>
+    /// Уборка обязана быть видна в журнале: удалённый дамп не вернуть, и «куда делась запись
+    /// позавчерашнего выезда» должно отвечаться строкой, а не догадкой.
+    /// </summary>
+    [LoggerMessage(EventId = 1512, EventName = "Raw.DumpsTrimmed", Level = LogLevel.Information,
+        Message = "Raw.DumpsTrimmed {Folder} — удалено {Removed} дампов, освобождено {FreedMb} МБ")]
+    private partial void LogTrimmed(string folder, int removed, long freedMb);
+
+    [LoggerMessage(EventId = 1513, EventName = "Raw.TrimFailed", Level = LogLevel.Warning,
+        Message = "Raw.TrimFailed {Mac} — не убрать старые дампы")]
+    private partial void LogTrimFailed(Exception error, string mac);
 }

@@ -1,6 +1,7 @@
 using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Droid.Configuration;
+using WheelTalk.Storage;
 
 namespace WheelTalk.Droid.Settings.Catalogue;
 
@@ -11,7 +12,8 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 internal static class AppPage
 {
     public static IReadOnlyList<SettingDescriptor> Build(
-        ConnectionOptions connection, PowerOptions power, ScreenOptions screen, Action share)
+        ConnectionOptions connection, PowerOptions power, ScreenOptions screen, StorageOptions storage,
+        Action share)
     {
         return
         [
@@ -99,6 +101,34 @@ internal static class AppPage
                 GlobalOnly = true,
                 Current = () => power.WarnAboutBatterySaver.ToString(),
                 Apply = text => power.WarnAboutBatterySaver = SettingsCatalogue.ParseBool(text),
+            },
+
+            // ---- Хранение ----------------------------------------------------------------
+            //
+            // Срок жизни поездок (план 11 §4.5). Заводское значение — ноль, «не удалять»: поездка
+            // весит десятки байт, на накопленном стоит план 9, и умолчание, которое молча стирает
+            // историю, — то, чего не прощают. Чистка идёт на старте приложения, после того как слои
+            // настроек легли на опции (MainApplication): сам срок лежит настройкой в той же базе,
+            // и на её открытии читать его ещё неоткуда.
+            new()
+            {
+                Key = "Storage:RideRetention",
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Application,
+                SectionKey = "SectionStorage",
+                LabelKey = "SettingRideRetention",
+                HintKey = "SettingRideRetentionHint",
+                UnitKey = "UnitDays",
+                // Хранилище одно на все колёса: база общая, и «удалять старше месяца» не может
+                // значить разное в зависимости от того, к какому колесу сейчас подключены.
+                GlobalOnly = true,
+                Minimum = 0,
+                Maximum = 365,
+                Step = 1,
+                Decimals = 0,
+                Current = () => SettingsCatalogue.Fixed(storage.RideRetention.TotalDays, 0),
+                Apply = text => storage.RideRetention =
+                    TimeSpan.FromDays(SettingsCatalogue.ParseNumber(text)),
             },
 
             // ---- Разбор поломок ----------------------------------------------------------

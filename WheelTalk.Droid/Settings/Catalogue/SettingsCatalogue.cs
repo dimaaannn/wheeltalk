@@ -53,7 +53,7 @@ public static class SettingsCatalogue
         [
             .. WheelPage.Build(context.Wheel, context.Selected, context.Identity, context.Protocol,
                 context.RestartAuthentication),
-            .. AppPage.Build(context.Connection, context.Power, context.Screen, context.Share),
+            .. AppPage.Build(context.Connection, context.Power, context.Screen, context.Storage, context.Share),
             .. AlertsPage.Build(context.Alerts, context.Channels),
             .. DisplayPage.Build(context.Dashboard, context.Alerts, context.Panels),
 

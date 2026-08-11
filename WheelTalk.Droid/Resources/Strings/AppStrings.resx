@@ -341,6 +341,10 @@
   <data name="SettingPwmSmooth" xml:space="preserve"><value>Сглаживание данных ШИМ</value></data>
   <data name="SettingPwmSmoothHint" xml:space="preserve"><value>Задерживает и цифру, и цвет, и стрелку тренда. Ноль — значение как есть.</value></data>
   <data name="TelemetryPackCells" xml:space="preserve"><value>Пакет {0} · {1} банок</value></data>
+  <data name="SectionStorage" xml:space="preserve"><value>Хранение</value></data>
+  <data name="SettingRideRetention" xml:space="preserve"><value>Удалять поездки старше</value></data>
+  <data name="SettingRideRetentionHint" xml:space="preserve"><value>Чистка идёт при запуске приложения. Удалённые поездки не вернуть. Ноль — не удалять.</value></data>
+  <data name="UnitDays" xml:space="preserve"><value>дней</value></data>
   <data name="SectionDiagnostics" xml:space="preserve"><value>Разбор поломок</value></data>
   <data name="SectionAbout" xml:space="preserve"><value>О приложении</value></data>
   <data name="SettingAppVersion" xml:space="preserve"><value>Версия</value></data>

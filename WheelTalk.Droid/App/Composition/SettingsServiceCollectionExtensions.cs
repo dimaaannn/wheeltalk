@@ -48,6 +48,7 @@ public static class SettingsServiceCollectionExtensions
             sp.GetRequiredService<WheelIdentity>(),
             sp.GetRequiredService<IOptions<ScreenOptions>>().Value,
             sp.GetRequiredService<IOptions<PowerOptions>>().Value,
+            sp.GetRequiredService<IOptions<StorageOptions>>().Value,
             // Лениво и через делегат: сессия строится позже описаний, а спрашивают её уже во время
             // отрисовки страницы, когда колесо назвалось.
             () => sp.GetRequiredService<WheelSession>().Protocol,

@@ -5,6 +5,7 @@ using WheelTalk.Core.Services;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Main;
+using WheelTalk.Storage;
 
 namespace WheelTalk.Droid.Settings.Catalogue;
 
@@ -49,6 +50,7 @@ public sealed record CatalogueContext(
     WheelIdentity Identity,
     ScreenOptions Screen,
     PowerOptions Power,
+    StorageOptions Storage,
     Func<WheelProtocol?> Protocol,
     Action RestartAuthentication,
     Action<double> PreviewAlarm,

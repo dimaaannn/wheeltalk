@@ -2,11 +2,13 @@ using Android.App;
 using Android.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using WheelTalk.Core.Settings;
 using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.App.Composition;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Diagnostics;
+using WheelTalk.Storage;
 
 namespace WheelTalk.Droid.App;
 
@@ -83,6 +85,14 @@ public sealed class MainApplication : Application
         // чтения настройки. До этого вызова опции всё ещё держат только заводские значения из
         // appsettings.json, а это и есть то, что делает их заводским слоем выше.
         Services.GetRequiredService<SettingsBinder>().Apply();
+
+        // Срок хранения поездок — здесь, а не на открытии базы (план 11 §4.5): сам срок лежит
+        // настройкой в этой же базе, и на открытии его ещё некому прочитать — чистка работала бы по
+        // заводскому нулю всегда. Заводской ноль и значит «не удалять»: поездки ценны, и стирать их
+        // без слова человека нельзя.
+        Services.GetRequiredService<RideDatabase>().PurgeOldRides(
+            Services.GetRequiredService<IOptions<StorageOptions>>().Value.RideRetention,
+            Services.GetRequiredService<TimeProvider>().GetUtcNow());
 
         CrashGuard.SubscribeAppLevelHandlers();
 

@@ -28,15 +28,26 @@ public static class RideFiles
     public static string RawDump(string mac, DateTimeOffset startedAt) =>
         InWheelFolder(mac, $"RAW_{Stamp(startedAt)}.csv");
 
-    private static string Stamp(DateTimeOffset time) =>
-        time.ToString("yyyy_MM_dd_HH_mm_ss", CultureInfo.InvariantCulture);
+    /// <summary>Маска сырых дампов — по ней их и убирают по потолку веса (<c>RawDumpCap</c>).</summary>
+    public const string RawDumpMask = "RAW_*.csv";
 
-    private static string InWheelFolder(string mac, string fileName)
+    /// <summary>
+    /// Каталог этого колеса. Тот же самый, в котором лежат его файлы, — считается одним путём с
+    /// ними: два способа собрать имя папки однажды разойдутся, и уборка станет убирать не там.
+    /// </summary>
+    public static string WheelFolder(string mac)
     {
         // A MAC has colons in it and a folder name cannot, which is the same substitution the
         // original makes.
         string folder = Path.Combine(Root, mac.Replace(':', '_'));
         Directory.CreateDirectory(folder);
-        return Path.Combine(folder, fileName);
+
+        return folder;
     }
+
+    private static string Stamp(DateTimeOffset time) =>
+        time.ToString("yyyy_MM_dd_HH_mm_ss", CultureInfo.InvariantCulture);
+
+    private static string InWheelFolder(string mac, string fileName) =>
+        Path.Combine(WheelFolder(mac), fileName);
 }
