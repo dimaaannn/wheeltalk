@@ -68,16 +68,22 @@ public class ExtremaAreATileKindTests
 
     /// <summary>
     /// Состав умолчания — тот, что владелец собрал руками на телефоне и принял 11.08.2026, один в
-    /// один: величина, вид и размер каждой из четырнадцати плиток в его порядке, а следом — его же
-    /// пер-плиточные настройки. Замок на состав, а не на вкус: раскладку правит человек, а эта —
-    /// то, что он <b>принял</b> как начало для свежей установки. Двинется — двинется молча, и
-    /// заметить будет нечем.
+    /// один: величина, вид и размер каждого из пятнадцати мест в его порядке — включая разделитель,
+    /// которым он отбил показания поездки от состояния колеса, — а следом его же пер-плиточные
+    /// настройки. Замок на состав, а не на вкус: раскладку правит человек, а эта — то, что он
+    /// <b>принял</b> как начало для свежей установки. Двинется — двинется молча, и заметить будет
+    /// нечем.
     /// </summary>
     [Fact]
     public void The_starting_layout_is_the_one_the_owner_assembled()
     {
-        var tiles = Regex.Matches(Starting(), @"new\(""(\w+)"", TileKind\.(\w+), new\((\d+), (\d+)\)")
-            .Select(m => $"{m.Groups[1].Value} {m.Groups[2].Value} {m.Groups[3].Value}×{m.Groups[4].Value}");
+        // Разделитель ловится тем же проходом, что и плитки: он элемент раскладки, и место его в
+        // ряду — часть состава, а не мелочь вида.
+        var tiles = Regex
+            .Matches(Starting(), @"new\(""(\w+)"", TileKind\.(\w+), new\((\d+), (\d+)\)|MetricTile\.Divider\(\)")
+            .Select(m => m.Groups[1].Success
+                ? $"{m.Groups[1].Value} {m.Groups[2].Value} {m.Groups[3].Value}×{m.Groups[4].Value}"
+                : "разделитель");
 
         Assert.Equal(
         [
@@ -88,6 +94,7 @@ public class ExtremaAreATileKindTests
             "pwm Extremum 3×1",
             "current Extremum 3×1",
             "voltage Extremum 3×1",
+            "разделитель",
             "battery_level Value 6×2",
             "current Value 3×1",
             "power Value 3×1",
