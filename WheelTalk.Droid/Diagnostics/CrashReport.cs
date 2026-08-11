@@ -78,12 +78,24 @@ public static class CrashReport
     private static string MarkerPath => System.IO.Path.Combine(RideFiles.Root, "running.marker");
 
     /// <summary>
+    /// То же, что вернул последний вызов <see cref="CollectIfPreviousRunCrashed"/> — метка,
+    /// прочитанная ровно один раз при старте (<c>MainApplication.OnCreate</c>). Читает её
+    /// <c>MainActivity</c>, чтобы решить, предлагать ли отправку журнала: спрашивать
+    /// <see cref="CollectIfPreviousRunCrashed"/> напрямую второй раз значило бы собирать отчёт
+    /// заново на каждый показ экрана.
+    /// </summary>
+    public static bool PreviousRunCrashed { get; private set; }
+
+    /// <summary>
     /// Проверка при старте: если метка на месте, прошлый запуск не попрощался. Тогда — и только
-    /// тогда — собираем хвост буфера. Возвращает <c>true</c>, если сбор был.
+    /// тогда — собираем хвост буфера. Возвращает <c>true</c>, если сбор был, и запоминает это в
+    /// <see cref="PreviousRunCrashed"/> для тех, кто спросит позже.
     /// </summary>
     public static bool CollectIfPreviousRunCrashed()
     {
         if (!File.Exists(MarkerPath)) return false;
+
+        PreviousRunCrashed = true;
 
         // В метке лежит время, когда приложение в последний раз подтвердило, что живо, — то есть
         // почти время смерти. Оно и задаёт окно журнала: без него отчёт, собранный через три часа

@@ -34,6 +34,7 @@ public static class SettingsServiceCollectionExtensions
         services.AddSingleton<WheelIdentity>();
         services.Configure<ScreenOptions>(configuration.GetSection(ScreenOptions.SectionName));
         services.Configure<PowerOptions>(configuration.GetSection(PowerOptions.SectionName));
+        services.Configure<DiagnosticsOptions>(configuration.GetSection(DiagnosticsOptions.SectionName));
 
         services.AddSingleton<ISettingsStore>(sp => new SqliteSettingsStore(
             sp.GetRequiredService<RideDatabase>(), sp.GetRequiredService<ILogger<SqliteSettingsStore>>()));
@@ -49,6 +50,7 @@ public static class SettingsServiceCollectionExtensions
             sp.GetRequiredService<IOptions<ScreenOptions>>().Value,
             sp.GetRequiredService<IOptions<PowerOptions>>().Value,
             sp.GetRequiredService<IOptions<StorageOptions>>().Value,
+            sp.GetRequiredService<IOptions<DiagnosticsOptions>>().Value,
             // Лениво и через делегат: сессия строится позже описаний, а спрашивают её уже во время
             // отрисовки страницы, когда колесо назвалось.
             () => sp.GetRequiredService<WheelSession>().Protocol,

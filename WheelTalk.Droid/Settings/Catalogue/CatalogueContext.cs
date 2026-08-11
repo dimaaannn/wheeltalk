@@ -51,6 +51,7 @@ public sealed record CatalogueContext(
     ScreenOptions Screen,
     PowerOptions Power,
     StorageOptions Storage,
+    DiagnosticsOptions Diagnostics,
     Func<WheelProtocol?> Protocol,
     Action RestartAuthentication,
     Action<double> PreviewAlarm,

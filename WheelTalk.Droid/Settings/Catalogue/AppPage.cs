@@ -11,9 +11,16 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// </summary>
 internal static class AppPage
 {
+    /// <summary>
+    /// Ключ настройки «предлагать отправку после сбоя» — тем же приёмом, что
+    /// <see cref="ExperimentalPage.CellsKey"/>: <c>MainActivity</c> пишет её галочкой в диалоге, а не
+    /// со страницы настроек, и своего дескриптора на руках у него нет.
+    /// </summary>
+    public const string PromptAfterCrashKey = "Diagnostics:PromptAfterCrash";
+
     public static IReadOnlyList<SettingDescriptor> Build(
         ConnectionOptions connection, PowerOptions power, ScreenOptions screen, StorageOptions storage,
-        Action share)
+        DiagnosticsOptions diagnostics, Action share)
     {
         return
         [
@@ -141,6 +148,20 @@ internal static class AppPage
             // странно, но не падает: она собирает окно своего журнала и хвост системного буфера в
             // один файл и отдаёт системному диалогу. Падение собирается само при следующем
             // запуске, по отсутствию метки штатного завершения.
+            new()
+            {
+                Key = PromptAfterCrashKey,
+                Kind = SettingKind.Toggle,
+                Page = SettingsPage.Application,
+                SectionKey = "SectionDiagnostics",
+                LabelKey = "SettingPromptShareAfterCrash",
+                HintKey = "SettingPromptShareAfterCrashHint",
+                // Привычка телефона, а не колеса: предлагать отправку после сбоя — то же самое
+                // независимо от того, к какому колесу приложение в этот момент подключено.
+                GlobalOnly = true,
+                Current = () => diagnostics.PromptShareAfterCrash.ToString(),
+                Apply = text => diagnostics.PromptShareAfterCrash = SettingsCatalogue.ParseBool(text),
+            },
             new()
             {
                 Key = "Diagnostics:Share",

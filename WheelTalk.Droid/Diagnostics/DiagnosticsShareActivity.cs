@@ -64,11 +64,6 @@ public sealed class DiagnosticsShareActivity : Activity
         title.SetTextColor(UiKit.PlainText(this));
         root.AddView(title);
 
-        var hint = new TextView(this) { Text = AppStrings.DiagnosticsBundleHint };
-        hint.SetTextSize(ComplexUnitType.Sp, 14);
-        hint.Alpha = 0.75f;
-        root.AddView(hint, Below(this.Dp(8)));
-
         if (_parts.Count == 0)
         {
             var empty = new TextView(this) { Text = AppStrings.DiagnosticsBundleEmpty };
@@ -90,13 +85,6 @@ public sealed class DiagnosticsShareActivity : Activity
         total.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         total.SetTextColor(UiKit.PlainText(this));
         root.AddView(total, Below(this.Dp(16)));
-
-        // Чего в комплекте нет — сказано вслух: обещание, о котором человек не знает, его не
-        // успокаивает. Оно же удерживает и нас: строка врёт сразу, если однажды положить дамп.
-        var without = new TextView(this) { Text = AppStrings.DiagnosticsBundleWithout };
-        without.SetTextSize(ComplexUnitType.Sp, 13);
-        without.Alpha = 0.7f;
-        root.AddView(without, Below(this.Dp(8)));
 
         root.AddView(Buttons(), Below(this.Dp(24)));
 

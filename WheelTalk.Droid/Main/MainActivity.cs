@@ -32,6 +32,7 @@ using WheelTalk.Droid.Recording;
 using WheelTalk.Droid.Rides;
 using WheelTalk.Droid.Scan;
 using WheelTalk.Droid.Settings;
+using WheelTalk.Droid.Settings.Catalogue;
 using WheelTalk.Droid.Telemetry;
 using WheelTalk.Droid.Ui;
 
@@ -95,6 +96,8 @@ public sealed class MainActivity : Activity
     private WheelIdentity _identity = null!;
     private ScreenOptions _screenOptions = null!;
     private PowerOptions _power = null!;
+    private DiagnosticsOptions _diagnostics = null!;
+    private SettingsBinder _binder = null!;
     private IWheelConfig _wheelConfig = null!;
     private IObservable<AlertState> _alerts = null!;
     private AlertBanner _banner = null!;
@@ -211,6 +214,8 @@ public sealed class MainActivity : Activity
         _identity = MainApplication.Services.GetRequiredService<WheelIdentity>();
         _screenOptions = MainApplication.Services.GetRequiredService<IOptions<ScreenOptions>>().Value;
         _power = MainApplication.Services.GetRequiredService<IOptions<PowerOptions>>().Value;
+        _diagnostics = MainApplication.Services.GetRequiredService<IOptions<DiagnosticsOptions>>().Value;
+        _binder = MainApplication.Services.GetRequiredService<SettingsBinder>();
         _wheelConfig = MainApplication.Services.GetRequiredService<IWheelConfig>();
         _alerts = MainApplication.Services.GetRequiredService<IObservable<AlertState>>();
         _banner = MainApplication.Services.GetRequiredService<AlertBanner>();
@@ -266,6 +271,12 @@ public sealed class MainActivity : Activity
         // Последним в сборке экрана, как и у оригинала: сперва экран, потом системный диалог поверх
         // него, а не наоборот.
         AskAboutBatterySaver();
+
+        // После просьбы про экономию заряда, а не одновременно с ней (план молчит, решение
+        // владельца 12.08.2026): та поднимает системный экран настроек, и диалог, всплывший в тот
+        // же миг, наслоился бы на переход. Показанный следом, он просто встречает вернувшегося
+        // назад — одно окно за раз, как и везде на этом экране (см. OwnedWindow).
+        OfferCrashShareIfNeeded();
     }
 
     protected override void OnNewIntent(Intent? intent)
@@ -784,6 +795,50 @@ public sealed class MainActivity : Activity
             // а счётчик уже вырос: считается попытка, а не успех.
             _logger.LogWarning(ex, "Power.BatterySaverRequestUnavailable");
         }
+    }
+
+    /// <summary>
+    /// Прошлый запуск упал (<see cref="CrashReport.PreviousRunCrashed"/>, метка ставится один раз в
+    /// <c>MainApplication.OnCreate</c>) — предложить отправить журнал, пока причина ещё свежа.
+    /// Условие короткое и в одном месте намеренно: «упали» И настройка разрешает спрашивать
+    /// (<see cref="DiagnosticsOptions.PromptShareAfterCrash"/>), выключенная — молчит навсегда, но
+    /// кнопка «Передать» в настройках это не трогает.
+    /// <para>
+    /// Галочка «Больше не предлагать» пишет ту же настройку — <c>SettingsBinder.Set</c> по ключу
+    /// каталога, тем же путём, что и правка со страницы настроек (план 29 §29.3): боевая область у
+    /// глобальной настройки одна, значения кому и откуда ни пиши. Обе кнопки её уважают: и «не
+    /// сейчас», и «отправить» — до, а не вместо самой отправки.
+    /// </para>
+    /// <para>
+    /// «Отправить» ведёт в <see cref="DiagnosticsShare.Send"/> — тот же экран состава, что и кнопка
+    /// в настройках, а не в голый <c>ACTION_SEND</c>: обещание «сначала покажем, что внутри» держит
+    /// один код в одном месте.
+    /// </para>
+    /// </summary>
+    private void OfferCrashShareIfNeeded()
+    {
+        if (!CrashReport.PreviousRunCrashed || !_diagnostics.PromptShareAfterCrash) return;
+
+        var check = new CheckBox(this) { Text = AppStrings.CrashPromptDontAskAgain };
+        int pad = this.Dp(24);
+        check.SetPadding(pad, this.Dp(4), pad, 0);
+
+        void SaveIfChecked()
+        {
+            if (check.Checked) _binder.Set(AppPage.PromptAfterCrashKey, "False");
+        }
+
+        _windows.Show(new AlertDialog.Builder(this)!
+            .SetTitle(AppStrings.CrashPromptTitle)!
+            .SetMessage(AppStrings.CrashPromptMessage)!
+            .SetView(check)!
+            .SetCancelable(false)!
+            .SetPositiveButton(AppStrings.CrashPromptSend, (_, _) =>
+            {
+                SaveIfChecked();
+                DiagnosticsShare.Send();
+            })!
+            .SetNegativeButton(AppStrings.CrashPromptDismiss, (_, _) => SaveIfChecked())!);
     }
 
     /// <summary>Сколько секунд не приходило отсчётов.</summary>

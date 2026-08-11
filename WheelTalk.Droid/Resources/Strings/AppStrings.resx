@@ -351,12 +351,17 @@
   <data name="SettingsRun" xml:space="preserve"><value>Передать</value></data>
   <data name="SettingShareDiagnostics" xml:space="preserve"><value>Отладочная информация</value></data>
   <data name="SettingShareDiagnosticsHint" xml:space="preserve"><value>Собирает журнал приложения в файл и предлагает отправить. После падения собирается сам, при следующем запуске.</value></data>
+  <data name="SettingPromptShareAfterCrash" xml:space="preserve"><value>Предлагать отправку после сбоя</value></data>
+  <data name="SettingPromptShareAfterCrashHint" xml:space="preserve"><value>После аварийного завершения при запуске появится предложение отправить журнал</value></data>
+  <data name="CrashPromptTitle" xml:space="preserve"><value>Приложение аварийно завершилось</value></data>
+  <data name="CrashPromptMessage" xml:space="preserve"><value>Отправить журнал разработчику?</value></data>
+  <data name="CrashPromptDontAskAgain" xml:space="preserve"><value>Больше не предлагать</value></data>
+  <data name="CrashPromptSend" xml:space="preserve"><value>Отправить</value></data>
+  <data name="CrashPromptDismiss" xml:space="preserve"><value>Не сейчас</value></data>
   <data name="DiagnosticsBundleTitle" xml:space="preserve"><value>Что уйдёт</value></data>
-  <data name="DiagnosticsBundleHint" xml:space="preserve"><value>Файлы уходят только по вашему нажатию и только тому, кого вы выберете.</value></data>
   <data name="DiagnosticsBundleLog" xml:space="preserve"><value>Журнал приложения, колесо и настройки, отличные от заводских</value></data>
   <data name="DiagnosticsBundlePrevious" xml:space="preserve"><value>Журнал прошлого запуска</value></data>
   <data name="DiagnosticsBundleRides" xml:space="preserve"><value>Итоги последних поездок: даты, километры, длительность</value></data>
-  <data name="DiagnosticsBundleWithout" xml:space="preserve"><value>Сырой дамп BLE и база поездок не прилагаются.</value></data>
   <data name="DiagnosticsBundleTotal" xml:space="preserve"><value>Всего: {0}</value></data>
   <data name="DiagnosticsBundleEmpty" xml:space="preserve"><value>Отправлять нечего: журнал пуст.</value></data>
   <data name="DiagnosticsBundleOpen" xml:space="preserve"><value>Открыть</value></data>
