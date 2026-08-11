@@ -111,10 +111,11 @@ internal sealed class ChartTileView : TileView
             GravityFlags.Bottom | GravityFlags.Start));
 
         // Нижний отступ — внутри плитки и за счёт самого графика: линия и подпись времени
-        // упирались в край, и низ графика читался как рамка плитки, стоящей ниже.
+        // упирались в край, и низ графика читался как рамка плитки, стоящей ниже. Сверху — та же
+        // полоска подписи, что у прочих форм: подпись рисует канва, и место ей даёт отступ
+        // содержимого, а не строка разметки.
         AddView(_stack, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, 0, 1f)
         {
-            TopMargin = context.Dp(TilesLayout.ValueTopMarginDp),
             BottomMargin = context.Dp(TilesLayout.ChartBottomDp),
         });
     }
@@ -157,6 +158,17 @@ internal sealed class ChartTileView : TileView
 
         BindFrame(label, size, showLabel,
             heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
+
+        // Форма у графика одна — столбиком: подпись полоской сверху, график во всём остальном.
+        // Место ей отводит тот же счёт, что и числу на прочих плитках.
+        ApplyForm(TileForm.Stack);
+
+        if (_stack.LayoutParameters is LinearLayout.LayoutParams layout)
+        {
+            layout.TopMargin = LabelStripPx(TileForm.Stack);
+            _stack.LayoutParameters = layout;
+        }
+
         Render(null);
     }
 

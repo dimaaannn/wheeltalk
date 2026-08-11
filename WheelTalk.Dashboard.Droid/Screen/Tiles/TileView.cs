@@ -57,6 +57,12 @@ internal abstract class TileView : LinearLayout
     /// <summary>Метки начала и конца шкалы — на концах прямого участка низа.</summary>
     private readonly Paint _tickPaint = new() { AntiAlias = true };
 
+    /// <summary>
+    /// Кисть подписи — своя, а не общая с метками шкалы: подпись рисуется в каждой форме и своим
+    /// цветом, и занимать чужую кисть, возвращая ей краску, значит держать порядок вызовов в уме.
+    /// </summary>
+    private readonly Paint _labelPaint = new() { AntiAlias = true };
+
     /// <summary>Прямой участок низа, между закруглениями: по нему идёт шкала, углы она не трогает.</summary>
     private float _scaleFrom;
     private float _scaleTo;
@@ -78,10 +84,30 @@ internal abstract class TileView : LinearLayout
     private bool _showHeatBar = true;
 
     /// <summary>
-    /// Подпись квадратной плитки: она не строка разметки, а метка в углу, и рисуется здесь же.
-    /// Пусто — плитка не квадратная либо подпись выключена.
+    /// Подпись плитки — заглавными, вместе со знаком крайних, если он есть. Пусто — подпись
+    /// выключена человеком либо плитка пустая.
+    /// <para>
+    /// <b>Строкой разметки она не бывает ни в одной форме</b> (слово владельца 11.08.2026):
+    /// рисовальщик один — канва, и правило посадки одно на всех (<see cref="TileLabelStyle"/>).
+    /// <c>TextView</c> отсюда убран целиком: он нёс поля шрифта, свой клип по полю группы и свой
+    /// норов в каждой форме — три источника долготы там, где нужен один.
+    /// </para>
     /// </summary>
-    private string _cornerLabel = "";
+    private string _label = "";
+
+    /// <summary>Форма, в которой стоит плитка: от неё зависит, где сидит подпись — в углу или сбоку.</summary>
+    private TileForm _form = TileForm.Stack;
+
+    /// <summary>
+    /// Посаженная подпись: где стоят знак и слово, каким кеглем и на какой базовой линии. Считается
+    /// при привязке и смене размера — <b>не в кадре</b>: и подбор кегля, и замер кромок уходят за
+    /// JNI-шов (уроки плана 31). Сброшено — сядет заново на ближайшей отрисовке.
+    /// </summary>
+    private LabelText? _placed;
+
+    /// <summary>Готовая посадка подписи — всё, что нужно, чтобы её нарисовать.</summary>
+    private readonly record struct LabelText(
+        string Mark, float MarkSp, float MarkX, string Word, float WordSp, float WordX, float Baseline);
 
 
     protected TileView(Context context, DashboardOptions options) : base(context)
@@ -121,12 +147,8 @@ internal abstract class TileView : LinearLayout
         _outlinePaint.StrokeWidth = context.Dp(TilesLayout.OutlineDp);
         _outlinePaint.Color = Color.Argb(TilesLayout.HandleAlpha, palette.Dim.R, palette.Dim.G, palette.Dim.B);
 
-        Label = new TextView(context);
-        Label.SetTextSize(ComplexUnitType.Dip, TilesLayout.LabelSp);
-        Label.SetTextColor(palette.Dim);
-        Label.SetMaxLines(1);
-        Label.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
-        AddView(Label);
+        _labelPaint.SetStyle(Paint.Style.Fill);
+        _labelPaint.Color = palette.Dim;
     }
 
     /// <summary>
@@ -136,9 +158,6 @@ internal abstract class TileView : LinearLayout
     protected DashboardOptions Options { get; }
 
     protected DashboardPalette Palette => Options.Palette;
-
-    /// <summary>Подпись величины сверху — одна на все виды плиток.</summary>
-    protected TextView Label { get; }
 
     /// <summary>
     /// Показать, насколько величина подошла к тревоге (<see cref="MetricHeat"/>), — <b>рамкой, а не
@@ -248,13 +267,11 @@ internal abstract class TileView : LinearLayout
     public void BindEmpty(TileSize size)
     {
         _empty = true;
-        Label.Text = "";
 
-        // Подпись квадрата живёт не в разметке, а меткой в углу — её рисует сама плитка
-        // (см. _cornerLabel). Чистить надо и её: сетка переиспользует вью, и пустое место,
-        // доставшееся от квадратной плитки, показывало её слово — «Мотор» на пустоте
-        // (владелец, 11.08.2026).
-        _cornerLabel = "";
+        // Сетка переиспользует вью, и пустое место, доставшееся от плитки с подписью, показывало её
+        // слово — «Мотор» на пустоте (владелец, 11.08.2026).
+        _label = "";
+        _placed = null;
         Background = null;
         ShowContent(false);
         SetRows(size.Rows);
@@ -263,16 +280,16 @@ internal abstract class TileView : LinearLayout
     /// <summary>
     /// Общее начало всякой непустой привязки: подложка на месте, содержимое показано.
     /// <para>
-    /// Подпись может быть выключена (<paramref name="showLabel"/>): на мелкой плитке её строка
-    /// забирает место у числа, а величина часто узнаётся по нему самому — по разрядам и единице.
+    /// Подпись может быть выключена (<paramref name="showLabel"/>): на мелкой плитке она забирает
+    /// место у числа, а величина часто узнаётся по нему самому — по разрядам и единице.
     /// </para>
     /// </summary>
     protected void BindFrame(string label, TileSize size, bool showLabel, bool heatBar = true)
     {
         _showHeatBar = heatBar;
         _empty = false;
-        Label.Text = label;
-        Label.Visibility = showLabel ? ViewStates.Visible : ViewStates.Gone;
+        _label = showLabel ? TileLabelStyle.Caps(label) : "";
+        _placed = null;
         Background = _filled;
         ShowContent(true);
         _sizeLabel = SizeLabel(size);
@@ -280,91 +297,74 @@ internal abstract class TileView : LinearLayout
     }
 
     /// <summary>
-    /// Отступ числа от верха содержимого — ровно высота угловой полоски (<c>TilesLayout.CornerStripDp</c>):
-    /// полоска и число не делят одно место, иначе знак «воткнут в старую разметку», и ровно это
-    /// владелец увидел 11.08.2026, когда метка выросла, а разметка осталась прежней.
+    /// Место, которое подпись забирает у числа сверху, — им же число и отступает. Одно число на
+    /// разметку и на подбор кегля (<c>TileMetrics.SquareLabelPx</c> и <c>LabelHeightPx</c>), и
+    /// считает его <see cref="TileLabelStyle"/>, а не плитка: своей арифметики у формы быть не
+    /// должно.
     /// <para>
-    /// Формула живёт в раскладке, а не здесь: тем же числом считается бюджет подбора кегля
-    /// (<c>TileMetrics.SquareLabelPx</c>) — счёт один на разметку и на подбор, и своей арифметики у
-    /// плитки быть не должно.
+    /// Подписи нет вовсе — числу достаётся и её место: остаётся привычный отступ строки от верха.
     /// </para>
     /// </summary>
-    protected int CornerStripPx() => Context!.Dp(TilesLayout.CornerStripDp);
+    protected int LabelStripPx(TileForm form) => _label.Length == 0
+        ? Context!.Dp(TilesLayout.ValueTopMarginDp)
+        : TileLabelStyle.StripPx(Context!, LabelSizeDp(form));
+
+    /// <summary>Кегль подписи в этой форме: в «строке» она читается наравне с числом, оттого крупнее.</summary>
+    private static float LabelSizeDp(TileForm form) => form switch
+    {
+        TileForm.Square => TilesLayout.SquareLabelSp,
+        TileForm.Row => TilesLayout.RowLabelSp,
+        _ => TilesLayout.LabelSp,
+    };
 
     /// <summary>Показать или спрятать то, что вид добавил под подписью.</summary>
     protected abstract void ShowContent(bool visible);
 
-    /// <summary>
-    /// Пометка вида — знак <b>перед</b> подписью и заметно крупнее её (решение владельца
-    /// 11.08.2026): «▲ ШИМ», а не «ШИМ ▲». Стояла она в хвосте и одного кегля с подписью, и крайние
-    /// путались с обычными плитками — глаз читает начало строки, а не её конец.
-    /// </summary>
     /// <summary>Пометки видов — знаки, которыми плитка объявляет своё поведение.</summary>
     public const string MarkHighest = "▲";
 
     public const string MarkLowest = "▼";
 
-    /// <summary>Начинается ли подпись пометкой: по ней метка в углу рисуется своим, крупным кеглем.</summary>
+    /// <summary>Начинается ли подпись пометкой: по ней знак рисуется своим, крупным кеглем.</summary>
     private static bool Marked(string label) =>
         label.StartsWith(MarkHighest, StringComparison.Ordinal)
         || label.StartsWith(MarkLowest, StringComparison.Ordinal);
 
+    /// <summary>
+    /// Пометка вида — знак <b>перед</b> подписью и заметно крупнее её (решение владельца
+    /// 11.08.2026): «▲ ШИМ», а не «ШИМ ▲». Стояла она в хвосте и одного кегля с подписью, и крайние
+    /// путались с обычными плитками — глаз читает начало строки, а не её конец.
+    /// <para>
+    /// Крупнее её делает не спан разметки, а свой кегль на канве (<see cref="PlaceLabel"/>): техника
+    /// рисования у всех форм одна.
+    /// </para>
+    /// </summary>
     protected void MarkLabel(string mark, string label)
     {
-        Label.Text = $"{mark} {label}";
-
-        var line = new Android.Text.SpannableString(Label.Text);
-        line.SetSpan(
-            new Android.Text.Style.RelativeSizeSpan(TilesLayout.MarkScale), 0, mark.Length,
-            Android.Text.SpanTypes.InclusiveExclusive);
-
-        Label.TextFormatted = line;
+        _label = TileLabelStyle.Caps($"{mark} {label}");
+        _placed = null;
     }
 
     /// <summary>
-    /// Форма плитки (план плиток §2). Обе формы — те же два ребёнка, только разложенные иначе:
-    /// «столбик» ставит подпись над числом, «строка» — слева от него, в одну линию. Заводить под
-    /// вторую форму вторую разметку значило бы держать две правды об одной плитке.
+    /// Форма плитки (план плиток §2). Разметке остаётся одно содержимое: подпись во всех формах
+    /// рисует канва (<see cref="DrawLabel"/>), и форма решает лишь, где подпись сидит — полоской
+    /// сверху или сбоку от числа, в одну с ним линию.
     /// <para>
-    /// Подпись «строки» крупнее и ограничена долей ширины (<see cref="TilesLayout.RowLabelShare"/>):
-    /// дальше она обрезается многоточием, а не съедает кегль числа.
+    /// <b>Двух техник подписи больше нет</b> (слово владельца 11.08.2026). Прежде квадрат рисовал
+    /// свою метку канвой, а прочие формы держали <c>TextView</c> в разметке — и всякая правка стиля
+    /// шла дважды, а поля шрифта с клипом по полю группы дали срез верха букв. Одна техника — одно
+    /// место правки и ни одного клипа.
     /// </para>
     /// </summary>
-    protected void ApplyForm(TileForm form, TileSize size)
+    protected void ApplyForm(TileForm form)
     {
-        // Квадрат: подпись уходит меткой в угол, а разметку целиком забирает число — ради этого
-        // квадратную плитку и заводят (решение владельца 10.08.2026). Строкой она бы съела у числа
-        // высоту, а числу в квадрате места и так не хватает: упирается оно в ширину.
-        if (form == TileForm.Square)
-        {
-            _cornerLabel = Label.Visibility == ViewStates.Visible ? Label.Text ?? "" : "";
-            Label.Visibility = ViewStates.Gone;
-            Orientation = Android.Widget.Orientation.Vertical;
-            SetGravity(GravityFlags.Top);
-            Invalidate();
-            return;
-        }
+        _form = form;
+        _placed = null;
 
-        _cornerLabel = "";
         bool row = form == TileForm.Row;
         Orientation = row ? Android.Widget.Orientation.Horizontal : Android.Widget.Orientation.Vertical;
         SetGravity(row ? GravityFlags.CenterVertical : GravityFlags.Top);
-
-        Label.SetTextSize(ComplexUnitType.Dip, row ? TilesLayout.RowLabelSp : TilesLayout.LabelSp);
-
-        if (Label.LayoutParameters is LayoutParams label)
-        {
-            label.Width = row ? ViewGroup.LayoutParams.WrapContent : ViewGroup.LayoutParams.MatchParent;
-            label.Height = ViewGroup.LayoutParams.WrapContent;
-            label.Weight = 0;
-            label.Gravity = row ? GravityFlags.CenterVertical : GravityFlags.Top;
-            Label.LayoutParameters = label;
-        }
-
-        int box = Context!.Dp((size.Columns * TilesLayout.RowHeightDp) / 2);
-        Label.SetMaxWidth(row
-            ? (int)(Width > 0 ? Width * TilesLayout.RowLabelShare : box * TilesLayout.RowLabelShare)
-            : int.MaxValue);
+        Invalidate();
     }
 
     /// <summary>
@@ -391,6 +391,10 @@ internal abstract class TileView : LinearLayout
     {
         base.OnSizeChanged(width, height, oldWidth, oldHeight);
 
+        // Размер решает, как села подпись: место слову считается по ширине, а в «строке» она стоит
+        // по середине высоты.
+        _placed = null;
+
         int side = Context!.Dp(TilesLayout.HandleSizeDp);
 
         _handle.Reset();
@@ -411,7 +415,7 @@ internal abstract class TileView : LinearLayout
         _scaleTo = _frameBox.Right - _radius;
         _frameReady = false;
 
-        float pad = Context.Dp(TilesLayout.PaddingDp);
+        float pad = Context!.Dp(TilesLayout.PaddingDp);
         float circle = Context.Dp(TilesLayout.RemoveSizeDp);
         _remove.Set(width - pad - circle, pad, width - pad, pad + circle);
 
@@ -431,7 +435,7 @@ internal abstract class TileView : LinearLayout
         base.DispatchDraw(canvas);
 
         if (!_empty) DrawFrame(canvas);
-        if (_cornerLabel.Length > 0) DrawCornerLabel(canvas);
+        if (_label.Length > 0) DrawLabel(canvas);
 
 
         if (!_editing) return;
@@ -517,50 +521,85 @@ internal abstract class TileView : LinearLayout
     }
 
     /// <summary>
-    /// Подпись квадратной плитки — меткой в верхнем углу, <b>вне полей</b>: она сидит на своём малом
-    /// отступе (<c>TilesLayout.CornerInsetDp</c>), а не на общем поле плитки, — иначе на мелкой
-    /// плитке слово стоит места числа (слова владельца 11.08.2026). Отступ считается от рамки с
-    /// зазором, так что линия и подпись не соприкасаются.
+    /// Подпись плитки — в любой её форме. <b>Вне полей</b>: она сидит на своём малом отступе
+    /// (<c>TilesLayout.CornerInsetDp</c>), а не на общем поле плитки, — иначе на мелкой плитке слово
+    /// стоит места числа (слова владельца 11.08.2026).
+    /// <para>
+    /// Здесь только краска: и посадка слова, и замер кромок сделаны заранее (<see cref="PlaceLabel"/>)
+    /// — за каждым из них JNI, а зовут это шестьдесят раз в секунду.
+    /// </para>
     /// </summary>
-    private void DrawCornerLabel(Canvas canvas)
+    private void DrawLabel(Canvas canvas)
     {
-        _tickPaint.Color = Color.Argb(255, Palette.Dim.R, Palette.Dim.G, Palette.Dim.B);
+        var text = _placed ??= PlaceLabel();
 
-        float left = Context!.Dp(TilesLayout.CornerInsetDp);
-        float word = Context.Dp(TilesLayout.SquareLabelSp);
+        if (text.Mark.Length > 0)
+        {
+            _labelPaint.TextSize = text.MarkSp;
+            canvas.DrawText(text.Mark, text.MarkX, text.Baseline, _labelPaint);
+        }
+
+        if (text.Word.Length > 0)
+        {
+            _labelPaint.TextSize = text.WordSp;
+            canvas.DrawText(text.Word, text.WordX, text.Baseline, _labelPaint);
+        }
+    }
+
+    /// <summary>
+    /// Посадить подпись: ужать слово под место и поставить строку так, чтобы <b>видимая кромка</b>
+    /// самого высокого её знака встала на угловой отступ — одним правилом на все формы
+    /// (<see cref="TileLabelStyle"/>). «Строка» держится середины по высоте: она стоит с числом в
+    /// одну линию и читается наравне с ним.
+    /// <para>
+    /// Пометка ▲▼ крупнее подписи (решение владельца 11.08.2026) и рисуется своим кеглем, отдельным
+    /// вызовом; обе части стоят на одной базовой линии, посаженной по самой высокой краске строки.
+    /// </para>
+    /// </summary>
+    private LabelText PlaceLabel()
+    {
+        bool row = _form == TileForm.Row;
+        float word = Context!.Dp(LabelSizeDp(_form));
         float sign = word * TilesLayout.MarkScale;
+        float inset = TileLabelStyle.InsetPx(Context!);
 
-        // Место полоски: плитка без угловых отступов. Дальше в него сажается строка — канва сама не
-        // ужимает и не обрезает, и слово уезжало за край плитки молча (регресс, владелец 11.08.2026).
-        float room = Width - (2 * left);
-
-        // Пометка ▲▼ крупнее подписи и здесь (решение владельца 11.08.2026): в прочих формах это
-        // делает спан, а метка в углу рисуется руками — значит и знак рисуется своим кеглем,
-        // отдельным вызовом. Обе части стоят на одной базовой линии, посаженной под крупный знак.
-        float baseline = left + sign;
-        string mark = Marked(_cornerLabel) ? _cornerLabel[..1] : "";
+        // Место подписи: плитка без угловых отступов, а в «строке» — её принятая доля ширины,
+        // дальше которой подпись не вправе съедать место у числа (тем же пределом считан бюджет).
+        // Дальше в это место сажается строка — канва сама не ужимает и не обрезает, и слово уезжало
+        // за край плитки молча (регресс, владелец 11.08.2026).
+        float room = (row ? Width * TilesLayout.RowLabelShare : Width) - (2 * inset);
+        string mark = Marked(_label) ? _label[..1] : "";
+        float markX = 0;
+        float taken = 0;
+        float top = 0;
 
         if (mark.Length > 0)
         {
-            _tickPaint.TextSize = sign;
-            canvas.DrawText(mark, left, baseline, _tickPaint);
-
-            float taken = _tickPaint.MeasureText(mark + " ");
-            left += taken;
+            _labelPaint.TextSize = sign;
+            var ink = TileLabelStyle.InkOf(_labelPaint, mark);
+            markX = TileLabelStyle.LeftFor(Context, ink.Left);
+            top = ink.Top;
+            taken = _labelPaint.MeasureText(mark + " ");
             room -= taken;
         }
 
         // Слово садится в остаток: сперва ужимается кегль до пола читаемости, и лишь потом слово
         // честно обрезается многоточием — укоротить значит отнять смысл, уменьшить лишь вес.
         var fit = CornerLabel.Fit(
-            _cornerLabel[mark.Length..].TrimStart(), room, word, Context.Dp(TilesLayout.LabelMinSp),
-            new PaintRuler.Ruler(_tickPaint));
+            _label[mark.Length..].TrimStart(), room, word, Context.Dp(TilesLayout.LabelMinSp),
+            new PaintRuler.Ruler(_labelPaint));
 
-        _tickPaint.TextSize = fit.WordSp;
-        canvas.DrawText(fit.Word, left, baseline, _tickPaint);
+        _labelPaint.TextSize = fit.WordSp;
+        var wordInk = TileLabelStyle.InkOf(_labelPaint, fit.Word);
+        float inkTop = mark.Length > 0 ? MathF.Min(top, wordInk.Top) : wordInk.Top;
+        float inkBottom = mark.Length > 0 ? MathF.Max(0, wordInk.Bottom) : wordInk.Bottom;
 
-        // Кисть меток общая — вернуть ей свой цвет обязана та же рука, что заняла.
-        _tickPaint.Color = Color.Argb(TilesLayout.HeatTickAlpha, Palette.Ink.R, Palette.Ink.G, Palette.Ink.B);
+        return new LabelText(
+            mark, sign, markX, fit.Word, fit.WordSp,
+            WordX: mark.Length > 0 ? markX + taken : TileLabelStyle.LeftFor(Context, wordInk.Left),
+            Baseline: row
+                ? ((Height - (inkBottom - inkTop)) / 2) - inkTop
+                : TileLabelStyle.BaselineFor(Context, inkTop));
     }
 
     /// <summary>

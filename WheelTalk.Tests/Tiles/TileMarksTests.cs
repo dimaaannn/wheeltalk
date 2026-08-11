@@ -87,8 +87,8 @@ public class TileMarksTests
         string empty = RepoFiles.MethodBody(
             RepoFiles.Read(Tiles + "TileView.cs"), "public void BindEmpty(TileSize size)");
 
-        Assert.Contains("Label.Text = \"\";", empty);
-        Assert.Contains("_cornerLabel = \"\";", empty);
+        Assert.Contains("_label = \"\";", empty);
+        Assert.Contains("_placed = null;", empty);
     }
 
     /// <summary>
@@ -105,8 +105,10 @@ public class TileMarksTests
         string mark = RepoFiles.MethodBody(
             RepoFiles.Read(Tiles + "TileView.cs"), "protected void MarkLabel(string mark, string label)");
 
+        // Знак впереди слова — в самой строке подписи; крупнее его делает не спан разметки, а свой
+        // кегль на канве: техника рисования у всех форм одна (см. The_corner_mark_is_bigger_too).
         Assert.Contains("$\"{mark} {label}\"", mark);
-        Assert.Contains("RelativeSizeSpan(TilesLayout.MarkScale)", mark);
+        Assert.DoesNotContain("RelativeSizeSpan", RepoFiles.Read(Tiles + "TileView.cs"));
     }
 
     /// <summary>
@@ -118,15 +120,15 @@ public class TileMarksTests
     public void The_corner_mark_is_bigger_too()
     {
         string corner = RepoFiles.MethodBody(
-            RepoFiles.Read(Tiles + "TileView.cs"), "private void DrawCornerLabel(Canvas canvas)");
+            RepoFiles.Read(Tiles + "TileView.cs"), "private LabelText PlaceLabel()");
 
         Assert.Contains("word * TilesLayout.MarkScale", corner);
-        Assert.Contains("_tickPaint.TextSize = sign;", corner);
+        Assert.Contains("_labelPaint.TextSize = sign;", corner);
 
-        // Бюджет полоски — по крупному знаку: множитель стоит в самой формуле раскладки, а бюджет
-        // берёт её готовой (<c>CornerLabelTests</c> стережёт, что счёт один на всех).
+        // Бюджет полоски — по крупному знаку: его рисунок меряется своим кеглем, и полоска строится
+        // по самой высокой краске строки (<c>CornerLabelTests</c> стережёт, что счёт один на всех).
         Assert.Contains(
-            "CornerInsetDp + (SquareLabelSp * MarkScale * InkRatio) - PaddingDp",
-            RepoFiles.Read(Tiles + "TilesLayout.cs"));
+            "Ink(word * TilesLayout.MarkScale, TileView.MarkHighest)",
+            RepoFiles.Read(Tiles + "TileLabelStyle.cs"));
     }
 }

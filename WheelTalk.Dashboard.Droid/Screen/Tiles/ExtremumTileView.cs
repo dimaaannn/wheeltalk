@@ -76,7 +76,7 @@ internal sealed class ExtremumTileView : TileView
         BindFrame(label, size, showLabel,
             heatBar && MetricHeat.Limits(metric.Id, Options, limits) is not null);
         MarkLabel(options.Lowest ? MarkLowest : MarkHighest, label);
-        ApplyForm(face.Form, size);
+        ApplyForm(face.Form);
         _value.SetTextSize(ComplexUnitType.Dip, face.ValueSp);
         _value.Gravity = face.Form == TileForm.Row
             ? GravityFlags.End | GravityFlags.CenterVertical
@@ -88,19 +88,15 @@ internal sealed class ExtremumTileView : TileView
             layout.Width = face.Form == TileForm.Row ? 0 : ViewGroup.LayoutParams.MatchParent;
             layout.Height = face.Form == TileForm.Row ? ViewGroup.LayoutParams.MatchParent : 0;
             layout.Weight = 1f;
-            // В квадрате число начинается под угловой полоской, а не поверх неё: полоска
-            // построена под крупный знак, и делить с ней место числу нечем.
-            layout.TopMargin = face.Form switch
-            {
-                TileForm.Row => 0,
-                TileForm.Square => CornerStripPx(),
-                _ => Context.Dp(TilesLayout.ValueTopMarginDp),
-            };
+            // Число начинается под полоской подписи, а не поверх неё: полоска построена под
+            // крупный знак, и делить с ней место числу нечем. В «строке» подпись стоит сбоку —
+            // сверху её нет вовсе.
+            layout.TopMargin = face.Form == TileForm.Row ? 0 : LabelStripPx(face.Form);
 
             // Поля ужимает только квадрат — ровно на столько, на сколько его расширил подбор
             // кегля (ValueBleedDp). Прямоугольные породы живут со своими полями, как их приняли.
-            int bleed = face.Form == TileForm.Square ? -Context.Dp(TilesLayout.ValueBleedDp) : 0;
-            layout.LeftMargin = face.Form == TileForm.Row ? Context.Dp(TilesLayout.RowGapDp) : bleed;
+            int bleed = face.Form == TileForm.Square ? -Context!.Dp(TilesLayout.ValueBleedDp) : 0;
+            layout.LeftMargin = face.Form == TileForm.Row ? Context!.Dp(TilesLayout.RowGapDp) : bleed;
             layout.RightMargin = face.Form == TileForm.Row ? 0 : bleed;
             _value.LayoutParameters = layout;
         }

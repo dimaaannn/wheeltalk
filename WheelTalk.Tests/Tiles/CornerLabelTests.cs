@@ -134,33 +134,109 @@ public class CornerLabelTests
     }
 
     /// <summary>
-    /// Полоска построена под крупный знак <b>целиком</b> и считается <b>одной формулой в одном
-    /// месте</b>: по ней отступает число и по ней же идёт бюджет подбора кегля. Два счёта об одном
-    /// — то, чем полоска уже ломалась: знак вырос, а разметка осталась прежней (владелец
-    /// 11.08.2026).
+    /// Полоска считается <b>одной формулой в одном месте</b>: по ней отступает число и по ней же
+    /// идёт бюджет подбора кегля — и у квадрата, и у строки разметки. Два счёта об одном — то, чем
+    /// полоска уже ломалась: знак вырос, а разметка осталась прежней (владелец 11.08.2026).
     /// </summary>
     [Fact]
     public void The_strip_is_one_count_for_the_layout_and_for_the_budget()
     {
-        // Формула живёт в раскладке: угловой отступ, крупный знак, поправка начертания — и общее
-        // поле, которого подпись не занимает, потому что сидит выше него.
-        Assert.Contains(
-            "CornerInsetDp + (SquareLabelSp * MarkScale * InkRatio) - PaddingDp",
-            RepoFiles.Read(Tiles + "TilesLayout.cs"));
+        string style = RepoFiles.Read(Tiles + "TileLabelStyle.cs");
 
-        // Оба потребителя берут её готовой: своей арифметики у них нет — ни у разметки, ни у бюджета.
+        // Формула одна на все формы: угловой отступ, рисунок строки — и общее поле, которого
+        // подпись не занимает, потому что сидит выше него. Разнится только кегль.
+        Assert.Contains(
+            "InsetPx(context) + (inkBottom - inkTop) - context.Dp(TilesLayout.PaddingDp)", style);
+        Assert.Contains("public static int StripPx(Context context, float labelDp)", style);
+
+        // Оба потребителя берут её готовой: своей арифметики нет ни у разметки, ни у бюджета.
         string view = RepoFiles.Read(Tiles + "TileView.cs");
-        Assert.Contains("CornerStripPx() => Context!.Dp(TilesLayout.CornerStripDp)", view);
-        Assert.Contains("CornerLabel.Fit(", view);
+        Assert.Contains("TileLabelStyle.StripPx(Context!, LabelSizeDp(form))", view);
 
-        Assert.Contains(
-            "SquareLabelPx = _context.Dp(TilesLayout.CornerStripDp)",
-            RepoFiles.Read(Tiles + "TilesScreen.cs"));
+        string screen = RepoFiles.Read(Tiles + "TilesScreen.cs");
+        Assert.Contains("SquareLabelPx = TileLabelStyle.StripPx(_context, TilesLayout.SquareLabelSp)", screen);
+        Assert.Contains("LabelHeightPx: TileLabelStyle.StripPx(_context, TilesLayout.LabelSp)", screen);
 
+        // Ею же отступает содержимое всякой плитки: и число, и график.
         foreach (string drawer in (string[])["MetricTileView.cs", "ExtremumTileView.cs", "TripTileView.cs"])
         {
-            Assert.Contains("TileForm.Square => CornerStripPx(),", RepoFiles.Read(Tiles + drawer));
+            Assert.Contains(
+                "layout.TopMargin = face.Form == TileForm.Row ? 0 : LabelStripPx(face.Form);",
+                RepoFiles.Read(Tiles + drawer));
         }
+
+        Assert.Contains(
+            "layout.TopMargin = LabelStripPx(TileForm.Stack);", RepoFiles.Read(Tiles + "ChartTileView.cs"));
+    }
+
+    /// <summary>
+    /// Зазор меряется <b>по рисунку буквы</b>, а не по кеглю: у глифов свои внутренние поля, и
+    /// отступ, отмеренный от номинала, оставляет над видимой кромкой пустоту сверх заданной — сдвиг
+    /// с 8 dp на 6 владелец оттого и не увидел (11.08.2026).
+    /// </summary>
+    [Fact]
+    public void The_gap_is_measured_by_the_ink_of_the_glyph_and_not_by_the_size()
+    {
+        // Кромки снимаются у шрифта, а не выводятся из кегля.
+        Assert.Contains(
+            "paint.GetTextBounds(text, 0, text.Length, Box);", RepoFiles.Read(Tiles + "TileLabelStyle.cs"));
+
+        string view = RepoFiles.Read(Tiles + "TileView.cs");
+        string placed = RepoFiles.MethodBody(view, "private LabelText PlaceLabel()");
+
+        Assert.Contains("TileLabelStyle.InkOf(", placed);
+        Assert.Contains("TileLabelStyle.BaselineFor(", placed);
+        Assert.Contains("TileLabelStyle.LeftFor(", placed);
+
+        // И ни замера, ни посадки в кадре: за каждым JNI, а рисуют шестьдесят раз в секунду
+        // (уроки плана 31).
+        string drawn = RepoFiles.MethodBody(view, "private void DrawLabel(Canvas canvas)");
+
+        Assert.Contains("_placed ??= PlaceLabel()", drawn);
+        Assert.DoesNotContain("CornerLabel.Fit(", drawn);
+        Assert.DoesNotContain("MeasureText", drawn);
+    }
+
+    /// <summary>
+    /// <b>Единообразие табличек</b> (слова владельца 11.08.2026: «единообразие вводили для быстрых
+    /// правок, а не костылей»). Техника подписи одна на все формы — канва: ни одна форма не держит
+    /// своего <c>TextView</c> подписи и ни одна не считает своих чисел стиля. Две техники и были
+    /// корнем долготы: правка шла дважды, а поля шрифта с клипом по полю группы срезали буквам верх.
+    /// </summary>
+    [Fact]
+    public void Every_form_draws_its_label_by_the_one_technique()
+    {
+        string view = RepoFiles.Read(Tiles + "TileView.cs");
+
+        // Регистр — одной рукой на обе ветки подписи: обычную и помеченную.
+        Assert.Contains("_label = showLabel ? TileLabelStyle.Caps(label) : \"\";", view);
+        Assert.Contains("_label = TileLabelStyle.Caps($\"{mark} {label}\");", view);
+        Assert.Contains(
+            "public static string Caps(string label) => label.ToUpperInvariant();",
+            RepoFiles.Read(Tiles + "TileLabelStyle.cs"));
+
+        // Рисовальщик один, и зовётся он на всякую форму — не только на квадрат.
+        Assert.Contains("if (_label.Length > 0) DrawLabel(canvas);", view);
+
+        // Ни в рамке плитки, ни в её видах нет своего TextView подписи: он ушёл целиком.
+        Assert.DoesNotContain("Label.SetIncludeFontPadding", view);
+        Assert.DoesNotContain("protected TextView Label", view);
+
+        foreach (string drawer in
+                 (string[])["MetricTileView.cs", "ExtremumTileView.cs", "TripTileView.cs", "ChartTileView.cs"])
+        {
+            string source = RepoFiles.Read(Tiles + drawer);
+
+            Assert.DoesNotContain("Label.", source);
+            Assert.DoesNotContain("TilesLayout.LabelSp", source);
+            Assert.DoesNotContain("TilesLayout.CornerInsetDp", source);
+        }
+
+        // Своих чисел стиля нет и у формы: кегль подписи она спрашивает, а не выбирает.
+        string sizes = RepoFiles.MethodBody(view, "private static float LabelSizeDp(TileForm form)");
+
+        Assert.Contains("TileForm.Square => TilesLayout.SquareLabelSp", sizes);
+        Assert.Contains("TileForm.Row => TilesLayout.RowLabelSp", sizes);
     }
 
     /// <summary>
@@ -179,13 +255,42 @@ public class CornerLabelTests
         Assert.True(inset < padding, $"угловой отступ {inset} dp не меньше общего поля {padding} dp");
         Assert.True(inset >= frame + 2, $"подпись в {inset} dp прижата к рамке в {frame} dp без зазора");
 
-        // Рисует подпись по этому отступу, а не по общему полю: рисование и есть то место, где
-        // прижатие либо случилось, либо нет.
-        string corner = RepoFiles.MethodBody(
-            RepoFiles.Read(Tiles + "TileView.cs"), "private void DrawCornerLabel(Canvas canvas)");
+        // Отступ один на все формы, и берут его из стиля, а не из общего поля плитки.
+        string style = RepoFiles.Read(Tiles + "TileLabelStyle.cs");
 
-        Assert.Contains("Context!.Dp(TilesLayout.CornerInsetDp)", corner);
-        Assert.DoesNotContain("TilesLayout.PaddingDp", corner);
+        Assert.Contains(
+            "public static int InsetPx(Context context) => context.Dp(TilesLayout.CornerInsetDp);", style);
+
+        string placed = RepoFiles.MethodBody(
+            RepoFiles.Read(Tiles + "TileView.cs"), "private LabelText PlaceLabel()");
+
+        Assert.Contains("TileLabelStyle.InsetPx(Context!)", placed);
+        Assert.DoesNotContain("TilesLayout.PaddingDp", placed);
+    }
+
+    /// <summary>
+    /// Подпись <b>нечем срезать</b>: она не вид в разметке, а краска на канве самой плитки, и
+    /// рисуется <b>после</b> детей — за пределами клипа, которым группа режет их по своему полю.
+    /// Прежде подпись была видом с отрицательным отступом, и <c>clipToPadding</c> отъедал ей верх
+    /// букв (телефон, 11.08.2026); гасить клип нельзя — краска пойдёт по соседям.
+    /// </summary>
+    [Fact]
+    public void The_label_is_paint_on_the_canvas_and_nothing_can_clip_it()
+    {
+        string drawn = RepoFiles.MethodBody(
+            RepoFiles.Read(Tiles + "TileView.cs"), "protected override void DispatchDraw(Canvas canvas)");
+
+        // Порядок важен: сперва дети со своим клипом, потом подпись — уже без него.
+        int children = drawn.IndexOf("base.DispatchDraw(canvas);", StringComparison.Ordinal);
+        int label = drawn.IndexOf("DrawLabel(canvas);", StringComparison.Ordinal);
+
+        Assert.True(children >= 0 && label > children, "подпись рисуется раньше детей — её срежет клипом");
+
+        // И клип никто не гасит: это лечило бы срез ценой краски по соседям.
+        string view = RepoFiles.Read(Tiles + "TileView.cs");
+
+        Assert.DoesNotContain("SetClipToPadding", view);
+        Assert.DoesNotContain("SetClipChildren", view);
     }
 
     /// <summary>

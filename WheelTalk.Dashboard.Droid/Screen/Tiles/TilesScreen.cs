@@ -851,9 +851,10 @@ public sealed class TilesScreen : IMainScreen
                 RowHeightPx: _context.Dp(TilesLayout.RowHeightDp),
                 GapPx: _context.Dp(TilesLayout.GapDp),
                 PaddingPx: _context.Dp(TilesLayout.PaddingDp),
-                // Подпись меряется в sp, а не в dp: при увеличенном системном шрифте она выше, и
-                // числу обязано достаться меньше — иначе оно вылезет ровно на эту разницу.
-                LabelHeightPx: _context.Sp(TilesLayout.LabelSp) * TilesLayout.InkRatio,
+                // Подпись меряет тот же стиль, что её и рисует: место считается от видимой кромки
+                // буквы до низа краски, а не по кеглю с поправкой на глазок. Формула одна на все
+                // формы — разнится только кегль подписи.
+                LabelHeightPx: TileLabelStyle.StripPx(_context, TilesLayout.LabelSp),
                 // Шкала жара переехала в саму рамку (решение владельца 10.08.2026) и своего места
                 // у содержимого больше не занимает — из бюджета вычитается только толщина рамки,
                 // чтобы число не садилось на её линию.
@@ -871,12 +872,11 @@ public sealed class TilesScreen : IMainScreen
                 UnitScale = TilesLayout.UnitScale,
                 RowLabelShare = TilesLayout.RowLabelShare,
                 SquareRatio = TilesLayout.SquareRatio,
-                // Полоска метки в углу — тем же числом, каким плитка отступает число
-                // (TilesLayout.CornerStripDp): счёт один на разметку и на подбор, и считается он в
-                // одном месте. Меряется в dp, а не в sp: подпись в углу рисуется чистой плотностью
-                // (DrawCornerLabel), и системный множитель шрифта на неё не действует — резервируя
-                // sp, бюджет отнимал бы у числа то, чего подпись не занимает.
-                SquareLabelPx = _context.Dp(TilesLayout.CornerStripDp),
+                // Полоска подписи квадрата — той же формулой, только своим кеглем. Мера идёт чистой
+                // плотностью, а не в sp: подпись рисуется в dp, и системный множитель шрифта на неё
+                // не действует — резервируя sp, бюджет отнимал бы у числа то, чего подпись не
+                // занимает.
+                SquareLabelPx = TileLabelStyle.StripPx(_context, TilesLayout.SquareLabelSp),
             };
         }
 
