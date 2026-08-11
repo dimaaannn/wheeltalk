@@ -1,4 +1,5 @@
 using Android.Graphics;
+using Android.Runtime;
 using Android.Views;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -51,7 +52,11 @@ public sealed class SystemAlertOverlay : IDisposable
         _channels = channels.Value;
         _dashboardOptions = dashboardOptions;
         _logger = logger;
-        _windowManager = (IWindowManager)Application.Context.GetSystemService(Android.Content.Context.WindowService)!;
+        // JavaCast, не прямой каст: GetSystemService отдаёт java-прокси, и (IWindowManager) на нём
+        // падает InvalidCastException — на устройстве, при сборке контейнера, ронял приложение на
+        // старте (поймано прогоном 12.08.2026; юниты android-код не исполняют и такое не видят).
+        _windowManager = Application.Context.GetSystemService(Android.Content.Context.WindowService)
+            .JavaCast<IWindowManager>()!;
 
         _banner.Changed += Evaluate;
         _ownScreens.HostVisibilityChanged += Evaluate;
