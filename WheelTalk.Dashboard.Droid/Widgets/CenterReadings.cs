@@ -122,25 +122,36 @@ public static class CenterReadings
     }
 
     /// <summary>
-    /// Подпись строки: имя величины и знаки сторон — «t° / ▲», «V ▼», «Заряд % / V ▼» (решение
-    /// владельца 12.08.2026: «оптимизировать текст, оставив минимально понятным; знаки макс и мин —
-    /// уже принятые»). Слова приходят снаружи: библиотека ресурсов приложения не видит (тот же
-    /// порядок, что у плиток).
+    /// Подпись строки <b>на панели</b>: знак величины и знаки сторон — «ШИМ % ▲», «t° / ▲»,
+    /// «Заряд % / V ▼» (решение владельца 12.08.2026: «оптимизировать текст, оставив минимально
+    /// понятным; знаки макс и мин — уже принятые»). Слова приходят снаружи: библиотека ресурсов
+    /// приложения не видит (тот же порядок, что у плиток).
     /// </summary>
-    public static string Caption(CenterRow row, Func<string, string> words)
+    public static string Caption(CenterRow row, Func<string, string> words) => Line(row, words, tight: true);
+
+    /// <summary>
+    /// Та же строка <b>для меню правки</b> — полными именами: «Скорость ▲», «Напряжение ▼»,
+    /// «Температура». Сокращения заведены ради тесноты панели (решение владельца 12.08.2026 —
+    /// «сокращения только для отображения на панели»), а в меню теснота другая: там строка занимает
+    /// всю ширину окна и переносится, зато выбирают по ней вслепую — знак «V» в списке из двенадцати
+    /// строк узнать труднее, чем слово.
+    /// </summary>
+    public static string Title(CenterRow row, Func<string, string> words) => Line(row, words, tight: false);
+
+    private static string Line(CenterRow row, Func<string, string> words, bool tight)
     {
-        if (row.Second is not { } second) return Name(row.First, words);
+        if (row.Second is not { } second) return Name(row.First, words, tight);
 
         // Пара одной величины называется один раз: «t° / ▲», а не «t° / t° ▲». Держится это на
         // знаке у второй стороны — ему и достаётся весь смысл «а это максимум». Знака нет (вторая
         // сторона тоже текущая) — сливать нечего, иначе за косой осталась бы пустота.
         return second.Metric == row.First.Metric && Mark(second.Aspect).Length > 0
-            ? Named(Bare(row.First, words), Mark(row.First.Aspect)) + " / " + Mark(second.Aspect)
-            : $"{Name(row.First, words)} / {Name(second, words)}";
+            ? Named(Bare(row.First, words, tight), Mark(row.First.Aspect)) + " / " + Mark(second.Aspect)
+            : $"{Name(row.First, words, tight)} / {Name(second, words, tight)}";
     }
 
-    private static string Name(CenterReading reading, Func<string, string> words) =>
-        Named(Bare(reading, words), Mark(reading.Aspect));
+    private static string Name(CenterReading reading, Func<string, string> words, bool tight) =>
+        Named(Bare(reading, words, tight), Mark(reading.Aspect));
 
     /// <summary>Имя и знак через пробел — либо одно имя: висячий пробел в подписи не нужен никому.</summary>
     private static string Named(string bare, string mark) => mark.Length > 0 ? bare + " " + mark : bare;
@@ -159,20 +170,30 @@ public static class CenterReadings
     };
 
     /// <summary>
-    /// Имя величины без знака стороны — самое короткое из тех, что у неё есть.
+    /// Имя величины без знака стороны — <b>двумя мерами</b>, по месту, куда оно встанет.
     /// <para>
-    /// <b>Знак величины старше короткого имени.</b> Единиц центр не рисует вовсе (места нет: строка
-    /// со значением и подписью живёт в 25 dp), поэтому единица переехала в саму подпись — «V», «t°»,
-    /// «Заряд %» (решение владельца 12.08.2026: «общепринятые обозначения величин»). Коротким именем
-    /// (<c>…Short</c>) этого не сделать: то же имя стоит на четвертной плитке, а там единица
-    /// нарисована рядом с числом, и «V» превратило бы её в «V 78,4 В».
+    /// <b>Панели — знак, и он старше короткого имени.</b> Единиц центр не рисует вовсе (места нет:
+    /// строка со значением и подписью живёт в 25 dp), поэтому единица переехала в саму подпись —
+    /// «км/ч», «ШИМ %», «V», «t°», «Заряд %» (решение владельца 12.08.2026: «общепринятые обозначения
+    /// величин»). Коротким именем (<c>…Short</c>) этого не сделать: то же имя стоит на четвертной
+    /// плитке, а там единица нарисована рядом с числом, и «V» превратило бы её в «V 78,4 В».
+    /// </para>
+    /// <para>
+    /// <b>Меню — имя целиком</b> (<c>…Full</c>, а нет его — само имя величины). Ключ заведён лишь
+    /// тем двум, чьё имя в ресурсах названо от раздела экрана «Данные» и в одиночку не читается:
+    /// «Плата» — это температура платы, «За поездку» — пробег за поездку, и оба владелец забраковал
+    /// именно как строки, стоящие сами по себе. Менять сами имена нельзя: на «Данных» они стоят под
+    /// своим разделом и рядом с соседями («Двигатель», «За сеанс», «Одометр»), где сокращать их до
+    /// «Температуры» значило бы потерять, о чём речь.
     /// </para>
     /// </summary>
-    private static string Bare(CenterReading reading, Func<string, string> words)
+    private static string Bare(CenterReading reading, Func<string, string> words, bool tight)
     {
         if (Shape(reading.Metric).LabelKey is not { } label) return reading.Metric;
 
-        return Said(words, label + "Sign") ?? Said(words, label + "Short") ?? words(label);
+        return tight
+            ? Said(words, label + "Sign") ?? Said(words, label + "Short") ?? words(label)
+            : Said(words, label + "Full") ?? words(label);
     }
 
     /// <summary>

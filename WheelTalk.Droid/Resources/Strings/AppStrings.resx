@@ -441,10 +441,14 @@
   <data name="TelemetryMaxPwmShort" xml:space="preserve"><value>Пик ШИМ</value></data>
   <data name="TelemetryTopSpeedShort" xml:space="preserve"><value>Макс.</value></data>
   <data name="TelemetryTripShort" xml:space="preserve"><value>Пробег</value></data>
+  <data name="TelemetrySpeedSign" xml:space="preserve"><value>км/ч</value></data>
+  <data name="TelemetryPwmSign" xml:space="preserve"><value>ШИМ %</value></data>
   <data name="TelemetryVoltageSign" xml:space="preserve"><value>V</value></data>
   <data name="TelemetryBoardTempSign" xml:space="preserve"><value>t°</value></data>
   <data name="TelemetryBatterySign" xml:space="preserve"><value>Заряд %</value></data>
-  <data name="MetricTripCounter" xml:space="preserve"><value>Поездка</value></data>
+  <data name="TelemetryBoardTempFull" xml:space="preserve"><value>Температура</value></data>
+  <data name="TelemetryTripFull" xml:space="preserve"><value>Пробег</value></data>
+  <data name="MetricTripCounter" xml:space="preserve"><value>Поездка, км</value></data>
   <data name="TelemetryPhaseCurrent" xml:space="preserve"><value>Фазный ток</value></data>
   <data name="TelemetryPower" xml:space="preserve"><value>Мощность</value></data>
   <data name="TelemetryBattery" xml:space="preserve"><value>Заряд</value></data>

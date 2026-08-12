@@ -41,27 +41,28 @@ public class LabTileWordsParityTests
     }
 
     /// <summary>
-    /// Подписи тесных мест — тем же правилом. Ключ у них тот же, что у полного слова, плюс «Short»
-    /// (короткое имя четвертной плитки) либо «Sign» (знак величины в центре панели, где единица живёт
-    /// в самой подписи); стенд обязан знать их наравне с приложением, иначе на четвертных и в центре
-    /// стоит сырой ключ вместо слова.
+    /// Подписи по месту показа — тем же правилом. Ключ у них тот же, что у имени величины, плюс
+    /// суффикс места: «Short» — короткое имя четвертной плитки, «Sign» — знак величины в центре
+    /// панели (единица живёт в самой подписи), «Full» — имя, годное стоять само по себе, для меню
+    /// правки центра. Стенд обязан знать их наравне с приложением, иначе на четвертной плитке, в
+    /// центре и в его меню стоит сырой ключ вместо слова.
     /// </summary>
     [Fact]
-    public void The_stand_knows_every_tight_label_the_app_has()
+    public void The_stand_knows_every_derived_label_the_app_has()
     {
         var stand = StandWords();
 
         var missing = AppWords()
-            .Where(pair => Tight.Any(suffix => pair.Key.EndsWith(suffix, StringComparison.Ordinal)))
+            .Where(pair => Places.Any(suffix => pair.Key.EndsWith(suffix, StringComparison.Ordinal)))
             .Where(pair => !stand.ContainsKey(pair.Key))
             .Select(pair => pair.Key)
             .ToList();
 
-        Assert.True(missing.Count == 0, "Тесных подписей у стенда нет: " + string.Join(", ", missing));
+        Assert.True(missing.Count == 0, "Подписей по месту у стенда нет: " + string.Join(", ", missing));
     }
 
-    /// <summary>Чем кончается ключ подписи для тесного места: короткое имя и знак величины.</summary>
-    private static readonly string[] Tight = ["Short", "Sign"];
+    /// <summary>Чем кончается ключ подписи, заведённой под своё место показа.</summary>
+    private static readonly string[] Places = ["Short", "Sign", "Full"];
 
     /// <summary>
     /// Каждое слово, которое просит редактор центра, стенд обязан знать. Редактор на стенде — тот же

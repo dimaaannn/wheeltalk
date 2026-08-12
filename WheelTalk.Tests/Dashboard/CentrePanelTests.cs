@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 using WheelTalk.Core.Dashboard;
 using WheelTalk.Core.Tiles;
 using WheelTalk.Tests.TestSupport;
@@ -46,9 +46,9 @@ public class CentrePanelTests
     [Fact]
     public void Fewer_rows_are_drawn_bigger()
     {
-        var two = CenterTypography.Fit("888.8", "ШИМ ▲", 2, Room, Width, new Ruler(), Metrics());
-        var four = CenterTypography.Fit("888.8", "ШИМ ▲", 4, Room, Width, new Ruler(), Metrics());
-        var six = CenterTypography.Fit("888.8", "ШИМ ▲", 6, Room, Width, new Ruler(), Metrics());
+        var two = CenterTypography.Fit("888.8", "ШИМ % ▲", 2, Room, Width, new Ruler(), Metrics());
+        var four = CenterTypography.Fit("888.8", "ШИМ % ▲", 4, Room, Width, new Ruler(), Metrics());
+        var six = CenterTypography.Fit("888.8", "ШИМ % ▲", 6, Room, Width, new Ruler(), Metrics());
 
         Assert.True(two.FontPx > four.FontPx, $"два элемента {two.FontPx}, четыре {four.FontPx}");
         Assert.True(four.FontPx > six.FontPx, $"четыре элемента {four.FontPx}, шесть {six.FontPx}");
@@ -66,7 +66,7 @@ public class CentrePanelTests
     [InlineData(6)]
     public void The_floor_of_readability_is_never_broken(int rows)
     {
-        var fit = CenterTypography.Fit("888.8", "ШИМ ▲", rows, Room, Width, new Ruler(), Metrics());
+        var fit = CenterTypography.Fit("888.8", "ШИМ % ▲", rows, Room, Width, new Ruler(), Metrics());
 
         Assert.True(fit.FontPx >= Floor, $"{rows} строк набраны {fit.FontPx} px — ниже пола {Floor}");
         Assert.InRange(fit.Rows, 0, rows);
@@ -81,7 +81,7 @@ public class CentrePanelTests
     public void A_tight_centre_shows_fewer_rows_rather_than_smaller_ones()
     {
         // Места ровно на две строки по полу читаемости: 2 · 32 · 1,75 = 112 px.
-        var fit = CenterTypography.Fit("888.8", "ШИМ ▲", 6, 120, Width, new Ruler(), Metrics());
+        var fit = CenterTypography.Fit("888.8", "ШИМ % ▲", 6, 120, Width, new Ruler(), Metrics());
 
         Assert.Equal(2, fit.Rows);
         Assert.True(fit.FontPx >= Floor);
@@ -91,15 +91,15 @@ public class CentrePanelTests
     [Fact]
     public void No_room_means_no_rows()
     {
-        Assert.Equal(0, CenterTypography.Fit("888.8", "ШИМ ▲", 4, 40, Width, new Ruler(), Metrics()).Rows);
+        Assert.Equal(0, CenterTypography.Fit("888.8", "ШИМ % ▲", 4, 40, Width, new Ruler(), Metrics()).Rows);
     }
 
     /// <summary>Узкая полоса ужимает кегль шириной, а не только высотой: строка не вправе вылезти вбок.</summary>
     [Fact]
     public void A_narrow_centre_shrinks_the_line_too()
     {
-        var wide = CenterTypography.Fit("888.8", "ШИМ ▲", 2, Room, 500, new Ruler(), Metrics());
-        var narrow = CenterTypography.Fit("888.8", "ШИМ ▲", 2, Room, 200, new Ruler(), Metrics());
+        var wide = CenterTypography.Fit("888.8", "ШИМ % ▲", 2, Room, 500, new Ruler(), Metrics());
+        var narrow = CenterTypography.Fit("888.8", "ШИМ % ▲", 2, Room, 200, new Ruler(), Metrics());
 
         Assert.True(narrow.FontPx < wide.FontPx);
     }
@@ -395,11 +395,14 @@ public class CentrePanelTests
     /// <b>Подпись — знак величины и знак стороны, а не слова</b> (решение владельца 12.08.2026:
     /// «оптимизировать текст, оставив минимально понятным; использовать уже принятые знаки макс и
     /// мин; общепринятые обозначения величин»). Четыре строки умолчания читаются теперь так:
-    /// <c>ШИМ ▲</c>, <c>t° / ▲</c>, <c>Пробег</c>, <c>Заряд % / V ▼</c>; новая величина — <c>Поездка</c>.
+    /// <c>ШИМ % ▲</c>, <c>t° / ▲</c>, <c>Пробег</c>, <c>Заряд % / V ▼</c>; новая величина —
+    /// <c>Поездка, км</c>.
     /// <para>
     /// Единица переехала в саму подпись потому, что центр её не рисует вовсе, — отсюда и отдельный
     /// ключ знака (<c>…Sign</c>) рядом с коротким именем (<c>…Short</c>): короткое имя стоит на
     /// четвертной плитке, где единица нарисована рядом с числом, и «V» превратило бы её в «V 78,4 В».
+    /// Проценты у ШИМ и заряда, «км/ч» у скорости, «км» у счётчика — та же единица в подписи, только
+    /// словом, где знака у величины нет (владелец, 12.08.2026).
     /// </para>
     /// <para>
     /// Сборка подписи живёт в android-библиотеке, потому и проверяется по исходнику — тем же
@@ -412,11 +415,13 @@ public class CentrePanelTests
     {
         var words = AppWords();
 
+        Assert.Equal("км/ч", words["TelemetrySpeedSign"]);
+        Assert.Equal("ШИМ %", words["TelemetryPwmSign"]);
         Assert.Equal("V", words["TelemetryVoltageSign"]);
         Assert.Equal("t°", words["TelemetryBoardTempSign"]);
         Assert.Equal("Заряд %", words["TelemetryBatterySign"]);
         Assert.Equal("Пробег", words["TelemetryTripShort"]);
-        Assert.Equal("Поездка", words["MetricTripCounter"]);
+        Assert.Equal("Поездка, км", words["MetricTripCounter"]);
 
         // Слов сторон в центре не осталось вовсе: «макс» и «мин» стали знаками, «тек» — пустотой.
         foreach (string gone in (string[])["CentreAspectCurrent", "CentreAspectMax", "CentreAspectMin"])
@@ -431,14 +436,67 @@ public class CentrePanelTests
         Assert.Contains("CenterAspect.Max => TileView.MarkHighest", readings);
         Assert.Contains("CenterAspect.Min => TileView.MarkLowest", readings);
 
-        // Знак величины старше короткого имени, короткое — полного.
+        // На панели знак величины старше короткого имени, короткое — полного.
         Assert.Contains(
-            "Said(words, label + \"Sign\") ?? Said(words, label + \"Short\") ?? words(label)", readings);
+            "? Said(words, label + \"Sign\") ?? Said(words, label + \"Short\") ?? words(label)", readings);
 
         // Ни висячего пробела у имени без знака, ни косой, за которой пусто: пара сливается в одно
         // имя только тогда, когда вторая сторона знак несёт.
         Assert.Contains("mark.Length > 0 ? bare + \" \" + mark : bare", readings);
         Assert.Contains("second.Metric == row.First.Metric && Mark(second.Aspect).Length > 0", readings);
+    }
+
+    /// <summary>
+    /// <b>Сокращения — только для панели</b> (решение владельца 12.08.2026). В меню правки места
+    /// вдоволь: строка идёт во всю ширину окна и переносится, зато выбирают по ней вслепую — знак
+    /// «V» в списке из двенадцати строк узнать труднее, чем слово. Отсюда две меры одного и того же
+    /// показания: панель зовёт <c>Caption</c> (знак), меню — <c>Title</c> (имя целиком).
+    /// <para>
+    /// Двум величинам полного имени <b>не хватило</b>: в ресурсах они названы от раздела экрана
+    /// «Данные» («Плата», «За поездку») и в одиночку не читаются — им заведён ключ <c>…Full</c>.
+    /// Сами имена не тронуты: на «Данных» они стоят рядом с «Двигателем», «За сеанс» и «Одометром»,
+    /// где «Температура» и «Пробег» потеряли бы, о чём речь.
+    /// </para>
+    /// <para>
+    /// Строки меню при умолчании: <c>ШИМ ▲</c>, <c>Температура / ▲</c>, <c>Пробег</c>,
+    /// <c>Заряд / Напряжение ▼</c>; в списке «добавить» — те же имена по одному, со знаками сторон.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_panel_abbreviates_where_the_menu_spells_the_metric_out()
+    {
+        var words = AppWords();
+
+        Assert.Equal("Температура", words["TelemetryBoardTempFull"]);
+        Assert.Equal("Пробег", words["TelemetryTripFull"]);
+
+        // Полные имена величин на своих местах не тронуты: их читает экран «Данные» и меню плитки.
+        Assert.Equal("Плата", words["TelemetryBoardTemp"]);
+        Assert.Equal("За поездку", words["TelemetryTrip"]);
+
+        string readings = RepoFiles.Read(Readings);
+
+        // Меню — своя мера: полное имя, а знак величины и короткое имя ему не указ.
+        Assert.Contains("public static string Title(CenterRow row, Func<string, string> words)", readings);
+        Assert.Contains(": Said(words, label + \"Full\") ?? words(label);", readings);
+
+        // Обе меры собирают строку одним и тем же кодом: разойдись они — разошлись бы и правила
+        // склейки пары, и знаки сторон.
+        Assert.Contains("Line(row, words, tight: true)", readings);
+        Assert.Contains("Line(row, words, tight: false)", readings);
+
+        // Редактор — и список строк, и «+ Добавить» — спрашивает меру меню, а не панели.
+        string editor = RepoFiles.Read("WheelTalk.Dashboard.Droid/Screen/CentreEditor.cs");
+
+        Assert.Contains("CenterReadings.Title(current[at], words)", editor);
+        Assert.Contains("CenterReadings.Title(new CenterRow(choice, null), words)", editor);
+        Assert.DoesNotContain("CenterReadings.Caption(", editor);
+
+        // А панель — меру панели: подпись строки и худшая подпись, по которой садится кегль.
+        string block = RepoFiles.Read("WheelTalk.Dashboard.Droid/Widgets/SpeedBlockDrawable.cs");
+
+        Assert.Contains("CenterReadings.Caption(rows[index], Options.Words)", block);
+        Assert.DoesNotContain("CenterReadings.Title(", block);
     }
 
     /// <summary>

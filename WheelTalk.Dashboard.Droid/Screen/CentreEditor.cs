@@ -55,7 +55,7 @@ public static class CentreEditor
             for (int index = 0; index < current.Count; index++)
             {
                 int at = index;
-                Add(list, Row(context, CenterReadings.Caption(current[at], words),
+                Add(list, Row(context, CenterReadings.Title(current[at], words),
                     up: () => { Swap(current, at, at - 1); Apply(); },
                     down: () => { Swap(current, at, at + 1); Apply(); },
                     remove: () => { current.RemoveAt(at); Apply(); }));
@@ -120,8 +120,8 @@ public static class CentreEditor
     /// Строка списка: что показано и три действия над ним. Кнопки — знаками, они короче слов.
     /// <para>
     /// Подпись берёт <b>всё, что осталось от кнопок</b> (ширина 0 + вес 1), кнопки — по себе. Долями,
-    /// а не пикселями: подписи разной длины («Заряд / Напр. мин» — самая длинная из нынешних), экраны
-    /// разной ширины, и число, подогнанное под один, режет другой.
+    /// а не пикселями: подписи разной длины («Заряд / Напряжение ▼» — самая длинная из нынешних),
+    /// экраны разной ширины, и число, подогнанное под один, режет другой.
     /// </para>
     /// </summary>
     private static View Row(Context context, string caption, Action up, Action down, Action remove)
@@ -166,7 +166,7 @@ public static class CentreEditor
             .SelectMany(offer => offer.Aspects.Select(aspect => new CenterReading(offer.Metric, aspect)))
             .ToList();
 
-        string[] names = [.. choices.Select(choice => CenterReadings.Caption(new CenterRow(choice, null), words))];
+        string[] names = [.. choices.Select(choice => CenterReadings.Title(new CenterRow(choice, null), words))];
 
         new AlertDialog.Builder(context)
             .SetTitle(words("CentreEditAdd"))!
