@@ -1,4 +1,6 @@
 using Android.Graphics;
+using WheelTalk.Core.Dashboard;
+using WheelTalk.Dashboard.Droid.Screen.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Widgets;
 
@@ -38,8 +40,12 @@ public sealed class SpeedBlockDrawable
     /// Доля высоты, с которой начинаются справочные значения. Окна лент стоят на половине, и между
     /// ними и справочными нужен зазор больше обычного межстрочного: иначе три группы чисел на
     /// тёмном фоне читаются как одна таблица, а они разного веса.
+    /// <para>
+    /// Открыта наружу: по этой же доле раскладка ловит долгий тап по блоку (<c>CentreExtras</c>) —
+    /// зона правки обязана совпадать с картинкой, а не считаться своим числом.
+    /// </para>
     /// </summary>
-    private const float ExtrasAt = 0.64f;
+    public const float ExtrasAt = 0.64f;
 
     /// <summary>Какую часть ширины занимает цифра скорости; остальное — воздух по краям.</summary>
     private const float SpeedOfWidth = 0.94f;
@@ -52,6 +58,17 @@ public sealed class SpeedBlockDrawable
 
     private const float ValueOfWidth = 0.2f;
     private const float CaptionOfValue = 0.46f;
+
+    /// <summary>Какую долю ширины центра занимает справочная строка; остальное — воздух по краям.</summary>
+    private const float ExtrasOfWidth = 0.92f;
+
+    /// <summary>
+    /// Пол читаемости справочных, dp. ISO 15008 требует не мельче 12 угловых минут: на вытянутой
+    /// руке (700 мм) это <c>2 · 700 · tan(6′) = 2,44 мм</c>, то есть 15,4 dp при 25,4/160 мм на dp —
+    /// округлено вверх до 16. Прежние 11 pt давали 6′, вдвое ниже нормы (прогон 3), и потому кегль
+    /// растили множителем; теперь норма стоит полом, а не множителем — её не обойти составом.
+    /// </summary>
+    private const float FloorDp = 16;
 
     /// <summary>
     /// Во сколько раз кегль справочных пар вырос против прежнего. dashboard-feedback.md
@@ -79,6 +96,9 @@ public sealed class SpeedBlockDrawable
 
     public DashboardReading Reading { get; set; } = DashboardReading.Idle;
 
+    /// <summary>Плотность экрана: по ней считается пол читаемости — он в миллиметрах глаза, а не в пикселях.</summary>
+    public float Density { get; set; } = 1;
+
     public void Draw(Canvas canvas, RectF rect)
     {
         var palette = Options.Palette;
@@ -101,44 +121,59 @@ public sealed class SpeedBlockDrawable
 
         if (!extras) return;
 
-        // Высота строки считается от оставшегося места, а не от ширины: сверху панели зарезервирована
-        // полоса под кнопки, и справочные значения, посчитанные «от себя», уезжали за нижний край
-        // прямо на подписи лент.
+        DrawExtras(canvas, rect, palette);
+    }
+
+    /// <summary>
+    /// Справочный блок — <b>состав, собранный человеком</b> (решение владельца 12.08.2026: «взять
+    /// подход табличек»), а не четыре зашитые пары. Величины приходят из каталога, порядок и набор
+    /// — из хранилища, кегль подбирается под число строк и место (<see cref="CenterTypography"/>).
+    /// <para>
+    /// Высота строки считается от оставшегося места, а не от ширины: сверху панели полоса под
+    /// кнопки, и справочные значения, посчитанные «от себя», уезжали за нижний край прямо на
+    /// подписи лент. Ширина никогда не была узким местом — узкое место высота (центр около 152 dp
+    /// на эталонном экране), и потому пол читаемости решает, сколько строк показать.
+    /// </para>
+    /// <para>
+    /// Не влезло — показывается меньше строк, а не мельче: снимаются последние, потому что порядок
+    /// собран человеком и первое в нём для него важнее. Прежний код делал то же самое жёстко —
+    /// «четыре или две», — только выбор за райдера делали мы.
+    /// </para>
+    /// </summary>
+    private void DrawExtras(Canvas canvas, RectF rect, DashboardPalette palette)
+    {
+        var rows = Options.CentreRows;
+        if (rows.Count == 0) return;
+
         float top = rect.Top + rect.Height() * ExtrasAt;
         float room = rect.Bottom - top - rect.Height() * BottomMargin;
 
-        // Четыре пары на выросшем кегле (ExtrasFontScale) визуально требуют в полтора раза больше
-        // строки, чем сама строка даёт при делении на четыре — центр всего ~152 dp на эталонном
-        // экране, ширина никогда не была узким местом, узкое место высота. Если по факту места
-        // (не по значениям телеметрии — «прыгающую разметку не делаем», dashboard-feedback.md)
-        // четыре пары не влезают, остаются две: макс. ШИМ и температура нужны на ходу чаще, а
-        // поездка и заряд/просадка дублируются лентами по краям (след и подпись под шкалой
-        // напряжения) и уходят первыми.
-        // Желаемый кегль задаёт ширина; высота строки — потолок, и он последний, а не первый:
-        // раньше кегль подгонялся под строку и **потом** умножался на ExtrasFontScale, отчего пара
-        // выходила в полтора раза выше своей строки. На панели во весь экран это ещё пряталось в
-        // запасе, а в плеере, где панели досталось меньше двух третей высоты, пары полезли друг на
-        // друга и на подписи лент (playback-plan.md §0.1).
-        float wanted = rect.Width() * ValueOfWidth * ExtrasFontScale;
+        // Десятые прячутся на ходу тем же порогом, что и у самой скорости: рябь в углу глаза не
+        // читается, а место занимает (HideTenthsAbove, прогон 3).
+        bool tenths = Options.HideTenthsAbove <= 0 || Reading.SpeedKmh < Options.HideTenthsAbove;
 
-        int rows = wanted * RowToFont <= room / 4 ? 4 : 2;
-        float row = room / rows;
-        float value = Math.Min(wanted, row / RowToFont);
+        var (worstValue, worstCaption) = CenterReadings.Worst(rows, Options.Words);
+        var fit = CenterTypography.Fit(
+            worstValue,
+            worstCaption,
+            rows.Count,
+            room,
+            rect.Width() * ExtrasOfWidth,
+            new PaintRuler.Ruler(_text),
+            new CenterMetrics(
+                FloorPx: Density * FloorDp,
+                CeilingPx: rect.Width() * ValueOfWidth * ExtrasFontScale));
 
-        Pair(canvas, rect, top, value, $"{Reading.MaxPwm:F0} %", "макс ШИМ", palette);
-        Pair(canvas, rect, top + row, value, $"{Reading.TemperatureC} / {Reading.MaxTemperatureC}", "t° тек / макс", palette);
+        if (fit.Rows == 0) return;
 
-        if (rows == 4)
+        float row = room / fit.Rows;
+        for (int index = 0; index < fit.Rows; index++)
         {
-            Pair(canvas, rect, top + row * 2, value, $"{Reading.TripKm:F1}", "поездка, км", palette);
+            var line = rows[index];
+            string value = string.Join(" / ",
+                line.Readings().Select(reading => CenterReadings.Text(reading, Reading, tenths)));
 
-            // Минимальное напряжение за поездку, а не просадка (dashboard-feedback.md, прогон 4
-            // §3). Просадка — дельта: «3,2» само по себе не читается, потому что зависит от пакета
-            // и от того, от чего отсчитано, а рядом стояли проценты заряда и никаких единиц.
-            // Минимум — величина с местом на шкале: он в тех же вольтах, что лента напряжения, и
-            // совпадает с риской минимума на ней (Tapes: Mark.Value = reading.MinVoltageV). Число
-            // под центром и след на ленте становятся одним фактом, а не двумя разными.
-            Pair(canvas, rect, top + row * 3, value, $"{Reading.Battery} / {Reading.MinVoltageV:F1}", "заряд % / мин В", palette);
+            Pair(canvas, rect, top + row * index, fit.FontPx, value, CenterReadings.Caption(line, Options.Words), palette);
         }
     }
 

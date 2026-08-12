@@ -83,6 +83,24 @@ public sealed class TwinTapesDashboard : DashboardView
         }
     }
 
+    /// <summary>
+    /// Справочный блок центра: между лентами и ниже цифры скорости. По этому прямоугольнику ловится
+    /// долгий тап — «дай собрать, что здесь показывать»; доли те же, которыми блок рисуется
+    /// (<see cref="SpeedBlockDrawable"/>), а не отдельные числа, иначе зона правки и картинка
+    /// разъедутся при первой же подгонке вида.
+    /// </summary>
+    protected override RectF CentreExtras
+    {
+        get
+        {
+            float tape = (float)(Width * TapeShare / 100.0);
+            var content = Content;
+            float top = content.Top + content.Height() * SpeedBlockDrawable.ExtrasAt;
+
+            return new RectF(tape, top, Width - tape, content.Bottom);
+        }
+    }
+
     protected override void DrawPanel(Canvas canvas, RectF content)
     {
         float tape = (float)(Width * TapeShare / 100.0);
@@ -95,6 +113,10 @@ public sealed class TwinTapesDashboard : DashboardView
 
         Tapes.ApplyPwm(_pwm, Reading, Options);
         _centre.Reading = Reading;
+
+        // Плотность — экранное свойство, и знает её вью, а не рисовальщик: по ней считается пол
+        // читаемости справочных строк (он задан в миллиметрах глаза, см. SpeedBlockDrawable).
+        _centre.Density = Density;
 
         // Разметка проявляется от кромок: сверху с запасом на статус-бар, под который панель уходит,
         // снизу — только поле. Ставится здесь, а не в Tapes.Apply*, потому что высота бара — свойство

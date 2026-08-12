@@ -97,6 +97,16 @@ public sealed class LabActivity : Activity
     /// <summary>Раскладка плиток стенда — файлом: слоёв настроек у стенда нет, а перезапуск она пережить обязана.</summary>
     private readonly LabTileLayoutFile _layoutFile = new();
 
+    /// <summary>Состав центра — файлом, как и раскладка плиток: слоёв настроек у стенда нет.</summary>
+    private readonly LabCentreLayoutFile _centreFile = new();
+
+    /// <summary>
+    /// Открытое окно правки центра. Держится полем и закрывается в <c>OnDestroy</c> — то же правило
+    /// «у окна есть хозяин», что у приложения (<c>OwnedWindow</c>); самого хозяина сюда не занести —
+    /// он живёт в боевом проекте, стенду не видном.
+    /// </summary>
+    private Android.App.Dialog? _centreWindow;
+
     /// <summary>Точки отсчёта дистанций стенда — файлом рядом с раскладкой.</summary>
     private readonly LabTripBaselineFile _tripFile = new();
 
@@ -188,6 +198,8 @@ public sealed class LabActivity : Activity
     protected override void OnDestroy()
     {
         LabHotReload.Rebuild = null;
+        _centreWindow?.Dismiss();
+        _centreWindow = null;
         _settings.Changed -= OnSettingsChanged;
 
         // База переживает экран ровно до этого места: держать соединение открытым после ухода
@@ -292,7 +304,7 @@ public sealed class LabActivity : Activity
             // Тап по экрану — тем же слушателем из библиотеки, что в приложении. Без него на стенде
             // молчали все попадания разом: галочка шторки, точка записи, плашка связи. Правят вид
             // здесь, и «не отзывается» читалось бы как «сломал правкой».
-            _tapGesture ??= new GestureDetector(this, new SingleTapListener(OnTapped));
+            _tapGesture ??= new GestureDetector(this, new SingleTapListener(OnTapped, OnLongPressed));
             _tapGesture.OnTouchEvent(ev);
         }
         return base.DispatchTouchEvent(ev);
@@ -308,6 +320,9 @@ public sealed class LabActivity : Activity
     /// </para>
     /// </summary>
     private void OnTapped(float x, float y) => _screen?.Current.Tap(x, y);
+
+    /// <summary>Долгий тап — тем же путём, что и короткий: во что палец попал, решает сам экран.</summary>
+    private void OnLongPressed(float x, float y) => _screen?.Current.LongPress(x, y);
 
     /// <summary>
     /// «Назад» на стенде разбирается по старшинству: сперва её предлагают экрану — плитки закрывают
@@ -364,7 +379,29 @@ public sealed class LabActivity : Activity
             // Экрана записи нет — щёлкаем саму точку записи, как это делает команда шторки.
             case MainScreenIntent.ShowRecording: _settings.Recording = !_settings.Recording; break;
             case MainScreenIntent.ShowSheet: _screen?.Sheet.Toggle(); break;
+            // Правка справочного блока центра — тем же окном и тем же составом, что в приложении:
+            // стенд обязан вести себя так же, иначе смотреть на нём нечего (память владельца
+            // 10.08.2026 — стенд равен боевому и видом, и поведением).
+            case MainScreenIntent.EditCentre: EditCentre(); break;
         }
+    }
+
+    /// <summary>
+    /// Окно правки центра — тот же <c>CentreEditor</c>, что у приложения, со стендовым хранилищем и
+    /// стендовыми словами. Прежнее окно закрывается: одно окно за раз, как и у хозяина в приложении.
+    /// </summary>
+    private void EditCentre()
+    {
+        _centreWindow?.Dismiss();
+        _centreWindow = CentreEditor.Show(
+            this,
+            _settings.Options.CentreRows,
+            Ui.LabMetricWords.Get,
+            rows =>
+            {
+                _settings.Options.CentreRows = rows;
+                _centreFile.Save(rows);
+            });
     }
 
     /// <summary>

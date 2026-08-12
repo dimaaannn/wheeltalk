@@ -12,7 +12,12 @@ namespace WheelTalk.Dashboard.Droid.Screen;
 /// одна вернула бы <c>true</c> и съела касание.
 /// </para>
 /// </summary>
-public sealed class SingleTapListener(Action<float, float> onTap) : GestureDetector.SimpleOnGestureListener
+/// <param name="onLongPress">
+/// Долгий тап — там же, где короткий, и по той же причине: жест один на приложение и стенд, а две
+/// копии разошлись бы порогом удержания. <c>null</c> — хозяину долгий тап не нужен.
+/// </param>
+public sealed class SingleTapListener(Action<float, float> onTap, Action<float, float>? onLongPress = null)
+    : GestureDetector.SimpleOnGestureListener
 {
     public override bool OnSingleTapConfirmed(MotionEvent? e)
     {
@@ -21,5 +26,10 @@ public sealed class SingleTapListener(Action<float, float> onTap) : GestureDetec
         onTap(e.GetX(), e.GetY());
         // false: касание идёт дальше своим чередом — экран лишь узнал о нём, а не перехватил.
         return false;
+    }
+
+    public override void OnLongPress(MotionEvent? e)
+    {
+        if (e is not null) onLongPress?.Invoke(e.GetX(), e.GetY());
     }
 }

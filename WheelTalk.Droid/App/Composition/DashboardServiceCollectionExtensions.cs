@@ -5,6 +5,7 @@ using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
+using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Droid.Main;
 
@@ -37,6 +38,11 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton(sp => new PanelVariants(sp.GetRequiredService<DashboardOptions>()));
         services.AddSingleton<ITileLayoutStore>(sp =>
             new TileLayoutSetting(sp.GetRequiredService<LayeredSettings>()));
+
+        // Состав справочного блока центра — той же выдачей по месту, что и раскладка плиток: узкий
+        // доступ к своему ключу в слоях, а не слои целиком (решение владельца 12.08.2026).
+        services.AddSingleton<ICentreLayoutStore>(sp =>
+            new CentreLayoutSetting(sp.GetRequiredService<LayeredSettings>()));
 
         // Точки отсчёта дистанций и адрес нынешнего колеса — той же выдачей по месту: экрану дан
         // узкий доступ к своему ключу и один вопрос «какое колесо», а не слои целиком.

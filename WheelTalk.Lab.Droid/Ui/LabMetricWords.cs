@@ -41,6 +41,11 @@ public static class LabMetricWords
         ["TelemetryTopSpeedShort"] = "Макс.",
         ["MetricCellVoltageShort"] = "Ячейка",
 
+        // Стороны показаний справочного блока центра: «t° тек / макс» (решение владельца 12.08.2026).
+        ["CentreAspectCurrent"] = "тек",
+        ["CentreAspectMax"] = "макс",
+        ["CentreAspectMin"] = "мин",
+
         ["UnitKmh"] = "км/ч",
         ["UnitPercent"] = "%",
         ["UnitVolts"] = "В",

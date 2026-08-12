@@ -267,6 +267,26 @@ public abstract class DashboardView : View, IMainScreen
     }
 
     /// <summary>
+    /// Долгий тап по нижней половине центра — по справочному блоку — просит собрать его состав
+    /// (решение владельца 12.08.2026, приём взят у плиток). Соседей жест не задевает: у панели на
+    /// долгий тап до сих пор не висело ничего, а короткий разбирается своим путём.
+    /// </summary>
+    public void LongPress(float windowX, float windowY)
+    {
+        GetLocationInWindow(_windowLocation);
+        float x = windowX - _windowLocation[0];
+        float y = windowY - _windowLocation[1];
+
+        if (CentreExtras.Contains(x, y)) OnIntent?.Invoke(MainScreenIntent.EditCentre);
+    }
+
+    /// <summary>
+    /// Где на экране лежит справочный блок. У раскладки без него — пустой прямоугольник, и долгий
+    /// тап не значит ничего.
+    /// </summary>
+    protected virtual RectF CentreExtras => new();
+
+    /// <summary>
     /// Область под приборы — весь холст. Раскладка может сдвинуть край, если ей есть зачем;
     /// у главной (<c>TwinTapesDashboard</c>) причин больше нет: хром лежит поверх приборов, а не
     /// занимает полосу над ними.

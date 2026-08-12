@@ -1,4 +1,5 @@
 using WheelTalk.Core.Battery;
+using WheelTalk.Core.Dashboard;
 
 namespace WheelTalk.Dashboard.Droid;
 
@@ -220,6 +221,19 @@ public sealed class DashboardOptions
     public double ReferenceSpeed { get; set; } = 60;
 
     public DashboardPalette Palette { get; set; } = DashboardPalette.Wong;
+
+    /// <summary>
+    /// Состав справочного блока в центре (решение владельца 12.08.2026). Живёт здесь по той же
+    /// причине, что палитра и пороги: объект настроек панели один на приложение, и панель его
+    /// получает, а не заводит. Правит редактор центра, хранит — <c>ICentreLayoutStore</c>.
+    /// </summary>
+    public IReadOnlyList<CenterRow> CentreRows { get; set; } = CenterLayout.Default;
+
+    /// <summary>
+    /// Ключ ресурса → слово: библиотека ресурсов приложения не видит. Умолчание отдаёт сам ключ —
+    /// так стенд и видит, чего не перевёл.
+    /// </summary>
+    public Func<string, string> Words { get; set; } = key => key;
 
     public void Notify() => Changed?.Invoke();
 

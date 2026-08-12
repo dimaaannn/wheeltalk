@@ -65,6 +65,19 @@ public sealed class OwnedWindow
         return sheet;
     }
 
+    /// <summary>
+    /// Принять окно, собранное и показанное чужой рукой, — тем, кто отдаёт его наружу
+    /// (<c>public static Dialog Show(…)</c>). Хозяин у окна всё равно один: прежнее закрывается, а
+    /// это уходит в те же руки, что закроют его в <c>OnDestroy</c>.
+    /// </summary>
+    public Dialog Own(Dialog dialog)
+    {
+        if (!ReferenceEquals(_shown, dialog)) Close();
+        _shown = dialog;
+
+        return dialog;
+    }
+
     /// <summary>Закрыть, если ещё открыто. Зовётся хозяином на конце его жизни.</summary>
     public void Close()
     {

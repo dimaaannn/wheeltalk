@@ -341,6 +341,13 @@
   <data name="SettingPwmSmooth" xml:space="preserve"><value>Сглаживание данных ШИМ</value></data>
   <data name="SettingPwmSmoothHint" xml:space="preserve"><value>Задерживает и цифру, и цвет, и стрелку тренда. 0 — выключено</value></data>
   <data name="TelemetryPackCells" xml:space="preserve"><value>Пакет {0} · {1} ячеек</value></data>
+  <data name="CentreEditTitle" xml:space="preserve"><value>Что показывать в центре</value></data>
+  <data name="CentreEditAdd" xml:space="preserve"><value>Добавить</value></data>
+  <data name="CentreEditFull" xml:space="preserve"><value>Больше строк в центр не помещается.</value></data>
+  <data name="CentreAspectCurrent" xml:space="preserve"><value>тек</value></data>
+  <data name="CentreAspectMax" xml:space="preserve"><value>макс</value></data>
+  <data name="CentreAspectMin" xml:space="preserve"><value>мин</value></data>
+  <data name="ButtonDone" xml:space="preserve"><value>Готово</value></data>
   <data name="SectionStorage" xml:space="preserve"><value>Хранение</value></data>
   <data name="SettingRideRetention" xml:space="preserve"><value>Удалять поездки старше</value></data>
   <data name="SettingRideRetentionHint" xml:space="preserve"><value>Чистка идёт при запуске приложения. Удалённые поездки не вернуть. 0 — не удалять</value></data>

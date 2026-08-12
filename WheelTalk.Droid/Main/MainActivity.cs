@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Alerts;
 using WheelTalk.Core.Contracts;
+using WheelTalk.Core.Dashboard;
 using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
@@ -113,6 +114,9 @@ public sealed class MainActivity : Activity
     private MainScreenRegistry _screens = null!;
     private PanelVariants _panels = null!;
 
+    /// <summary>Где живёт состав справочного блока центра — общий слой настроек (план 11 §4.5 порядком).</summary>
+    private ICentreLayoutStore _centreLayout = null!;
+
     /// <summary>
     /// Собранные экраны по идентификатору. Собираются при первом показе: райдеру, который плиток не
     /// открывает, они не стоят ничего.
@@ -187,7 +191,7 @@ public sealed class MainActivity : Activity
         // это переключатель в шторке, выключенный по умолчанию, — см. ApplyShowOverLock.
 
         LoadFonts();
-        _tapDetector = new GestureDetector(this, new TapListener(OnTapped));
+        _tapDetector = new GestureDetector(this, new SingleTapListener(OnTapped, OnLongPressed));
 
         // Свайп вверх открывает шторку, но только от нижней кромки (quick-commands-design.md §2):
         // весь остальной экран — приборы, и жест по ним не должен значить ничего.
@@ -224,6 +228,13 @@ public sealed class MainActivity : Activity
         _layers = MainApplication.Services.GetRequiredService<LayeredSettings>();
         _screens = MainApplication.Services.GetRequiredService<MainScreenRegistry>();
         _panels = MainApplication.Services.GetRequiredService<PanelVariants>();
+
+        // Состав центра и слова — в живые настройки панели, раз и до конца жизни приложения: панель
+        // читает их каждым кадром, а библиотека ресурсов приложения не видит (тот же порядок, каким
+        // слова получают плитки и шторка).
+        _centreLayout = MainApplication.Services.GetRequiredService<ICentreLayoutStore>();
+        _dashboardOptions.CentreRows = CenterLayout.Sane(_centreLayout.Load());
+        _dashboardOptions.Words = TranslateExtension.Get;
         _timeProvider = MainApplication.Services.GetRequiredService<TimeProvider>();
         _logger = MainApplication.Services.GetRequiredService<ILogger<MainActivity>>();
 
@@ -479,6 +490,12 @@ public sealed class MainActivity : Activity
     private void OnTapped(float x, float y) => _screen.Current.Tap(x, y);
 
     /// <summary>
+    /// Долгий тап — тем же путём: жест ловит хозяин, а во что палец попал, знает экран. У панели это
+    /// справочный блок центра, и ответом приходит намерение <c>EditCentre</c>.
+    /// </summary>
+    private void OnLongPressed(float x, float y) => _screen.Current.LongPress(x, y);
+
+    /// <summary>
     /// Исполнение намерений экрана — то, чего экран не делает сам никогда: переходы и связь.
     /// <para>
     /// «Показать запись» — тап по метке записи. Единственным входом к поездкам метка быть перестала
@@ -498,8 +515,28 @@ public sealed class MainActivity : Activity
             case MainScreenIntent.ShowConnection: OnLinkBadgeTapped(); break;
             case MainScreenIntent.ShowRecording: OpenScreen(typeof(RecordingActivity)); break;
             case MainScreenIntent.ShowSheet: _sheet.Toggle(); break;
+            case MainScreenIntent.EditCentre: EditCentre(); break;
         }
     }
+
+    /// <summary>
+    /// Правка справочного блока центра. Окно открывает хозяин и держит его при себе: правило панели
+    /// запрещает ей трогать разметку после сборки, а окно — это разметка (прогон 3); хозяин же
+    /// закроет его в <c>OnDestroy</c>, иначе поворот телефона оставит <c>WindowLeaked</c>.
+    /// <para>
+    /// Сохранение идёт сразу в слои и в живые настройки панели: панель читает состав каждым кадром,
+    /// и правка видна на экране за спиной окна.
+    /// </para>
+    /// </summary>
+    private void EditCentre() => _windows.Own(CentreEditor.Show(
+        this,
+        _dashboardOptions.CentreRows,
+        TranslateExtension.Get,
+        rows =>
+        {
+            _dashboardOptions.CentreRows = rows;
+            _centreLayout.Save(rows);
+        }));
 
     /// <summary>
     /// Тап по плашке связи. Плашка видна ровно тогда, когда связи нет или она только что появилась,
@@ -1551,16 +1588,5 @@ public sealed class MainActivity : Activity
         _bold = Typeface.Create(_regular, TypefaceStyle.Bold) ?? Typeface.DefaultBold!;
     }
 
-    /// <summary>Одиночный тап с координатами — подтверждённый, чтобы не спорить с двойным.</summary>
-    private sealed class TapListener(Action<float, float> onTap) : GestureDetector.SimpleOnGestureListener
-    {
-        public override bool OnSingleTapConfirmed(MotionEvent? e)
-        {
-            if (e is null) return false;
-
-            onTap(e.GetX(), e.GetY());
-            return false;
-        }
-    }
 
 }

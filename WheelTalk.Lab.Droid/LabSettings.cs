@@ -1,4 +1,5 @@
-﻿using WheelTalk.Dashboard.Droid;
+﻿using WheelTalk.Core.Dashboard;
+using WheelTalk.Dashboard.Droid;
 using WheelTalk.Lab.Droid.Scenarios;
 
 namespace WheelTalk.Lab.Droid;
@@ -16,7 +17,17 @@ public sealed class LabSettings
 {
     public static LabSettings Current { get; } = new();
 
-    public DashboardOptions Options { get; } = new();
+    /// <summary>
+    /// Настройки панели стенда. Слова — свои литералами (ресурсы приложения стенду не видны), и это
+    /// тот же порядок, каким слова получают плитки: паритет со словами приложения стережёт
+    /// <c>LabTileWordsParityTests</c>. Без них подписи справочного блока центра стояли бы сырыми
+    /// ключами на всех снимках стенда.
+    /// </summary>
+    public DashboardOptions Options { get; } = new()
+    {
+        Words = Ui.LabMetricWords.Get,
+        CentreRows = CenterLayout.Sane(new LabCentreLayoutFile().Load()),
+    };
 
     /// <summary>Правка записи. Меняется целиком, потому что запись после неё пересобирается.</summary>
     public TimelineTweaks Tweaks { get; set; } = TimelineTweaks.None;
