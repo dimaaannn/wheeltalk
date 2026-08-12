@@ -7,6 +7,7 @@ using Android.Util;
 using Android.Views;
 using Android.Widget;
 using WheelTalk.Core.Alerts;
+using WheelTalk.Core.Contracts;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Layouts;
 using WheelTalk.Dashboard.Droid.Screen;
@@ -107,8 +108,18 @@ public sealed class LabActivity : Activity
     /// </summary>
     private Android.App.Dialog? _centreWindow;
 
-    /// <summary>Точки отсчёта дистанций стенда — файлом рядом с раскладкой.</summary>
-    private readonly LabTripBaselineFile _tripFile = new();
+    /// <summary>
+    /// Точки отсчёта дистанций стенда — файлом рядом с раскладкой, и <b>одни на двоих</b>, как в
+    /// приложении: их спрашивают плитки-дистанции и счётчик поездки в центре панели, а два экземпляра
+    /// над одним файлом затирали бы точки друг друга.
+    /// </summary>
+    private readonly TripPoints _tripPoints = new(new LabTripBaselineFile());
+
+    /// <summary>
+    /// Колесо стенда — постоянное имя: точке отсчёта нужен ключ, а не связь, и с одним именем стенд
+    /// ведёт себя так же, как телефон у одного колеса.
+    /// </summary>
+    private const string LabWheel = "lab";
 
     /// <summary>
     /// Экран плиток в рамке — тот же класс, что показывает райдеру приложение. Живёт ровно столько,
@@ -494,12 +505,20 @@ public sealed class LabActivity : Activity
     private MainScreenFrame BuildFrame()
     {
         var link = _linkCycle.Current;
+
+        // Снимок нужен дважды: плиткам и счётчику поездки, который считается от его одометра.
+        var snapshot = _source?.SnapshotAt(_position);
+
         return new MainScreenFrame
         {
-            Reading = _source?.At(_position),
+            // Счётчик поездки стенду не придуман, а посчитан тем же ходом, что в приложении: точка
+            // отсчёта в файле, путь — одометр минус точка. Иначе кнопку сброса не проверить глазами.
+            Reading = _source?.At(_position) is { } reading
+                ? reading with { TripCounterKm = TripCounterKm(snapshot) }
+                : null,
             // Живой снимок — для плиток: они показывают то, что сказало колесо, панель — то, что
             // из этого посчитано.
-            Snapshot = _source?.SnapshotAt(_position),
+            Snapshot = snapshot,
             LinkPhase = link.Phase,
             LinkText = link.Text,
             LinkSeconds = link.Phase == LinkPhase.Connecting
@@ -515,6 +534,27 @@ public sealed class LabActivity : Activity
             // они считаются от инсета, а у стенда он был нулевым (найдено сверкой 01.08.2026).
             TopInset = _settings.UnderSystemBar ? _barInset : 0,
         };
+    }
+
+    /// <summary>
+    /// Счётчик поездки: одометр минус точка отсчёта. Молчащий одометр — прочерк, как и в приложении:
+    /// вычитать не из чего, а ноль читался бы как «никуда не ездили».
+    /// </summary>
+    private double? TripCounterKm(TelemetrySnapshot? snapshot) =>
+        snapshot is { TotalDistanceKm: > 0 } frame
+            ? _tripPoints.Since(LabWheel, TripPoints.Centre, frame.TotalDistanceKm)
+            : null;
+
+    /// <summary>
+    /// «Сброс пиков» шторки: пиков у стенда своих нет, а точку счётчика он двигает по-настоящему —
+    /// иначе путь «нажал сброс, перезапустил стенд, счёт пошёл с нуля» нечем пройти глазами.
+    /// </summary>
+    private void ResetTripCounter()
+    {
+        if (_source?.SnapshotAt(_position) is { TotalDistanceKm: > 0 } frame)
+        {
+            _tripPoints.Reset(LabWheel, TripPoints.Centre, frame.TotalDistanceKm);
+        }
     }
 
     private async Task LoadScenario()
@@ -682,11 +722,10 @@ public sealed class LabActivity : Activity
         _tilesShown = tiles;
         screen.Show(tiles
             // История графикам идёт из базы стенда — тем же читателем, каким её читает приложение
-            // (LabStore): свой генератор точек проверял бы путь, которого в бою нет.
-            // Колесо на стенде одно и зовётся стендом: дистанции нужен ключ, а не связь, — и
-            // постоянное имя даёт ей на стенде то же поведение, что на телефоне у одного колеса.
+            // (LabStore): свой генератор точек проверял бы путь, которого в бою нет. Точки дистанций
+            // и имя колеса — общие с центром панели, см. поля.
             ? _tiles ??= new TilesScreen(this, _settings.Options, LabMetricWords.Get, _store?.History,
-                _layoutFile, _tripFile, () => "lab")
+                _layoutFile, _tripPoints, () => LabWheel)
             {
                 OnIntent = OnScreenIntent,
             }
@@ -802,7 +841,11 @@ public sealed class LabActivity : Activity
             Icon = QuickIcons.Reset,
             Group = Ride,
             Label = () => "Сброс пиков",
-            Action = () => Task.CompletedTask,
+            Action = () =>
+            {
+                ResetTripCounter();
+                return Task.CompletedTask;
+            },
         },
         new()
         {

@@ -98,8 +98,10 @@ public sealed class TilesScreen : IMainScreen
     /// начинает с зашитой раскладки, а правки живут до его пересборки.
     /// </param>
     /// <param name="trips">
-    /// Где живут точки отсчёта плиток-дистанций. <c>null</c> — хранилища нет: точки заведутся в
-    /// памяти и умрут с экраном, а дистанция после перезапуска начнётся заново.
+    /// Точки отсчёта дистанций — <b>общие с центром главного экрана</b>: хранилище у них одно, а
+    /// каждый экземпляр пишет свой набор целиком (<see cref="TripPoints"/>). <c>null</c> — точек
+    /// снаружи не дали: экран заведёт свои, они умрут вместе с ним, а дистанция после перезапуска
+    /// начнётся заново.
     /// </param>
     /// <param name="wheel">
     /// Чьё колесо сейчас на связи — адресом. Дистанция считается по колесу (решение владельца
@@ -108,7 +110,7 @@ public sealed class TilesScreen : IMainScreen
     /// </param>
     public TilesScreen(Context context, DashboardOptions options, Func<string, string> translate,
         IMetricHistory? history = null, ITileLayoutStore? layout = null,
-        ITripBaselineStore? trips = null, Func<string>? wheel = null)
+        TripPoints? trips = null, Func<string>? wheel = null)
     {
         _context = context;
         _translate = translate;
@@ -117,7 +119,7 @@ public sealed class TilesScreen : IMainScreen
         _palette = options.Palette;
         _padding = context.Dp(ListPaddingDp);
         _adapter = new TileAdapter(context, options, translate, layout, layout?.Load() ?? TilesLayout.Fixed,
-            new TripPoints(trips), wheel ?? (() => ""));
+            trips ?? new TripPoints(null), wheel ?? (() => ""));
 
         _list = new RecyclerView(context);
         _list.SetLayoutManager(LayoutManager(context));

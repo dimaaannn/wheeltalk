@@ -16,10 +16,17 @@ namespace WheelTalk.Droid.Main;
 /// </summary>
 internal static class DashboardFrame
 {
-    public static DashboardReading From(TelemetrySnapshot snapshot, RideTrace trace, double alertIntensity) =>
+    /// <param name="tripCounterKm">
+    /// Счётчик поездки — путь от точки, которую двигает только рука хозяина. Считает его тот, у кого
+    /// в руках точки и адрес колеса (<c>MainActivity</c>): ни следу поездки, ни снимку эта величина
+    /// не принадлежит — она из хранилища.
+    /// </param>
+    public static DashboardReading From(
+        TelemetrySnapshot snapshot, RideTrace trace, double alertIntensity, double? tripCounterKm = null) =>
         DashboardReading.From(snapshot, trace.PwmRate, alertIntensity, trace.RecentPwmPeak)
             with
             {
+                TripCounterKm = tripCounterKm,
                 // Сглаженный ШИМ вместо сырого: на нём же посчитана производная, и лента со
                 // стрелкой должны показывать одно и то же значение, а не два соседних.
                 Pwm = trace.Pwm,

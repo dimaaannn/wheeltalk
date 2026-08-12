@@ -1,6 +1,7 @@
 using System.Globalization;
 using WheelTalk.Core.Dashboard;
 using WheelTalk.Core.Metrics;
+using WheelTalk.Dashboard.Droid.Screen.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Widgets;
 
@@ -21,6 +22,13 @@ public static class CenterReadings
     public sealed record Offer(string Metric, IReadOnlyList<CenterAspect> Aspects);
 
     /// <summary>
+    /// Счётчик поездки — путь, накопленный от точки отсчёта, которую двигает <b>только рука</b>
+    /// хозяина (решение владельца 12.08.2026: «как „Поездка A/B“ в машине»). Ни новая поездка, ни
+    /// смена колеса, ни перезапуск его не обнуляют — только кнопка шторки.
+    /// </summary>
+    public const string TripCounter = "trip_counter";
+
+    /// <summary>
     /// Что можно поставить в центр. Порядок — порядок в выборе: сперва то, на что смотрят на ходу.
     /// </summary>
     public static IReadOnlyList<Offer> Offered =>
@@ -31,6 +39,8 @@ public static class CenterReadings
         new("voltage", [CenterAspect.Current, CenterAspect.Min, CenterAspect.Max]),
         new("battery_level", [CenterAspect.Current]),
         new("distance", [CenterAspect.Current]),
+        // Счётчик — только «сейчас»: он сам себе максимум, а нулём его делает кнопка, не поездка.
+        new(TripCounter, [CenterAspect.Current]),
     ];
 
     /// <summary>Есть ли такое показание у панели вовсе — им и проверяется прочитанный состав.</summary>
@@ -55,6 +65,7 @@ public static class CenterReadings
             ("voltage", CenterAspect.Max) => frame.MaxVoltageV,
             ("battery_level", CenterAspect.Current) => frame.Battery,
             ("distance", CenterAspect.Current) => frame.TripKm,
+            (TripCounter, CenterAspect.Current) => frame.TripCounterKm,
             _ => null,
         };
 
@@ -70,8 +81,7 @@ public static class CenterReadings
     {
         if (Value(reading, frame) is not { } value) return "—";
 
-        var metric = MetricCatalogue.Find(reading.Metric);
-        int decimals = tenths ? metric?.Decimals ?? 0 : 0;
+        int decimals = tenths ? Shape(reading.Metric).Decimals : 0;
 
         return value.ToString("F" + decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.CurrentCulture);
     }
@@ -105,57 +115,104 @@ public static class CenterReadings
     /// </summary>
     private static string Widest(CenterReading reading)
     {
-        var metric = MetricCatalogue.Find(reading.Metric);
-        int decimals = metric?.Decimals ?? 0;
-
-        // Четыре разряда — только у пробега: сотни километров за поездку бывают, сотни процентов и
-        // градусов — нет.
-        string whole = new('8', reading.Metric == "distance" ? 4 : 3);
+        var (_, decimals, digits) = Shape(reading.Metric);
+        string whole = new('8', digits);
 
         return decimals > 0 ? whole + "." + new string('8', decimals) : whole;
     }
 
     /// <summary>
-    /// Подпись строки: имя величины и, у пары, обе стороны через косую — «t° тек / макс». Слова
-    /// приходят снаружи: библиотека ресурсов приложения не видит (тот же порядок, что у плиток).
+    /// Подпись строки: имя величины и знаки сторон — «t° / ▲», «V ▼», «Заряд % / V ▼» (решение
+    /// владельца 12.08.2026: «оптимизировать текст, оставив минимально понятным; знаки макс и мин —
+    /// уже принятые»). Слова приходят снаружи: библиотека ресурсов приложения не видит (тот же
+    /// порядок, что у плиток).
     /// </summary>
     public static string Caption(CenterRow row, Func<string, string> words)
     {
         if (row.Second is not { } second) return Name(row.First, words);
 
-        // Пара одной величины называется один раз: «Темп. тек / макс», а не «Темп. тек / Темп. макс».
-        return second.Metric == row.First.Metric
-            ? $"{Bare(row.First, words)} {Side(row.First.Aspect, words)} / {Side(second.Aspect, words)}"
+        // Пара одной величины называется один раз: «t° / ▲», а не «t° / t° ▲». Держится это на
+        // знаке у второй стороны — ему и достаётся весь смысл «а это максимум». Знака нет (вторая
+        // сторона тоже текущая) — сливать нечего, иначе за косой осталась бы пустота.
+        return second.Metric == row.First.Metric && Mark(second.Aspect).Length > 0
+            ? Named(Bare(row.First, words), Mark(row.First.Aspect)) + " / " + Mark(second.Aspect)
             : $"{Name(row.First, words)} / {Name(second, words)}";
     }
 
     private static string Name(CenterReading reading, Func<string, string> words) =>
-        reading.Aspect == CenterAspect.Current
-            ? Bare(reading, words)
-            : $"{Bare(reading, words)} {Side(reading.Aspect, words)}";
+        Named(Bare(reading, words), Mark(reading.Aspect));
+
+    /// <summary>Имя и знак через пробел — либо одно имя: висячий пробел в подписи не нужен никому.</summary>
+    private static string Named(string bare, string mark) => mark.Length > 0 ? bare + " " + mark : bare;
 
     /// <summary>
-    /// Имя величины без стороны — короткое, если оно у неё есть. «Слова нет» словари отвечают
-    /// по-разному (приложение рисует «!Ключ!», стенд возвращает сам ключ), и пропажей считаются оба
-    /// ответа — тем же правилом, что у подписи четвертной плитки.
+    /// Знак стороны — те же «▲» и «▼», что на плитках (решение владельца 12.08.2026 — «использовать
+    /// уже принятые знаки макс и мин»): язык знаков на экране один, и глифы взяты у плитки, а не
+    /// написаны здесь второй раз. У текущего показания знака нет вовсе: голое имя величины и значит
+    /// «сейчас», а слово «тек» занимало место и не говорило ничего.
+    /// </summary>
+    private static string Mark(CenterAspect aspect) => aspect switch
+    {
+        CenterAspect.Max => TileView.MarkHighest,
+        CenterAspect.Min => TileView.MarkLowest,
+        _ => "",
+    };
+
+    /// <summary>
+    /// Имя величины без знака стороны — самое короткое из тех, что у неё есть.
+    /// <para>
+    /// <b>Знак величины старше короткого имени.</b> Единиц центр не рисует вовсе (места нет: строка
+    /// со значением и подписью живёт в 25 dp), поэтому единица переехала в саму подпись — «V», «t°»,
+    /// «Заряд %» (решение владельца 12.08.2026: «общепринятые обозначения величин»). Коротким именем
+    /// (<c>…Short</c>) этого не сделать: то же имя стоит на четвертной плитке, а там единица
+    /// нарисована рядом с числом, и «V» превратило бы её в «V 78,4 В».
+    /// </para>
     /// </summary>
     private static string Bare(CenterReading reading, Func<string, string> words)
     {
-        var metric = MetricCatalogue.Find(reading.Metric);
-        if (metric is null) return reading.Metric;
+        if (Shape(reading.Metric).LabelKey is not { } label) return reading.Metric;
 
-        string key = metric.LabelKey + "Short";
-        string shortened = words(key);
-
-        return shortened.Length == 0 || shortened == key || shortened.StartsWith('!')
-            ? words(metric.LabelKey)
-            : shortened;
+        return Said(words, label + "Sign") ?? Said(words, label + "Short") ?? words(label);
     }
 
-    private static string Side(CenterAspect aspect, Func<string, string> words) => aspect switch
+    /// <summary>
+    /// Слово под ключом либо <c>null</c>, если его нет. «Слова нет» словари отвечают по-разному
+    /// (приложение рисует «!Ключ!», стенд возвращает сам ключ), и пропажей считаются оба ответа —
+    /// тем же правилом, что у подписи четвертной плитки.
+    /// </summary>
+    private static string? Said(Func<string, string> words, string key)
     {
-        CenterAspect.Max => words("CentreAspectMax"),
-        CenterAspect.Min => words("CentreAspectMin"),
-        _ => words("CentreAspectCurrent"),
+        string word = words(key);
+
+        return word.Length == 0 || word == key || word.StartsWith('!') ? null : word;
+    }
+
+    /// <summary>
+    /// Величина самой панели: та, которой в каталоге телеметрии нет и быть не может — её не прочесть
+    /// из снимка, она считается из одометра и точки отсчёта.
+    /// </summary>
+    private sealed record OwnMetric(string LabelKey, int Decimals, int Digits);
+
+    private static readonly Dictionary<string, OwnMetric> Own = new(StringComparer.Ordinal)
+    {
+        // Счётчик поездки: путь копится неделями, и четвёртый разряд ему нужен, в отличие от
+        // пробега за поездку. Десятая доля километра — как у всех пробегов (каталог, 10.08.2026).
+        [TripCounter] = new("MetricTripCounter", Decimals: 1, Digits: 4),
     };
+
+    /// <summary>
+    /// Чем величина подписана и каким числом мерится. Незнакомая величина (состав с чужого телефона
+    /// либо из сборки, где она была) остаётся без ключа: подпишется своим идентификатором, а не
+    /// пропадёт молча.
+    /// </summary>
+    private static (string? LabelKey, int Decimals, int Digits) Shape(string metric)
+    {
+        if (Own.TryGetValue(metric, out var own)) return (own.LabelKey, own.Decimals, own.Digits);
+
+        var found = MetricCatalogue.Find(metric);
+
+        // Четыре разряда — только у пробегов: сотни километров за поездку бывают, сотни процентов и
+        // градусов — нет.
+        return (found?.LabelKey, found?.Decimals ?? 0, metric == "distance" ? 4 : 3);
+    }
 }

@@ -21,6 +21,7 @@ using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
+using WheelTalk.Dashboard.Droid.Screen.Tiles;
 using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Droid.Alerts;
 using WheelTalk.Droid.Ble;
@@ -116,6 +117,12 @@ public sealed class MainActivity : Activity
 
     /// <summary>Где живёт состав справочного блока центра — общий слой настроек (план 11 §4.5 порядком).</summary>
     private ICentreLayoutStore _centreLayout = null!;
+
+    /// <summary>
+    /// Точки отсчёта дистанций — те же, что у плиток: один экземпляр на приложение, иначе два
+    /// затирали бы точки друг друга. Отсюда счётчик поездки в центре панели и его сброс.
+    /// </summary>
+    private TripPoints _tripPoints = null!;
 
     /// <summary>
     /// Собранные экраны по идентификатору. Собираются при первом показе: райдеру, который плиток не
@@ -228,6 +235,7 @@ public sealed class MainActivity : Activity
         _layers = MainApplication.Services.GetRequiredService<LayeredSettings>();
         _screens = MainApplication.Services.GetRequiredService<MainScreenRegistry>();
         _panels = MainApplication.Services.GetRequiredService<PanelVariants>();
+        _tripPoints = MainApplication.Services.GetRequiredService<TripPoints>();
 
         // Состав центра и слова — в живые настройки панели, раз и до конца жизни приложения: панель
         // читает их каждым кадром, а библиотека ресурсов приложения не видит (тот же порядок, каким
@@ -720,7 +728,7 @@ public sealed class MainActivity : Activity
         return new MainScreenFrame
         {
             Reading = _session.LastSnapshot is { } snapshot && _trace.HasData
-                ? DashboardFrame.From(snapshot, _trace, _alert.PwmIntensity)
+                ? DashboardFrame.From(snapshot, _trace, _alert.PwmIntensity, TripCounterKm(snapshot))
                 : null,
             // Плиткам — то, что колесо сказало прямо сейчас, без сглаживания и следа: они про
             // текущее число, а не про ход величины (план 23 §3.2).
@@ -738,6 +746,17 @@ public sealed class MainActivity : Activity
             TopInset = _topInsetPx,
         };
     }
+
+    /// <summary>
+    /// Счётчик поездки для центра: одометр минус точка отсчёта, которую двигает только рука хозяина
+    /// (кнопка «Сброс пиков»). Молчащий одометр — <c>null</c>, то есть прочерк: без него вычитать
+    /// нечего, а ноль читался бы как «никуда не ездили». Колеса нет вовсе — тот же прочерк: сложить
+    /// пути разных колёс в одну кучу хуже, чем не показать ничего (правило плиток-дистанций).
+    /// </summary>
+    private double? TripCounterKm(TelemetrySnapshot snapshot) =>
+        snapshot.TotalDistanceKm > 0 && _layers.Scope is { Length: > 0 } wheel
+            ? _tripPoints.Since(wheel, TripPoints.Centre, snapshot.TotalDistanceKm)
+            : null;
 
     /// <summary>
     /// Настройка «не гасить экран» — сверяется на кадре и переставляется только при расхождении,
@@ -1390,11 +1409,25 @@ public sealed class MainActivity : Activity
         return Task.CompletedTask;
     }
 
-    /// <summary>«Сброс максимумов» (design doc §3) — обнуляет пиковые показания, не журнал поездки.</summary>
+    /// <summary>
+    /// «Сброс максимумов» (design doc §3) — обнуляет пиковые показания, не журнал поездки.
+    /// <para>
+    /// Ею же обнуляется счётчик поездки в центре (решение владельца 12.08.2026): своей кнопки он не
+    /// получил — «сброс» на экране один, и человек, нажавший его, ждёт, что обнулится всё, что копилось.
+    /// Одометр молчит — точку не двигаем: сдвинуть её на ноль значило бы показать весь одометр как
+    /// путь этой поездки, а это хуже, чем не сбросить.
+    /// </para>
+    /// </summary>
     private Task ResetPeaksAsync()
     {
         _session.ResetPeaks();
         _trace.ResetPeaks();
+
+        if (_session.LastSnapshot is { TotalDistanceKm: > 0 } snapshot && _layers.Scope is { Length: > 0 } wheel)
+        {
+            _tripPoints.Reset(wheel, TripPoints.Centre, snapshot.TotalDistanceKm);
+        }
+
         return Task.CompletedTask;
     }
 

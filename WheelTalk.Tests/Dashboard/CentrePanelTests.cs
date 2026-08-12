@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using WheelTalk.Core.Dashboard;
 using WheelTalk.Core.Tiles;
 using WheelTalk.Tests.TestSupport;
@@ -45,9 +46,9 @@ public class CentrePanelTests
     [Fact]
     public void Fewer_rows_are_drawn_bigger()
     {
-        var two = CenterTypography.Fit("888.8", "ШИМ макс", 2, Room, Width, new Ruler(), Metrics());
-        var four = CenterTypography.Fit("888.8", "ШИМ макс", 4, Room, Width, new Ruler(), Metrics());
-        var six = CenterTypography.Fit("888.8", "ШИМ макс", 6, Room, Width, new Ruler(), Metrics());
+        var two = CenterTypography.Fit("888.8", "ШИМ ▲", 2, Room, Width, new Ruler(), Metrics());
+        var four = CenterTypography.Fit("888.8", "ШИМ ▲", 4, Room, Width, new Ruler(), Metrics());
+        var six = CenterTypography.Fit("888.8", "ШИМ ▲", 6, Room, Width, new Ruler(), Metrics());
 
         Assert.True(two.FontPx > four.FontPx, $"два элемента {two.FontPx}, четыре {four.FontPx}");
         Assert.True(four.FontPx > six.FontPx, $"четыре элемента {four.FontPx}, шесть {six.FontPx}");
@@ -65,7 +66,7 @@ public class CentrePanelTests
     [InlineData(6)]
     public void The_floor_of_readability_is_never_broken(int rows)
     {
-        var fit = CenterTypography.Fit("888.8", "ШИМ макс", rows, Room, Width, new Ruler(), Metrics());
+        var fit = CenterTypography.Fit("888.8", "ШИМ ▲", rows, Room, Width, new Ruler(), Metrics());
 
         Assert.True(fit.FontPx >= Floor, $"{rows} строк набраны {fit.FontPx} px — ниже пола {Floor}");
         Assert.InRange(fit.Rows, 0, rows);
@@ -80,7 +81,7 @@ public class CentrePanelTests
     public void A_tight_centre_shows_fewer_rows_rather_than_smaller_ones()
     {
         // Места ровно на две строки по полу читаемости: 2 · 32 · 1,75 = 112 px.
-        var fit = CenterTypography.Fit("888.8", "ШИМ макс", 6, 120, Width, new Ruler(), Metrics());
+        var fit = CenterTypography.Fit("888.8", "ШИМ ▲", 6, 120, Width, new Ruler(), Metrics());
 
         Assert.Equal(2, fit.Rows);
         Assert.True(fit.FontPx >= Floor);
@@ -90,23 +91,27 @@ public class CentrePanelTests
     [Fact]
     public void No_room_means_no_rows()
     {
-        Assert.Equal(0, CenterTypography.Fit("888.8", "ШИМ макс", 4, 40, Width, new Ruler(), Metrics()).Rows);
+        Assert.Equal(0, CenterTypography.Fit("888.8", "ШИМ ▲", 4, 40, Width, new Ruler(), Metrics()).Rows);
     }
 
     /// <summary>Узкая полоса ужимает кегль шириной, а не только высотой: строка не вправе вылезти вбок.</summary>
     [Fact]
     public void A_narrow_centre_shrinks_the_line_too()
     {
-        var wide = CenterTypography.Fit("888.8", "ШИМ макс", 2, Room, 500, new Ruler(), Metrics());
-        var narrow = CenterTypography.Fit("888.8", "ШИМ макс", 2, Room, 200, new Ruler(), Metrics());
+        var wide = CenterTypography.Fit("888.8", "ШИМ ▲", 2, Room, 500, new Ruler(), Metrics());
+        var narrow = CenterTypography.Fit("888.8", "ШИМ ▲", 2, Room, 200, new Ruler(), Metrics());
 
         Assert.True(narrow.FontPx < wide.FontPx);
     }
 
     /// <summary>
     /// Умолчание — <b>те же четыре смысла</b>, что стояли в центре жёстко: макс ШИМ, температура
-    /// «тек / макс», пробег поездки и «заряд % / мин В». Совместимость глаза: человек смотрит сюда
-    /// каждый выезд, и свежая установка не должна показывать ему другой набор.
+    /// «сейчас и максимум», пробег поездки и «заряд с минимумом напряжения». Совместимость глаза:
+    /// человек смотрит сюда каждый выезд, и свежая установка не должна показывать ему другой набор.
+    /// <para>
+    /// Подписи с 12.08.2026 иные (см. <see cref="The_captions_are_signs_and_marks_rather_than_words"/>),
+    /// а смыслы те же: состав не трогали, трогали слова.
+    /// </para>
     /// </summary>
     [Fact]
     public void The_default_is_the_four_meanings_that_stood_there_before()
@@ -353,7 +358,7 @@ public class CentrePanelTests
     {
         var ruler = new CountingRuler();
 
-        CenterTypography.Fit("888 / 888.8", "Заряд / Напр. мин", 6, Room, Width, ruler, Metrics());
+        CenterTypography.Fit("888 / 888.8", "Заряд % / V ▼", 6, Room, Width, ruler, Metrics());
 
         Assert.Equal(2, ruler.Asked);
     }
@@ -385,4 +390,174 @@ public class CentrePanelTests
         Assert.Contains("SettingLayer.GlobalOnly", store);
         Assert.Contains("\"Centre:Layout\"", store);
     }
+
+    /// <summary>
+    /// <b>Подпись — знак величины и знак стороны, а не слова</b> (решение владельца 12.08.2026:
+    /// «оптимизировать текст, оставив минимально понятным; использовать уже принятые знаки макс и
+    /// мин; общепринятые обозначения величин»). Четыре строки умолчания читаются теперь так:
+    /// <c>ШИМ ▲</c>, <c>t° / ▲</c>, <c>Пробег</c>, <c>Заряд % / V ▼</c>; новая величина — <c>Поездка</c>.
+    /// <para>
+    /// Единица переехала в саму подпись потому, что центр её не рисует вовсе, — отсюда и отдельный
+    /// ключ знака (<c>…Sign</c>) рядом с коротким именем (<c>…Short</c>): короткое имя стоит на
+    /// четвертной плитке, где единица нарисована рядом с числом, и «V» превратило бы её в «V 78,4 В».
+    /// </para>
+    /// <para>
+    /// Сборка подписи живёт в android-библиотеке, потому и проверяется по исходнику — тем же
+    /// порядком, что правила плиток (<c>Tiles/TileMarksTests</c>). Слова же лежат в ресурсах и
+    /// сверяются как есть.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_captions_are_signs_and_marks_rather_than_words()
+    {
+        var words = AppWords();
+
+        Assert.Equal("V", words["TelemetryVoltageSign"]);
+        Assert.Equal("t°", words["TelemetryBoardTempSign"]);
+        Assert.Equal("Заряд %", words["TelemetryBatterySign"]);
+        Assert.Equal("Пробег", words["TelemetryTripShort"]);
+        Assert.Equal("Поездка", words["MetricTripCounter"]);
+
+        // Слов сторон в центре не осталось вовсе: «макс» и «мин» стали знаками, «тек» — пустотой.
+        foreach (string gone in (string[])["CentreAspectCurrent", "CentreAspectMax", "CentreAspectMin"])
+        {
+            Assert.False(words.ContainsKey(gone), $"Ключ «{gone}» вернулся: сторона снова стала словом.");
+        }
+
+        string readings = RepoFiles.Read(Readings);
+
+        // Знаки — те же, что у плиток: язык знаков на экране один, и вторая копия глифа разошлась бы
+        // с первой молча.
+        Assert.Contains("CenterAspect.Max => TileView.MarkHighest", readings);
+        Assert.Contains("CenterAspect.Min => TileView.MarkLowest", readings);
+
+        // Знак величины старше короткого имени, короткое — полного.
+        Assert.Contains(
+            "Said(words, label + \"Sign\") ?? Said(words, label + \"Short\") ?? words(label)", readings);
+
+        // Ни висячего пробела у имени без знака, ни косой, за которой пусто: пара сливается в одно
+        // имя только тогда, когда вторая сторона знак несёт.
+        Assert.Contains("mark.Length > 0 ? bare + \" \" + mark : bare", readings);
+        Assert.Contains("second.Metric == row.First.Metric && Mark(second.Aspect).Length > 0", readings);
+    }
+
+    /// <summary>
+    /// Счётчик поездки предлагается, но не навязывается: в списке «добавить» он есть, в умолчании
+    /// его нет — владелец о том не просил, а свежая установка обязана показывать прежние четыре
+    /// строки. Сторона у него одна: он сам себе максимум.
+    /// </summary>
+    [Fact]
+    public void The_trip_counter_is_offered_but_not_imposed()
+    {
+        string readings = RepoFiles.Read(Readings);
+
+        Assert.Contains("public const string TripCounter = \"trip_counter\";", readings);
+        Assert.Contains("new(TripCounter, [CenterAspect.Current])", readings);
+
+        // Число берётся из кадра — панель его считает, а не читает из снимка: в каталоге величин
+        // такой нет и быть не может.
+        Assert.Contains("(TripCounter, CenterAspect.Current) => frame.TripCounterKm", readings);
+        Assert.Contains("[TripCounter] = new(\"MetricTripCounter\", Decimals: 1, Digits: 4)", readings);
+
+        // Умолчание состава живёт в ядре, и счётчика в нём нет ни одним упоминанием.
+        Assert.DoesNotContain("trip_counter", RepoFiles.Read("WheelTalk.Core/Dashboard/CenterPanel.cs"));
+        Assert.Equal(4, CenterLayout.Default.Count);
+    }
+
+    /// <summary>
+    /// Путь владельца целиком: <b>нажал сброс — счёт с нуля, перезапустил — счёт продолжился</b>.
+    /// Счётчик поездки тем и отличается от пробега, что его не обнуляет ничто, кроме руки: ни новая
+    /// поездка, ни перезапуск, ни смена колеса (решение владельца 12.08.2026 — «как „Поездка A/B“ в
+    /// машине»). Считается он тем же ядром, что и плитки-дистанции (<see cref="TripBaselines"/>).
+    /// </summary>
+    [Fact]
+    public void The_trip_counter_is_zeroed_by_hand_and_keeps_its_point_across_restarts()
+    {
+        // Имя счётчика живёт в android-библиотеке — здесь оно тем же словом, а совпадение стережёт
+        // проверка ниже.
+        const string counter = "centre";
+        const string wheel = "AA:BB:CC:DD:EE:FF";
+
+        var points = new TripBaselines();
+
+        // Первая встреча заводит точку: счёт начинается здесь и сейчас, а не с полного одометра.
+        Assert.Equal(0, points.Since(wheel, counter, 1200));
+        Assert.Equal(15, points.Since(wheel, counter, 1215));
+
+        // Нажата кнопка шторки — путь обнулён.
+        points.Reset(wheel, counter, 1215);
+        Assert.Equal(0, points.Since(wheel, counter, 1215));
+        Assert.Equal(3, points.Since(wheel, counter, 1218));
+
+        // Перезапуск: набор пережил запись и чтение, и счёт продолжился — не начался заново.
+        var after = TripBaselines.Read(points.Write());
+        Assert.Equal(3, after.Since(wheel, counter, 1218));
+
+        // Другое колесо считает своё, а вернувшийся к прежнему находит прежнее: одометр у каждого свой.
+        Assert.Equal(0, after.Since("11:22:33:44:55:66", counter, 9000));
+        Assert.Equal(3, after.Since(wheel, counter, 1218));
+
+        Assert.Contains($"public const string Centre = \"{counter}\";", RepoFiles.Read(Points));
+    }
+
+    /// <summary>
+    /// <b>Сброс висит на кнопке, которая уже есть</b> — «Сброс пиков» в шторке (решение владельца
+    /// 12.08.2026): второй кнопки «сбросить» на экране заводить не стали. Молчащий одометр точку не
+    /// двигает: поставить её на ноль значило бы показать весь одометр как путь этой поездки.
+    /// <para>
+    /// Стенд повторяет боевое поведением, а не только словом (память владельца 10.08.2026): там та
+    /// же кнопка двигает ту же точку — иначе путь «нажал, перезапустил, посмотрел» нечем пройти
+    /// глазами.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_counter_is_reset_by_the_quick_sheet_in_both_the_app_and_the_stand()
+    {
+        string reset = RepoFiles.MethodBody(
+            RepoFiles.Read("WheelTalk.Droid/Main/MainActivity.cs"), "private Task ResetPeaksAsync()");
+
+        Assert.Contains("_tripPoints.Reset(wheel, TripPoints.Centre, snapshot.TotalDistanceKm)", reset);
+        Assert.Contains("TotalDistanceKm: > 0 }", reset);
+
+        string stand = RepoFiles.Read("WheelTalk.Lab.Droid/LabActivity.cs");
+
+        Assert.Contains("_tripPoints.Reset(LabWheel, TripPoints.Centre, frame.TotalDistanceKm)", stand);
+        Assert.Contains("ResetTripCounter();", RepoFiles.MethodBody(
+            stand, "private IReadOnlyList<QuickSheetCommand> BuildFakeCommands()"));
+    }
+
+    /// <summary>
+    /// <b>Точки отсчёта — одним хозяином.</b> Их спрашивают двое: плитки-дистанции и счётчик центра,
+    /// а хранилище у них одно, и каждый экземпляр пишет свой набор целиком. Заведи по экземпляру на
+    /// брата — и сброс одного затрёт точку другого при первой же записи; поймать это на глаз нельзя,
+    /// потому оно и заперто здесь.
+    /// </summary>
+    [Fact]
+    public void The_points_of_the_distances_have_a_single_owner()
+    {
+        Assert.Contains(
+            "services.AddSingleton(sp => new TripPoints(sp.GetRequiredService<ITripBaselineStore>()));",
+            RepoFiles.Read("WheelTalk.Droid/App/Composition/DashboardServiceCollectionExtensions.cs"));
+
+        // Экран плиток получает готовые точки, а не хранилище: свои он завёл бы вторым экземпляром.
+        Assert.Contains("TripPoints? trips = null", RepoFiles.Read(
+            "WheelTalk.Dashboard.Droid/Screen/Tiles/TilesScreen.cs"));
+
+        Assert.Contains("_tripPoints = new(new LabTripBaselineFile())",
+            RepoFiles.Read("WheelTalk.Lab.Droid/LabActivity.cs"));
+
+        // Запись — без замыкания: путь спрашивают с кадра панели, а лямбда там мусорит шестьдесят
+        // раз в секунду.
+        string points = RepoFiles.Read(Points);
+        Assert.DoesNotContain("Func<double>", points);
+    }
+
+    private const string Readings = "WheelTalk.Dashboard.Droid/Widgets/CenterReadings.cs";
+
+    private const string Points = "WheelTalk.Dashboard.Droid/Screen/Tiles/TripPoints.cs";
+
+    private static Dictionary<string, string> AppWords() =>
+        XDocument.Parse(RepoFiles.Read("WheelTalk.Droid/Resources/Strings/AppStrings.resx"))
+            .Root!.Elements("data")
+            .ToDictionary(data => data.Attribute("name")!.Value, data => data.Element("value")!.Value);
 }

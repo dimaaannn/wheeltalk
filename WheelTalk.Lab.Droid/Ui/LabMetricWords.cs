@@ -39,12 +39,19 @@ public static class LabMetricWords
         ["TelemetryPowerShort"] = "Мощн.",
         ["TelemetryMaxPwmShort"] = "Пик ШИМ",
         ["TelemetryTopSpeedShort"] = "Макс.",
+        ["TelemetryTripShort"] = "Пробег",
         ["MetricCellVoltageShort"] = "Ячейка",
 
-        // Стороны показаний справочного блока центра: «t° тек / макс» (решение владельца 12.08.2026).
-        ["CentreAspectCurrent"] = "тек",
-        ["CentreAspectMax"] = "макс",
-        ["CentreAspectMin"] = "мин",
+        // Знаки величин для справочного блока центра: единиц он не рисует, и единица живёт в самой
+        // подписи — «V», «t°», «Заряд %» (решение владельца 12.08.2026). Ключ у знака тот же, что у
+        // полного имени, плюс «Sign», и берётся он раньше короткого имени.
+        ["TelemetryVoltageSign"] = "V",
+        ["TelemetryBoardTempSign"] = "t°",
+        ["TelemetryBatterySign"] = "Заряд %",
+
+        // Счётчик поездки — величина самой панели: в каталоге телеметрии её нет, из снимка её не
+        // прочесть (одометр минус точка отсчёта, которую двигает только кнопка шторки).
+        ["MetricTripCounter"] = "Поездка",
 
         ["UnitKmh"] = "км/ч",
         ["UnitPercent"] = "%",
@@ -111,6 +118,14 @@ public static class LabMetricWords
         ["UnitHoursShort"] = "ч",
         ["TilesEditSave"] = "Сохранить",
         ["TilesEditCancel"] = "Отменить",
+
+        // Слова редактора центра. Не были вписаны при его заведении — заголовок и кнопки стояли
+        // сырыми ключами (поймано прогоном 12.08.2026), потому что замок паритета стерёг только
+        // имена величин; теперь он спрашивает и эти четыре ключа.
+        ["CentreEditTitle"] = "Что показывать в центре",
+        ["CentreEditAdd"] = "Добавить",
+        ["CentreEditFull"] = "Больше строк в центр не помещается.",
+        ["ButtonDone"] = "Готово",
     };
 
     public static string Get(string key) => Words.GetValueOrDefault(key, key);

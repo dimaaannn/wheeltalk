@@ -88,6 +88,10 @@ public static class SyntheticTimeline
                 Battery = (int)Math.Round(Math.Clamp(90 - t * 0.2, 0, 100)),
                 TemperatureRaw = 4100,
                 WheelDistance = (long)distance,
+                // Одометр — правдоподобные полторы тысячи километров плюс пройденное: от него
+                // считается счётчик поездки в центре, и нулевой одометр честно рисовал бы прочерк —
+                // то есть на стенде эту величину нельзя было бы увидеть вовсе.
+                TotalDistance = 1_500_000 + (long)distance,
                 Model = "Синтетика",
                 WheelType = WheelType.GotWay,
             }));

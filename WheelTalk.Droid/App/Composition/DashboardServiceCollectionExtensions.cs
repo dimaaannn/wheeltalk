@@ -46,14 +46,19 @@ public static class DashboardServiceCollectionExtensions
 
         // Точки отсчёта дистанций и адрес нынешнего колеса — той же выдачей по месту: экрану дан
         // узкий доступ к своему ключу и один вопрос «какое колесо», а не слои целиком.
+        //
+        // Сами точки — одним экземпляром на приложение: их спрашивают двое (плитки-дистанции и
+        // счётчик поездки в центре панели), хранилище у них одно, а пишет каждый экземпляр свой
+        // набор целиком — второй затирал бы точки первого.
         services.AddSingleton<ITripBaselineStore>(sp =>
             new TripBaselineSetting(sp.GetRequiredService<LayeredSettings>()));
+        services.AddSingleton(sp => new TripPoints(sp.GetRequiredService<ITripBaselineStore>()));
         services.AddSingleton(sp => new MainScreenRegistry(
             sp.GetRequiredService<DashboardOptions>(),
             sp.GetRequiredService<PanelVariants>(),
             sp.GetRequiredService<IMetricHistory>(),
             sp.GetRequiredService<ITileLayoutStore>(),
-            sp.GetRequiredService<ITripBaselineStore>(),
+            sp.GetRequiredService<TripPoints>(),
             // Область слоёв — это и есть адрес выбранного колеса (LayeredSettings.Scope): второго
             // ответа на «какое колесо сейчас» в приложении нет, и заводить его незачем.
             () => sp.GetRequiredService<LayeredSettings>().Scope));
