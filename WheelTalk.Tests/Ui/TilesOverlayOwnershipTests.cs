@@ -19,6 +19,13 @@ namespace WheelTalk.Tests.Ui;
 /// Проверяется по исходникам: <c>android</c>-проекты тестам не видны, поднять экран в тесте нечем, а
 /// правило простое и читается глазами — кто открыл окно, тот его и закрывает.
 /// </para>
+/// <para>
+/// <b>Здесь только своё, экранное.</b> Тест «окно отдаётся хозяину» снят ревизией 12.08.2026: то же
+/// самое правило <c>Architecture/WindowOwnershipTests</c> держит разом на всех трёх android-проектах,
+/// включая эту библиотеку, — и держит строже, потому что видит и <b>новое</b> окно, которого здесь
+/// ещё не перечислили. Осталось то, чего общий замок знать не может: сколько окон у этого экрана,
+/// кому они присвоены и что заполнение просмотра отменяемо.
+/// </para>
 /// </summary>
 public class TilesOverlayOwnershipTests
 {
@@ -29,20 +36,6 @@ public class TilesOverlayOwnershipTests
     private const string TileEditor = "WheelTalk.Dashboard.Droid/Screen/Tiles/TileEditor.cs";
 
     private const string TileActions = "WheelTalk.Dashboard.Droid/Screen/Tiles/TileActions.cs";
-
-    /// <summary>
-    /// Окно, которое некому отдать, некому и закрыть: <c>void Show</c> — уже утечка. Правило общее
-    /// на все окна экрана, и меню действий с вопросом о подписи (10.08.2026) вошли в него наравне с
-    /// просмотром и меню правки.
-    /// </summary>
-    [Fact]
-    public void Every_window_hands_itself_to_the_owner()
-    {
-        Assert.Matches(@"public static Dialog Show\(", RepoFiles.Read(ChartViewer));
-        Assert.Matches(@"public static Dialog Show\(", RepoFiles.Read(TileEditor));
-        Assert.Matches(@"public static Dialog Show\(", RepoFiles.Read(TileActions));
-        Assert.Matches(@"public static Dialog AskCaption\(", RepoFiles.Read(TileActions));
-    }
 
     /// <summary>
     /// Открыл — держи: брошенный вызов и есть та самая утечка. Считаются <b>все</b> окна экрана;

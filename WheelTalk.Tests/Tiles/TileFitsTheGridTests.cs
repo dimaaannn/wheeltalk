@@ -1,5 +1,6 @@
 using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Tiles;
+using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Tiles;
 
@@ -11,14 +12,18 @@ namespace WheelTalk.Tests.Tiles;
 /// против того же бюджета, по которому подбор и считает: разойдись бюджет с настоящей плиткой —
 /// оба соврут согласованно и промолчат. Здесь место считается <b>вторым путём</b> — по правилу
 /// укладчика (<c>TileGridLayoutManager.OnLayoutChildren</c>: <c>top = row·H + gap</c>,
-/// <c>bottom = (row+rows)·H − gap</c>) и по разметке самой плитки (поля, строка подписи, отступ
+/// <c>bottom = (row+rows)·H − gap</c>) и по разметке самой плитки (поля, полоска подписи, вылет
 /// числа). Два пути сходятся — число внутри; разошлись — на телефоне срез.
 /// </para>
 /// <para>
-/// <b>Случившаяся поломка.</b> 10.08.2026 у пробегов сняли сотый знак, худшая строка класса 6×1
-/// сузилась, кегль перестал упираться в ширину и упёрся в высоту — и число вылезло за низ плитки:
-/// бюджет высоты считал плитку на <c>2 · gap · rows</c> выше, чем её кладёт укладчик. Пока размер
-/// держала ширина, ошибка была невидима.
+/// <b>Ревизия 12.08.2026.</b> Оба пути этого замка отстали от кода и стерегли позапрошлый экран:
+/// раскладка-список держала состав, снятый решением владельца 11.08 (12×2 у скорости, фазный ток,
+/// наклон — и ни разделителя, ни полосы 12×3), а место подписи считалось как <c>кегль × InkRatio</c>,
+/// хотя боевой экран с 12.08 меряет её по кромкам глифов. Квадрат при этом не стерёгся вовсе: его
+/// «второй путь» вычитал отступ строки в 2 dp вместо целой полоски и имел постоянный запас в
+/// два десятка пикселей. Теперь состав <b>сверяется с <c>TilesLayout.Fixed</c></b>
+/// (<see cref="OwnerLayout"/>), а полоска считается боевой формулой ядра
+/// (<see cref="LabelStrip.Px"/>) — той же, что зовёт <c>TileLabelStyle</c> на телефоне.
 /// </para>
 /// <para>
 /// Экран — параметр, а не константа: дизайн адаптивный, и телефон владельца здесь лишь один из
@@ -34,13 +39,23 @@ public class TileFitsTheGridTests
     private const float PaddingDp = 8;
     private const float LabelDp = 11;
     private const float SquareLabelDp = 10;
-    private const float ValueTopMarginDp = 2;
     private const float HeatStrokeDp = 3;
+    private const float CornerInsetDp = HeatStrokeDp + 3;
+    private const float MarkScale = 1.5f;
     private const float InkRatio = 1.25f;
 
     /// <summary>Разряды до точки: у прямоугольных — принятые пять, у квадрата — засев (<c>MetricNumber</c>).</summary>
     private const int RectangleDigits = 5;
     private const int SquareDigits = 3;
+
+    /// <summary>
+    /// Начертание подписи, доля кегля: докуда достаёт капс вверх и куда уходит вынос «Щ» вниз.
+    /// Пропорции робото-подобного шрифта — <b>модель</b>, и это честно: настоящие кромки живут в
+    /// шрифте телефона (<c>Paint.GetTextBounds</c>), отсюда их не снять. Заперта здесь не буква, а
+    /// формула места под неё — её тест зовёт боевую.
+    /// </summary>
+    private const float CapHeight = 0.71f;
+    private const float Descender = 0.10f;
 
     /// <summary>
     /// Мерилка вроде <c>PaintRuler</c>: кегль приходит в dp, ответ — в пикселях, то есть через
@@ -58,6 +73,22 @@ public class TileFitsTheGridTests
     /// <summary>Поля самого списка плиток — по ним укладчик и режет клетку (<c>TilesScreen.ListPaddingDp</c>).</summary>
     private const float ListPaddingDp = 6;
 
+    /// <summary>
+    /// Полоска подписи — <b>боевой формулой ядра</b> (<see cref="LabelStrip.Px"/>), той же, которой
+    /// её считает <c>TileLabelStyle.StripPx</c> на телефоне: угловой отступ, высота краски строки и
+    /// вычтенное общее поле. Строка меряется по худшему жителю — знаку ▲ своим крупным кеглем и
+    /// капсу с выносом вниз.
+    /// </summary>
+    private static float StripPx(float labelDp, float density)
+    {
+        float word = MathF.Round(labelDp * density);
+        float inkTop = -CapHeight * word * MarkScale;
+        float inkBottom = Descender * word;
+
+        return MathF.Round(LabelStrip.Px(
+            MathF.Round(CornerInsetDp * density), inkTop, inkBottom, MathF.Round(PaddingDp * density)));
+    }
+
     /// <summary>Сетка так, как её строит <c>TilesScreen.Metrics</c>: всё в пикселях этого экрана.</summary>
     private static TileMetrics Grid(float density, int screenPx)
     {
@@ -70,16 +101,18 @@ public class TileFitsTheGridTests
             RowHeightPx: MathF.Round(RowHeightDp * density),
             GapPx: gap,
             PaddingPx: padding,
-            LabelHeightPx: LabelDp * density * InkRatio,
+            // Обе подписи — той же полоской, что отступает содержимое: счёт один на разметку и на
+            // бюджет, как его и ведёт TilesScreen.Metrics.
+            LabelHeightPx: StripPx(LabelDp, density),
             HeatBarPx: MathF.Round(HeatStrokeDp * density),
             EditReservePx: MathF.Round(22 * density),
             EditFooterPx: MathF.Round(14 * density),
             GapUnitPx: MathF.Round(4 * density),
             GapLabelPx: MathF.Round(12 * density),
-            MarkPx: MathF.Round(12 * density),
+            MarkPx: MathF.Round(18 * density),
             ValueBleedPx: MathF.Round(4 * density))
         {
-            SquareLabelPx = SquareLabelDp * density * InkRatio,
+            SquareLabelPx = StripPx(SquareLabelDp, density),
         };
     }
 
@@ -128,44 +161,84 @@ public class TileFitsTheGridTests
     }
 
     /// <summary>
-    /// Сколько высоты достаётся самому числу в разметке плитки: поля, затем — по форме — строка
-    /// подписи с отступом («столбик»), отступ числа (квадрат) либо ничего («строка», где подпись
-    /// стоит сбоку).
+    /// Сколько высоты достаётся самому числу в разметке плитки: поля, а под ними — <b>полоска
+    /// подписи</b>, которой плитка отступает содержимое (<c>TileView.LabelStripPx</c>, и у квадрата,
+    /// и у столбика — одним числом). В «строке» подпись стоит сбоку и сверху не берёт ничего.
+    /// <para>
+    /// До ревизии 12.08.2026 здесь у квадрата вычитался отступ строки в 2 dp, а не полоска: место
+    /// считалось на два десятка пикселей щедрее настоящего, и квадрат этим замком не стерёгся.
+    /// </para>
     /// </summary>
     private static float RoomForNumber(TileClass tile, TileForm form, TileMetrics grid, float density)
     {
         float inner = PackedHeight(tile, grid) - (2 * grid.PaddingPx);
-        float valueMargin = MathF.Round(ValueTopMarginDp * density);
 
         return form switch
         {
             TileForm.Row => inner,
-            TileForm.Square => inner - valueMargin,
-            _ => inner - (LabelDp * density * InkRatio) - valueMargin,
+            TileForm.Square => inner - StripPx(SquareLabelDp, density),
+            _ => inner - StripPx(LabelDp, density),
         };
     }
 
-    /// <summary>Раскладка, с которой приложение стартует (<c>TilesLayout.Fixed</c>), — величинами и классами.</summary>
+    /// <summary>
+    /// Раскладка, с которой приложение стартует, — величинами и классами. Держится равной
+    /// <c>TilesLayout.Fixed</c> замком ниже: до ревизии 12.08.2026 этот список дважды уезжал от
+    /// боевого молча, и оба раза замок продолжал светить зелёным на снятом составе.
+    /// </summary>
     private static readonly (string Metric, int Columns, int Rows, string Label, bool Mark)[] Layout =
     [
-        ("speed", 12, 2, "Скорость", false),
+        ("speed", 12, 3, "Скорость", false),
         ("pwm", 6, 2, "ШИМ", false),
-        ("battery_level", 6, 2, "Заряд", false),
         ("voltage", 6, 2, "Напряжение", false),
+        // Ряд крайних: пометка ▲▼ ставится видом плитки, а не второй величиной.
+        ("speed", 3, 1, "Скор.", true),
+        ("pwm", 3, 1, "ШИМ", true),
+        ("current", 3, 1, "Ток", true),
+        ("voltage", 3, 1, "Напр.", true),
+        ("battery_level", 6, 2, "Заряд", false),
         ("current", 3, 1, "Ток", false),
         ("power", 3, 1, "Мощн.", false),
-        ("phase_current", 3, 1, "Фазный", false),
-        // Мин-максы стоят крайними (владелец 11.08.2026) — с пометкой, а не отдельной величиной.
-        ("speed", 3, 1, "Скорость", true),
-        ("current", 3, 1, "Ток", true),
         ("system_temp", 3, 1, "Темп.", false),
         ("temp2", 3, 1, "Мотор", false),
-        ("tilt", 3, 1, "Наклон", false),
         ("distance", 6, 1, "За поездку", false),
         ("totaldistance", 6, 1, "Одометр", false),
-        ("pwm", 6, 1, "ШИМ", true),
-        ("voltage", 6, 1, "Напряжение", true),
     ];
+
+    /// <summary>
+    /// Список выше — тот самый, что стоит в <c>TilesLayout.Fixed</c>: величина, вид и размер каждого
+    /// места, в его порядке. Разделитель числа не показывает и в подборе не участвует, поэтому из
+    /// сверки он выпадает — но его место в раскладке стережёт <c>ExtremaAreATileKindTests</c>.
+    /// </summary>
+    [Fact]
+    public void The_measured_layout_is_the_one_the_app_starts_with()
+    {
+        Assert.Equal(
+            OwnerLayout.Tiles().Select(spot => $"{spot.Metric} {spot.Columns}×{spot.Rows}"),
+            Layout.Select(tile => $"{tile.Metric} {tile.Columns}×{tile.Rows}"));
+    }
+
+    /// <summary>
+    /// Подпись не вправе съесть у мелкой плитки больше четверти высоты. Замок абсолютный, и в этом
+    /// его смысл: бюджет с разметкой считаются одной формулой и вырастут <b>вместе</b>, согласованно
+    /// промолчав, — а вот полоска, ставшая вдвое выше, отберёт место у числа на всех квадратах разом
+    /// и не уронит ни одной сверки «двух путей».
+    /// </summary>
+    [Theory]
+    [InlineData(1.0f)]
+    [InlineData(2.0f)]
+    [InlineData(3.0f)]
+    public void The_label_never_eats_more_than_a_quarter_of_the_smallest_tile(float density)
+    {
+        float tile = MathF.Round(RowHeightDp * density) - (2 * MathF.Round(GapDp * density));
+
+        foreach (float labelDp in (float[])[SquareLabelDp, LabelDp])
+        {
+            float strip = StripPx(labelDp, density);
+
+            Assert.InRange(strip, MathF.Round(CornerInsetDp * density), tile / 4);
+        }
+    }
 
     private static IEnumerable<TileText> Texts(TileMetrics grid)
     {

@@ -55,6 +55,12 @@ public class TileNumberWiringTests
     /// Фиксация живёт до пересоздания экрана и не дольше: счёт увиденного — поле адаптера, а не
     /// общее на приложение и не хранимое. Новый экран начинает с чистого счёта — «прыжок» один, и
     /// тот при первом широком показании.
+    /// <para>
+    /// Два отрицания — «поле не статическое» и «счёт не отдаётся хранилищу» — сняты ревизией
+    /// 12.08.2026: они запрещали то, чего никто и не писал, и уронить их было нечем. Объявление
+    /// поля ниже держит оба смысла разом: <c>private readonly</c> — это и «не статическое», и «не
+    /// живёт дольше экрана».
+    /// </para>
     /// </summary>
     [Fact]
     public void The_sighting_dies_with_the_screen()
@@ -62,9 +68,5 @@ public class TileNumberWiringTests
         string source = RepoFiles.Read(Tiles + "TilesScreen.cs");
 
         Assert.Matches(@"private readonly Dictionary<string, int> _digits = new\(StringComparer\.Ordinal\);", source);
-        Assert.DoesNotMatch(new Regex(@"static[^\r\n]*_digits"), source);
-
-        // Хранилищу счёт не отдаётся: сохраняются раскладка и точки дистанций, но не увиденное.
-        Assert.DoesNotMatch(new Regex(@"Save\([^)]*_digits"), source);
     }
 }

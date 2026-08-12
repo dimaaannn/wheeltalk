@@ -38,12 +38,11 @@ public class RecordedTelemetryValidationTests
     private static int Int(Dictionary<string, string> row, string column) =>
         int.Parse(row[column], CultureInfo.InvariantCulture);
 
-    [Fact]
-    public void Recording_has_rows()
-    {
-        Assert.NotEmpty(LoadRows());
-    }
-
+    /// <summary>
+    /// Тест «в записи есть строки» снят ревизией 12.08.2026: он утверждал ровно то, что уже
+    /// проверяет <see cref="LoadRows"/> своим <c>Assert</c> о заголовке со строкой данных, — то есть
+    /// стерёг фикстуру, а не декодер, и уронить его не могла никакая правка кода.
+    /// </summary>
     [Fact]
     public void Every_row_reports_the_Gotway_wheel_type()
     {

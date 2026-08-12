@@ -111,24 +111,7 @@ public class TileMarksTests
         Assert.DoesNotContain("RelativeSizeSpan", RepoFiles.Read(Tiles + "TileView.cs"));
     }
 
-    /// <summary>
-    /// И в углу квадрата — тоже крупнее (решение владельца 11.08.2026). Там подпись рисуется руками
-    /// по канве, спан ей не указ: знак выводится своим кеглем, отдельным вызовом, и бюджет полоски
-    /// в углу считается по нему, а не по слову — иначе число залезет под метку.
-    /// </summary>
-    [Fact]
-    public void The_corner_mark_is_bigger_too()
-    {
-        string corner = RepoFiles.MethodBody(
-            RepoFiles.Read(Tiles + "TileView.cs"), "private LabelText PlaceLabel()");
-
-        Assert.Contains("word * TilesLayout.MarkScale", corner);
-        Assert.Contains("_labelPaint.TextSize = sign;", corner);
-
-        // Бюджет полоски — по крупному знаку: его рисунок меряется своим кеглем, и полоска строится
-        // по самой высокой краске строки (<c>CornerLabelTests</c> стережёт, что счёт один на всех).
-        Assert.Contains(
-            "Ink(word * TilesLayout.MarkScale, TileView.MarkHighest)",
-            RepoFiles.Read(Tiles + "TileLabelStyle.cs"));
-    }
+    // Тест «и в углу знак крупнее» уехал ревизией 12.08.2026 в CornerLabelTests: он читал ту же
+    // PlaceLabel и утверждал то же, что тамошние замки посадки, — а два теста об одном факте в
+    // разных файлах расходятся при первой же правке одного из них.
 }

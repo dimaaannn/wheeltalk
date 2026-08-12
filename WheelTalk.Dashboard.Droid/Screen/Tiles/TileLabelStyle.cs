@@ -1,5 +1,6 @@
 using Android.Content;
 using Android.Graphics;
+using WheelTalk.Core.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -87,6 +88,10 @@ internal static class TileLabelStyle
     /// и <c>LabelHeightPx</c>), а не одна разметка.
     /// </para>
     /// </summary>
+    /// <para>
+    /// Сама формула живёт в ядре (<see cref="LabelStrip.Px"/>): здесь меряется краска, там считается
+    /// место. Так замок зовёт боевой счёт, а не держит его копию у себя.
+    /// </para>
     /// <param name="labelDp">Кегль подписи этой формы: у «строки» он свой, крупнее.</param>
     public static int StripPx(Context context, float labelDp)
     {
@@ -94,10 +99,11 @@ internal static class TileLabelStyle
         var caps = Ink(word, Sample);
         var mark = Ink(word * TilesLayout.MarkScale, TileView.MarkHighest);
 
-        float inkTop = MathF.Min(caps.Top, mark.Top);
-        float inkBottom = MathF.Max(caps.Bottom, mark.Bottom);
-
-        return (int)MathF.Round(InsetPx(context) + (inkBottom - inkTop) - context.Dp(TilesLayout.PaddingDp));
+        return (int)MathF.Round(LabelStrip.Px(
+            InsetPx(context),
+            MathF.Min(caps.Top, mark.Top),
+            MathF.Max(caps.Bottom, mark.Bottom),
+            context.Dp(TilesLayout.PaddingDp)));
     }
 
     private static GlyphInk Ink(float sizePx, string text)

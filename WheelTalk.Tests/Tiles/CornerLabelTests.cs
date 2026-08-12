@@ -140,16 +140,23 @@ public class CornerLabelTests
     /// Полоска считается <b>одной формулой в одном месте</b>: по ней отступает число и по ней же
     /// идёт бюджет подбора кегля — и у квадрата, и у строки разметки. Два счёта об одном — то, чем
     /// полоска уже ломалась: знак вырос, а разметка осталась прежней (владелец 11.08.2026).
+    /// <para>
+    /// Сама формула переехала в ядро ревизией 12.08.2026 (<c>LabelStrip.Px</c>): её зовёт и телефон,
+    /// и замок сетки — <c>TileFitsTheGridTests</c> считал её у себя копией и оттого стерёг свою
+    /// копию, а не боевой счёт.
+    /// </para>
     /// </summary>
     [Fact]
     public void The_strip_is_one_count_for_the_layout_and_for_the_budget()
     {
         string style = RepoFiles.Read(Tiles + "TileLabelStyle.cs");
 
-        // Формула одна на все формы: угловой отступ, рисунок строки — и общее поле, которого
-        // подпись не занимает, потому что сидит выше него. Разнится только кегль.
+        // Формула одна на все формы и живёт в ядре: угловой отступ, рисунок строки — и общее поле,
+        // которого подпись не занимает, потому что сидит выше него. Разнится только кегль.
         Assert.Contains(
-            "InsetPx(context) + (inkBottom - inkTop) - context.Dp(TilesLayout.PaddingDp)", style);
+            "insetPx + (inkBottomPx - inkTopPx) - paddingPx",
+            RepoFiles.Read("WheelTalk.Core/Tiles/LabelStrip.cs"));
+        Assert.Contains("LabelStrip.Px(", style);
         Assert.Contains("public static int StripPx(Context context, float labelDp)", style);
 
         // Оба потребителя берут её готовой: своей арифметики нет ни у разметки, ни у бюджета.
@@ -198,6 +205,30 @@ public class CornerLabelTests
         Assert.Contains("_placed ??= PlaceLabel()", drawn);
         Assert.DoesNotContain("CornerLabel.Fit(", drawn);
         Assert.DoesNotContain("MeasureText", drawn);
+    }
+
+    /// <summary>
+    /// Знак ▲▼ и на канве крупнее слова (решение владельца 11.08.2026): спан разметки ему не указ —
+    /// он рисуется своим кеглем, отдельным вызовом, — и полоска строится по <b>его</b> краске, а не
+    /// по слову, иначе число залезет под метку.
+    /// <para>
+    /// Пришёл сюда ревизией 12.08.2026 из <c>TileMarksTests</c>: тот читал ту же <c>PlaceLabel</c> и
+    /// утверждал то же самое, что здешние замки посадки, — один факт в двух файлах расходится при
+    /// первой правке одного из них.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_mark_is_drawn_bigger_and_the_strip_is_built_for_it()
+    {
+        string placed = RepoFiles.MethodBody(
+            RepoFiles.Read(Tiles + "TileView.cs"), "private LabelText PlaceLabel()");
+
+        Assert.Contains("word * TilesLayout.MarkScale", placed);
+        Assert.Contains("_labelPaint.TextSize = sign;", placed);
+
+        Assert.Contains(
+            "Ink(word * TilesLayout.MarkScale, TileView.MarkHighest)",
+            RepoFiles.Read(Tiles + "TileLabelStyle.cs"));
     }
 
     /// <summary>

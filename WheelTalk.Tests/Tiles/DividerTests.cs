@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using WheelTalk.Core.Tiles;
 using WheelTalk.Tests.TestSupport;
 
@@ -10,29 +8,16 @@ namespace WheelTalk.Tests.Tiles;
 /// плиток видимый зазор (решение владельца 11.08.2026). Свойство плитки «начинать новую группу»,
 /// которым это пробовали сделать сперва, им же отвергнуто: волосяная черта по краю соседа ничего не
 /// отделяет, да и отступ принадлежит раскладке, а не плитке.
+/// <para>
+/// Здесь — арифметика строк разной высоты и замки по исходникам. Круги «запись — чтение» уехали
+/// ревизией 12.08.2026 в <c>TileLayoutCompatibilityTests</c>, к своей родне: они шли через свой DTO
+/// и <c>System.Text.Json</c>, боевого кодека не касаясь, и держать их среди настоящих замков значило
+/// выдавать проверку сериализатора за проверку формата.
+/// </para>
 /// </summary>
 public class DividerTests
 {
     private const string Tiles = "WheelTalk.Dashboard.Droid/Screen/Tiles/";
-
-    /// <summary>Форма записи наша — та же, что у остальных полей раскладки.</summary>
-    private sealed class TileDto
-    {
-        public string? Id { get; set; }
-        public string? Kind { get; set; }
-        public string? Metric { get; set; }
-        public int Columns { get; set; }
-        public int Rows { get; set; }
-        public bool Label { get; set; } = true;
-        public bool HeatBar { get; set; } = true;
-    }
-
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
 
     /// <summary>
     /// Строки разной высоты: разделитель занимает свою и делает её ниже обычной, а соседи съезжают
@@ -63,55 +48,24 @@ public class DividerTests
     }
 
     /// <summary>
-    /// Разделитель переживает круг «запись — чтение»: вид пишется и читается одним словом, а
-    /// величина ему не нужна вовсе — у него нет содержимого.
+    /// Свойства «начинать новую группу» нет ни в плитке, ни в кодеке, ни в меню правки — снято
+    /// целиком, и вернуться молча не должно: оно уже было отвергнуто владельцем, и вторая попытка
+    /// сделать зазор чертой по краю соседа обязана начинаться с разговора, а не с поля в DTO.
+    /// <para>
+    /// Круг «запись — чтение» старой раскладки с этим полем уехал в <c>TileLayoutCompatibilityTests</c>
+    /// (ревизия 12.08.2026): он шёл через свой DTO и сериализатор, боевого кодека не касаясь, — там
+    /// его родня и место. Здесь остались замки по исходникам.
+    /// </para>
     /// </summary>
     [Fact]
-    public void A_divider_survives_the_round_trip()
+    public void The_group_flag_has_not_crept_back()
     {
-        const string saved = """
-            [{"id":"a1b2c3d4","kind":"divider","columns":12,"rows":1}]
-            """;
-
-        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
-
-        Assert.NotNull(tiles);
-        Assert.Equal("divider", tiles[0].Kind);
-        Assert.Null(tiles[0].Metric);
-
-        var again = JsonSerializer.Deserialize<List<TileDto>>(
-            JsonSerializer.Serialize(tiles, Options), Options);
-
-        Assert.Equal("divider", again![0].Kind);
-        Assert.Equal("a1b2c3d4", again[0].Id);
-
-        string json = RepoFiles.Read(Tiles + "TileLayoutJson.cs");
-        Assert.Contains("TileKind.Divider => \"divider\"", json);
-        Assert.Contains("case \"divider\":", json);
-    }
-
-    /// <summary>
-    /// Раскладка, собранная в тот день, когда разделитель был свойством, читается без единой
-    /// оговорки: поле <c>group</c> формат больше не знает, а незнакомое поле он игнорирует. Ради
-    /// этого мёртвое объявление в DTO не оставлено — оно врало бы о составе формата.
-    /// </summary>
-    [Fact]
-    public void A_layout_from_the_day_of_the_group_flag_still_reads()
-    {
-        const string saved = """
-            [{"id":"18404b5b","group":true,"kind":"value","metric":"speed","columns":12,"rows":2}]
-            """;
-
-        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
-
-        Assert.NotNull(tiles);
-        Assert.Single(tiles);
-        Assert.Equal("speed", tiles[0].Metric);
-
-        // Свойства нет ни в плитке, ни в кодеке, ни в меню правки — снято целиком.
         Assert.DoesNotContain("GroupStart", RepoFiles.Read(Tiles + "MetricTile.cs"));
-        Assert.DoesNotContain("Group", RepoFiles.Read(Tiles + "TileLayoutJson.cs"));
         Assert.DoesNotContain("TilesTileGroup", RepoFiles.Read(Tiles + "TileEditor.cs"));
+
+        // Поле формата — по его объявлению, а не по слову «Group» на весь файл: пятибуквенная
+        // подстрока однажды упадёт от невинного соседа вроде RadioGroup и будет сочтена ложной.
+        Assert.DoesNotContain("Group { get; set; }", RepoFiles.Read(Tiles + "TileLayoutJson.cs"));
     }
 
     /// <summary>

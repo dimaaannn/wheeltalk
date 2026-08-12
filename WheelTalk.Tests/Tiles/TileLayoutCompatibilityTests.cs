@@ -17,6 +17,14 @@ namespace WheelTalk.Tests.Tiles;
 /// (второй — чтением исходника, как замок §29.2). Убери инициализатор — старые раскладки молча
 /// погасят полосы, и заметить это будет нечем.
 /// </para>
+/// <para>
+/// <b>Честно о силе замка (ревизия 12.08.2026).</b> Из девяти тестов шесть гоняют <b>свой</b>
+/// <see cref="TileDto"/> через <c>System.Text.Json</c> — то есть проверяют поведение сериализатора,
+/// а не наш код: сломай боевой <c>TileLayoutJson</c>, и они останутся зелёными. Держат здесь три
+/// последних, читающих боевой исходник: объявление DTO и пара «пишется — читается» у слов вида.
+/// Круги через сериализатор оставлены нарочно — они показывают, <b>почему</b> умолчание поля решает
+/// дело, — но полагаться на них как на гейт нельзя.
+/// </para>
 /// </summary>
 public class TileLayoutCompatibilityTests
 {
@@ -155,16 +163,69 @@ public class TileLayoutCompatibilityTests
     }
 
     /// <summary>
-    /// Вид «дистанция» пишется и читается тем же словом. Замок на пару: разойдись эти две строки —
-    /// сохранённая дистанция вернулась бы мусором и была бы отброшена молча, вместе с точкой.
+    /// Раскладка, собранная в тот день, когда разделитель был свойством плитки, читается без единой
+    /// оговорки: поле <c>group</c> формат больше не знает, а незнакомое поле он игнорирует. Ради
+    /// этого мёртвое объявление в DTO не оставлено — оно врало бы о составе формата.
+    /// <para>
+    /// Переехал сюда из <c>DividerTests</c> ревизией 12.08.2026: там он стоял среди замков по
+    /// исходникам, будучи кругом через сериализатор, — а место таким кругам здесь, при своей родне.
+    /// </para>
     /// </summary>
     [Fact]
-    public void The_trip_kind_is_written_and_read_by_the_same_word()
+    public void A_layout_from_the_day_of_the_group_flag_still_reads()
+    {
+        const string saved = """
+            [{"id":"18404b5b","group":true,"kind":"value","metric":"speed","columns":12,"rows":2}]
+            """;
+
+        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
+
+        Assert.NotNull(tiles);
+        Assert.Single(tiles);
+        Assert.Equal("speed", tiles[0].Metric);
+    }
+
+    /// <summary>
+    /// Разделитель переживает круг «запись — чтение» той же формой записи: вид пишется и читается
+    /// одним словом, а величина ему не нужна вовсе — у него нет содержимого. Тоже переехал из
+    /// <c>DividerTests</c>.
+    /// </summary>
+    [Fact]
+    public void A_divider_survives_the_round_trip()
+    {
+        const string saved = """
+            [{"id":"a1b2c3d4","kind":"divider","columns":12,"rows":1}]
+            """;
+
+        var tiles = JsonSerializer.Deserialize<List<TileDto>>(saved, Options);
+
+        Assert.NotNull(tiles);
+        Assert.Equal("divider", tiles[0].Kind);
+        Assert.Null(tiles[0].Metric);
+
+        var again = JsonSerializer.Deserialize<List<TileDto>>(
+            JsonSerializer.Serialize(tiles, Options), Options);
+
+        Assert.Equal("divider", again![0].Kind);
+        Assert.Equal("a1b2c3d4", again[0].Id);
+    }
+
+    /// <summary>
+    /// <b>Слова видов — семьёй, в одном месте</b> (сведены ревизией 12.08.2026 из <c>DividerTests</c>
+    /// и соседей): каждый вид пишется и читается одним и тем же словом. Замок на пару строк:
+    /// разойдись они — сохранённая плитка вернулась бы мусором и была бы отброшена молча, а с
+    /// дистанцией ушла бы и её точка отсчёта.
+    /// </summary>
+    [Fact]
+    public void Every_kind_is_written_and_read_by_the_same_word()
     {
         string source = RepoFiles.Read("WheelTalk.Dashboard.Droid/Screen/Tiles/TileLayoutJson.cs");
 
         Assert.Contains("TileKind.Trip => \"trip\"", source);
         Assert.Contains("case \"trip\" when dto.Metric is { Length: > 0 }:", source);
+
+        Assert.Contains("TileKind.Divider => \"divider\"", source);
+        Assert.Contains("case \"divider\":", source);
     }
 
     /// <summary>

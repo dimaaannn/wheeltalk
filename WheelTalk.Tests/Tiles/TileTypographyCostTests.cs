@@ -1,4 +1,6 @@
+using WheelTalk.Core.Metrics;
 using WheelTalk.Core.Tiles;
+using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Tiles;
 
@@ -10,7 +12,12 @@ namespace WheelTalk.Tests.Tiles;
 /// подбор).
 /// <para>
 /// Замок держит <b>число вызовов</b>, а не миллисекунды: миллисекунды зависят от телефона, а вызовы
-/// — от нашего кода. Считается на боевой раскладке: 18 плиток четырёх классов.
+/// — от нашего кода. Считается на боевой раскладке — той самой, что читается из
+/// <c>TilesLayout.Fixed</c>.
+/// </para>
+/// <para>
+/// Что он <b>не</b> ловит: сам подбор зовётся здесь напрямую, поэтому лишний его вызов с экрана
+/// (дважды за кадр, скажем) замку не виден — он стережёт цену одного прохода, а не число проходов.
 /// </para>
 /// </summary>
 public class TileTypographyCostTests
@@ -39,27 +46,27 @@ public class TileTypographyCostTests
         CellWidthPx: 23, RowHeightPx: 68, GapPx: 6, PaddingPx: 8, LabelHeightPx: 16, HeatBarPx: 9,
         EditReservePx: 22, EditFooterPx: 14, GapUnitPx: 4, GapLabelPx: 12, MarkPx: 16, ValueBleedPx: 4);
 
-    /// <summary>Раскладка <c>TilesLayout.Fixed</c> как она есть: восемнадцать плиток четырёх классов.</summary>
-    private static IReadOnlyList<TileText> Layout() =>
-    [
-        new(new TileClass(12, 2), "88888.8", "км/ч", "Скорость", false),
-        new(new TileClass(6, 2), "88888.8", "%", "ШИМ", false),
-        new(new TileClass(6, 2), "88888", "%", "Заряд", false),
-        new(new TileClass(6, 2), "88888.88", "В", "Напряжение", false),
-        new(new TileClass(3, 1), "888.88", "А", "Ток", false),
-        new(new TileClass(3, 1), "888", "Вт", "Мощн.", false),
-        new(new TileClass(3, 1), "888.88", "А", "Фазный", false),
-        new(new TileClass(3, 1), "888.8", "%", "Пик ШИМ", false),
-        new(new TileClass(3, 1), "888", "°C", "Темп.", false),
-        new(new TileClass(3, 1), "888", "°C", "Мотор", false),
-        new(new TileClass(3, 1), "888.8", "°", "Наклон", false),
-        new(new TileClass(3, 1), "888.8", "км/ч", "Макс.", false),
-        new(new TileClass(6, 1), "88888.88", "км", "За поездку", false),
-        new(new TileClass(6, 1), "88888", "км", "Одометр", false),
-        new(new TileClass(6, 1), "88888.8", "%", "ШИМ", true),
-        new(new TileClass(6, 1), "88888.88", "В", "Напряжение", true),
-        new(new TileClass(12, 2), "88888.8", "%", "ШИМ", false),
-    ];
+    /// <summary>
+    /// Раскладка, с которой приложение стартует, — <b>прочитанная из <c>TilesLayout.Fixed</c></b>
+    /// (<see cref="OwnerLayout"/>), а не переписанная сюда руками. Список руками здесь и стоял, и к
+    /// ревизии 12.08.2026 отстал на целый состав: держал снятые решением владельца плитки (фазный
+    /// ток, наклон, «Пик ШИМ» отдельной величиной) и не знал ни полосы 12×3, ни разделителя. Цена
+    /// подбора считается по тому, что на экране, иначе это цена вымышленного экрана.
+    /// </summary>
+    private static IReadOnlyList<TileText> Layout() => OwnerLayout.Tiles()
+        .Select(spot =>
+        {
+            var metric = MetricCatalogue.Find(spot.Metric)!;
+            string whole = new('8', 5);
+
+            return new TileText(
+                new TileClass(spot.Columns, spot.Rows),
+                metric.Decimals > 0 ? whole + "." + new string('8', metric.Decimals) : whole,
+                "%",
+                metric.LabelKey,
+                Mark: spot.Kind == "Extremum");
+        })
+        .ToList();
 
     /// <summary>
     /// Потолок цены. Подбор перебирает кегли от потолка к полу, и на каждый шаг спрашивает ширину —
