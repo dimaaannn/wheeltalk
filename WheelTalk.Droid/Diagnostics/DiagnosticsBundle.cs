@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO.Compression;
 using Microsoft.Extensions.DependencyInjection;
 using WheelTalk.Core.Diagnostics;
@@ -122,7 +122,7 @@ public static class DiagnosticsBundle
             : "— км";
         string duration = ride.Duration is { } span
             ? span.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture)
-            : "идёт";
+            : "в процессе";
 
         return $"{when} · {ride.Name} · {distance} · {duration} · строк {ride.Rows.ToString(CultureInfo.InvariantCulture)}";
     }

@@ -56,6 +56,9 @@ public class CornerLabelTests
     [InlineData("Мощн.", "МОЩН.")]
     [InlineData("Темп.", "ТЕМП.")]
     [InlineData("Мотор", "МОТОР")]
+    // «Ячейка» вместо «Банки» — ревизия текстов 12.08.2026 свела семью к одному слову. Оно на знак
+    // длиннее прежнего, поэтому стоит здесь: угол у четвертной плитки самый тесный на экране.
+    [InlineData("Ячейка", "ЯЧЕЙКА")]
     public void Every_word_of_the_owners_layout_fits_the_corner(string word, string caps)
     {
         const float labelSp = 10;

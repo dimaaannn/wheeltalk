@@ -1,4 +1,4 @@
-using Android.Graphics;
+﻿using Android.Graphics;
 using WheelTalk.Core.Battery;
 using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Dashboard.Droid.Widgets.Tape;
@@ -72,7 +72,7 @@ public static class Tapes
     {
         Options = options,
         Side = side,
-        Caption = "В/яч",
+        Caption = "В/яч.",
     };
 
     /// <summary>
@@ -377,6 +377,6 @@ public static class Tapes
         tape.Window.Ink = sunk ? Color.White : low ? palette.Accent : palette.Ink;
         tape.Window.Border = tape.Window.Ink;
 
-        tape.Caption = "В/яч";
+        tape.Caption = "В/яч.";
     }
 }
