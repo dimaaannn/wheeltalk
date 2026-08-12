@@ -86,17 +86,24 @@ jobs:
           VERSION=$(sed -n 's:.*<ApplicationDisplayVersion>\(.*\)</ApplicationDisplayVersion>.*:\1:p' \
             WheelTalk.Droid/WheelTalk.Droid.csproj)
           if [ -z "$VERSION" ]; then echo "Не нашёл ApplicationDisplayVersion в csproj"; exit 1; fi
+          CODE=$(sed -n 's:.*<ApplicationVersion>\(.*\)</ApplicationVersion>.*:\1:p' \
+            WheelTalk.Droid/WheelTalk.Droid.csproj)
+          if [ -z "$CODE" ]; then echo "Не нашёл ApplicationVersion в csproj"; exit 1; fi
 
           if [ "${{ github.event_name }}" = "push" ]; then
             TAG="${GITHUB_REF_NAME}"
             # Допустимы «v1.3.0» и «v1.3.0-b10» — вторая и следующие сборки того же номера.
+            # Суффикс «-b» сверяется с кодом сборки точно: тег v1.5.1-b19 на коммите с кодом 18
+            # выпустил бы наружу чужую сборку под правильным именем (мина 12.08.2026).
             case "$TAG" in
-              "v$VERSION"|"v$VERSION-b"*) ;;
-              *) echo "Тег $TAG не соответствует версии $VERSION в csproj"; exit 1 ;;
+              "v$VERSION"|"v$VERSION-b$CODE") ;;
+              *) echo "Тег $TAG не соответствует версии $VERSION (код $CODE) в csproj"; exit 1 ;;
             esac
           fi
 
-          NAME="wheeltalk-$VERSION-arm64.apk"
+          # Код сборки — в имени файла: два APK одной версии с разным содержимым и одинаковым
+          # именем уже дважды стоили вечера (publish 31.07, «Загрузки» телефона 12.08.2026).
+          NAME="wheeltalk-$VERSION-b$CODE-arm64.apk"
           SRC=WheelTalk.Droid/bin/Release/net10.0-android/publish/com.wheeltalk.droid-Signed.apk
           mv "$SRC" "$RUNNER_TEMP/$NAME"
 
