@@ -288,6 +288,91 @@ public class CentrePanelTests
     }
 
     /// <summary>
+    /// <b>В кадре — только краска</b> (урок плана 31, дословно). Подбор кегля меряет строку шрифтом,
+    /// а всякий такой замер — JNI: шестьдесят раз в секунду он стоит дороже самой отрисовки, и
+    /// владелец это увидел подтормаживанием при открытом редакторе (12.08.2026), когда панель
+    /// продолжает рисоваться за окном.
+    /// </summary>
+    [Fact]
+    public void The_drawing_of_the_centre_measures_nothing_and_allocates_nothing()
+    {
+        string block = RepoFiles.Read("WheelTalk.Dashboard.Droid/Widgets/SpeedBlockDrawable.cs");
+        string drawn = RepoFiles.MethodBody(
+            block, "private void DrawExtras(Canvas canvas, RectF rect, DashboardPalette palette)");
+
+        // Ни подбора, ни замера шрифтом, ни сборки слов — всё это выше по течению.
+        Assert.DoesNotContain("CenterTypography.Fit", drawn);
+        Assert.DoesNotContain("MeasureText", drawn);
+        Assert.DoesNotContain("CenterReadings.Worst", drawn);
+        Assert.DoesNotContain("CenterReadings.Caption", drawn);
+
+        // Ни мусора: ни LINQ, ни склейки списка — они заводят перечислитель и промежуточный массив
+        // на каждый кадр.
+        Assert.DoesNotContain("string.Join", drawn);
+        Assert.DoesNotContain(".Select(", drawn);
+        Assert.DoesNotContain("new ", drawn);
+
+        // Кегль скорости тоже снят с кадра: MeasureText — тот же JNI.
+        Assert.Contains("if (_speedShown == text && _speedFor.Equals(rect)) return _speedFont;", block);
+    }
+
+    /// <summary>
+    /// Посадка пересчитывается <b>по сигнатуре входов</b>, а не по догадке «наверное, не менялось»:
+    /// состав строк, прямоугольник, плотность и показ десятых. Числами и ссылкой, а не собранной
+    /// строкой-ключом — иначе мусор вернулся бы той же дверью, из которой его выгнали (урок якоря).
+    /// </summary>
+    [Fact]
+    public void The_placement_is_kept_until_its_inputs_change()
+    {
+        string placed = RepoFiles.MethodBody(
+            RepoFiles.Read("WheelTalk.Dashboard.Droid/Widgets/SpeedBlockDrawable.cs"),
+            "private void Place(RectF rect, IReadOnlyList<CenterRow> rows, bool tenths)");
+
+        Assert.Contains("ReferenceEquals(_placedRows, rows)", placed);
+        Assert.Contains("_placedFor.Equals(rect)", placed);
+        Assert.Contains("_placedTenths == tenths", placed);
+        Assert.Contains("Math.Abs(_placedDensity - Density)", placed);
+
+        // Слова показаний — со снимком, а не с кадром: сравниваются числа, а не собранные строки.
+        string told = RepoFiles.MethodBody(
+            RepoFiles.Read("WheelTalk.Dashboard.Droid/Widgets/SpeedBlockDrawable.cs"),
+            "private void Retell(IReadOnlyList<CenterRow> rows, bool tenths)");
+
+        Assert.Contains("Same(_numbers[index * 2], first)", told);
+        Assert.DoesNotContain("string.Join", told);
+        Assert.DoesNotContain(".Select(", told);
+    }
+
+    /// <summary>
+    /// Цена одного пересчёта — в обращениях к шрифту, и она постоянная: два замера, по одному на
+    /// худшее значение и худшую подпись, а не перебор кеглей, как у плиток. Вырастет — значит кто-то
+    /// вернул сюда цикл, и цена станет зависеть от числа строк.
+    /// </summary>
+    [Fact]
+    public void One_fitting_asks_the_font_twice_no_matter_how_many_rows()
+    {
+        var ruler = new CountingRuler();
+
+        CenterTypography.Fit("888 / 888.8", "Заряд / Напр. мин", 6, Room, Width, ruler, Metrics());
+
+        Assert.Equal(2, ruler.Asked);
+    }
+
+    private sealed class CountingRuler : ITextRuler
+    {
+        public int Asked { get; private set; }
+
+        public float Width(string text, float sizeSp, bool mono)
+        {
+            Asked++;
+
+            return text.Length * sizeSp * 0.5f;
+        }
+
+        public float Height(float sizeSp) => sizeSp * 1.25f;
+    }
+
+    /// <summary>
     /// Состав хранится общим слоем: центр — лицо приложения, человек собирает его под свою манеру
     /// ездить, а не под колесо. Молчащая величина рисует прочерк и состава не ломает — тот же довод,
     /// каким общей сделана раскладка плиток.

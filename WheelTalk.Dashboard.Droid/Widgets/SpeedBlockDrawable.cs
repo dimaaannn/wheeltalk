@@ -99,6 +99,30 @@ public sealed class SpeedBlockDrawable
     /// <summary>Плотность экрана: по ней считается пол читаемости — он в миллиметрах глаза, а не в пикселях.</summary>
     public float Density { get; set; } = 1;
 
+    /// <summary>Готовая посадка справочного блока: всё, что нужно, чтобы его нарисовать.</summary>
+    private readonly record struct Placement(
+        float FontPx, int Rows, float Top, float RowHeight, string[] Captions);
+
+    private Placement _placed;
+
+    /// <summary>При каких входах посадка снята — сигнатура, а не догадка «наверное, не менялось».</summary>
+    private IReadOnlyList<CenterRow>? _placedRows;
+
+    private readonly RectF _placedFor = new();
+    private bool _placedTenths;
+    private float _placedDensity;
+
+    /// <summary>Слова показаний и числа, из которых они собраны: пересобираются со снимком, не с кадром.</summary>
+    private string[] _values = [];
+
+    private double?[] _numbers = [];
+
+    /// <summary>Кегль скорости и строка, на которой он снят: <c>MeasureText</c> — тоже JNI.</summary>
+    private string _speedShown = "";
+
+    private float _speedFont;
+    private readonly RectF _speedFor = new();
+
     public void Draw(Canvas canvas, RectF rect)
     {
         var palette = Options.Palette;
@@ -145,12 +169,55 @@ public sealed class SpeedBlockDrawable
         var rows = Options.CentreRows;
         if (rows.Count == 0) return;
 
-        float top = rect.Top + rect.Height() * ExtrasAt;
-        float room = rect.Bottom - top - rect.Height() * BottomMargin;
-
         // Десятые прячутся на ходу тем же порогом, что и у самой скорости: рябь в углу глаза не
         // читается, а место занимает (HideTenthsAbove, прогон 3).
         bool tenths = Options.HideTenthsAbove <= 0 || Reading.SpeedKmh < Options.HideTenthsAbove;
+
+        Place(rect, rows, tenths);
+        if (_placed.Rows == 0) return;
+
+        Retell(rows, tenths);
+
+        // Здесь только краска: и посадка, и слова посчитаны выше — и лишь при перемене входов.
+        for (int index = 0; index < _placed.Rows; index++)
+        {
+            Pair(canvas, rect, _placed.Top + (_placed.RowHeight * index), _placed.FontPx,
+                _values[index], _placed.Captions[index], palette);
+        }
+    }
+
+    /// <summary>
+    /// Посадка блока: кегль, сколько строк влезло, где они стоят и как подписаны. Считается
+    /// <b>не в кадре</b> — только когда меняется то, от чего она зависит: состав строк, отведённый
+    /// прямоугольник, плотность экрана и показ десятых.
+    /// <para>
+    /// <b>Урок плана 31.</b> Подбор кегля меряет строку шрифтом, а всякий такой замер — это JNI;
+    /// вызванный шестьдесят раз в секунду, он стоит дороже самой отрисовки. На этом уже обожглись
+    /// плитки (посадка угловой подписи), и центр повторил их ошибку — владелец увидел
+    /// подтормаживание при открытом редакторе (12.08.2026), где панель продолжает рисоваться за
+    /// окном.
+    /// </para>
+    /// </summary>
+    private void Place(RectF rect, IReadOnlyList<CenterRow> rows, bool tenths)
+    {
+        // Сигнатура — числами и ссылкой на список, а не собранной строкой: строку пришлось бы
+        // склеивать каждый кадр, и мусор вернулся бы той же дверью, из которой его выгнали. Список
+        // меняется правкой целиком (редактор кладёт новый), поэтому ссылки довольно.
+        if (ReferenceEquals(_placedRows, rows)
+            && _placedFor.Equals(rect)
+            && _placedTenths == tenths
+            && Math.Abs(_placedDensity - Density) < 0.001f)
+        {
+            return;
+        }
+
+        _placedRows = rows;
+        _placedFor.Set(rect);
+        _placedTenths = tenths;
+        _placedDensity = Density;
+
+        float top = rect.Top + (rect.Height() * ExtrasAt);
+        float room = rect.Bottom - top - (rect.Height() * BottomMargin);
 
         var (worstValue, worstCaption) = CenterReadings.Worst(rows, Options.Words);
         var fit = CenterTypography.Fit(
@@ -164,18 +231,59 @@ public sealed class SpeedBlockDrawable
                 FloorPx: Density * FloorDp,
                 CeilingPx: rect.Width() * ValueOfWidth * ExtrasFontScale));
 
-        if (fit.Rows == 0) return;
-
-        float row = room / fit.Rows;
+        var captions = new string[fit.Rows];
         for (int index = 0; index < fit.Rows; index++)
         {
-            var line = rows[index];
-            string value = string.Join(" / ",
-                line.Readings().Select(reading => CenterReadings.Text(reading, Reading, tenths)));
+            captions[index] = CenterReadings.Caption(rows[index], Options.Words);
+        }
 
-            Pair(canvas, rect, top + row * index, fit.FontPx, value, CenterReadings.Caption(line, Options.Words), palette);
+        _placed = new Placement(fit.FontPx, fit.Rows, top, fit.Rows > 0 ? room / fit.Rows : 0, captions);
+        _values = new string[fit.Rows];
+        _numbers = new double?[fit.Rows * 2];
+
+        // Числа заведомо «не те»: первым же кадром слова соберутся заново, а не достанутся от
+        // прежней посадки.
+        Array.Fill(_values, "");
+    }
+
+    /// <summary>
+    /// Пересобрать слова показаний — <b>только когда переменилось само показание</b>, а не каждый
+    /// кадр: колесо говорит пять раз в секунду, экран рисуется шестьдесят. Сравниваются числа, а не
+    /// собранные строки: сравнить строки можно, лишь сперва их собрав, то есть намусорив.
+    /// </summary>
+    private void Retell(IReadOnlyList<CenterRow> rows, bool tenths)
+    {
+        for (int index = 0; index < _placed.Rows; index++)
+        {
+            var row = rows[index];
+            double? first = CenterReadings.Value(row.First, Reading);
+            double? second = row.Second is { } pair ? CenterReadings.Value(pair, Reading) : null;
+
+            if (_values[index].Length > 0
+                && Same(_numbers[index * 2], first)
+                && Same(_numbers[(index * 2) + 1], second))
+            {
+                continue;
+            }
+
+            _numbers[index * 2] = first;
+            _numbers[(index * 2) + 1] = second;
+
+            // Без LINQ и без Join: показаний в строке не больше двух, и склейка руками не заводит
+            // ни перечислителя, ни промежуточного массива.
+            string value = CenterReadings.Text(row.First, Reading, tenths);
+            if (row.Second is { } companion)
+            {
+                value = value + " / " + CenterReadings.Text(companion, Reading, tenths);
+            }
+
+            _values[index] = value;
         }
     }
+
+    /// <summary>Одно ли это показание. Тысячные — граница любого нашего показа, ниже неё разницы нет.</summary>
+    private static bool Same(double? was, double? now) =>
+        (was is null && now is null) || (was is { } a && now is { } b && Math.Abs(a - b) < 0.0001);
 
     /// <summary>
     /// Кегль скорости — наибольший, при котором строка помещается в отведённую ширину. Не константа
@@ -184,12 +292,20 @@ public sealed class SpeedBlockDrawable
     /// </summary>
     private float FitSpeed(string text, RectF rect)
     {
+        // Замер шрифтом — тоже JNI, и звать его на каждый кадр незачем: строка скорости меняется
+        // впятеро реже, чем идут кадры, а место — только со сменой размера панели (урок плана 31).
+        if (_speedShown == text && _speedFor.Equals(rect)) return _speedFont;
+
         float ceiling = rect.Height() * SpeedOfHeight;
         float available = rect.Width() * SpeedOfWidth;
         _bold.TextSize = ceiling;
         float width = _bold.MeasureText(text);
 
-        return width <= available ? ceiling : ceiling * available / width;
+        _speedShown = text;
+        _speedFor.Set(rect);
+        _speedFont = width <= available ? ceiling : ceiling * available / width;
+
+        return _speedFont;
     }
 
     /// <summary>
