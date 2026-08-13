@@ -12,6 +12,7 @@ using Com.Github.Mikephil.Charting.Formatter;
 using Com.Github.Mikephil.Charting.Highlight;
 using Com.Github.Mikephil.Charting.Listener;
 using WheelTalk.Core.Metrics;
+using WheelTalk.Core.Tiles;
 
 namespace WheelTalk.Dashboard.Droid.Screen.Tiles;
 
@@ -64,9 +65,13 @@ internal static class ChartViewer
         picked.SetTextColor(palette.Dim);
 
         var chart = BuildChart(context, palette, from, options.Window);
+
+        // Место точки на оси проверяется тем же счётом, что и метки оси (AxisTime): выбор приходит
+        // из той же чужой библиотеки и той же природы — до первой отрисовки в нём бывает пусто.
         chart.SetOnChartValueSelectedListener(new Selection(entry =>
-            picked.Text = $"{from.AddSeconds(entry.GetX()):HH:mm:ss} · "
-                + $"{entry.GetY().ToString(format, CultureInfo.InvariantCulture)} {unit}"));
+            picked.Text = AxisTime.At(from, entry.GetX(), options.Window.TotalSeconds) is { } at
+                ? $"{at:HH:mm:ss} · {entry.GetY().ToString(format, CultureInfo.InvariantCulture)} {unit}"
+                : ""));
 
         int pad = context.Dp(TilesLayout.ViewerPaddingDp);
         var root = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Vertical };
@@ -120,8 +125,9 @@ internal static class ChartViewer
         chart.XAxis.TextColor = palette.Dim;
         chart.XAxis.SetDrawGridLines(false);
         // Ось времени: по X лежат секунды от начала окна, а не unix-время — float считает их точно,
-        // а миллисекунды суток в него уже не помещаются без потери.
-        chart.XAxis.ValueFormatter = new TimeAxis(from);
+        // а миллисекунды суток в него уже не помещаются без потери. Окно ось знает: по нему она и
+        // отличает свою метку от мусора, который приносит чтение вслух.
+        chart.XAxis.ValueFormatter = new TimeAxis(from, window.TotalSeconds);
 
         // Окно задано временем, а не данными: там, где истории нет, остаётся пустое место, и видно,
         // что её нет, — вместо растянутого по остаткам графика.
@@ -228,8 +234,16 @@ internal static class ChartViewer
         }
     }
 
-    private sealed class TimeAxis(DateTimeOffset from) : Java.Lang.Object, IAxisValueFormatter
+    /// <summary>
+    /// Подпись метки оси — время. Спрашивают её не только за нарисованные метки: система доступности
+    /// читает график вслух (<c>dispatchPopulateAccessibilityEvent</c> при открытии окна) и просит
+    /// подписать значения, когда рисовать ещё нечего, — а в пустой видимой области у чужой
+    /// библиотеки лежат крайние числа float. Такой метке на оси места нет, и подписи у неё нет тоже:
+    /// пустая строка вместо краха (телефон владельца, сборка 20).
+    /// </summary>
+    private sealed class TimeAxis(DateTimeOffset from, double windowSeconds) : Java.Lang.Object, IAxisValueFormatter
     {
-        public string GetFormattedValue(float value, AxisBase? axis) => from.AddSeconds(value).ToString("HH:mm");
+        public string GetFormattedValue(float value, AxisBase? axis) =>
+            AxisTime.At(from, value, windowSeconds) is { } at ? at.ToString("HH:mm") : "";
     }
 }

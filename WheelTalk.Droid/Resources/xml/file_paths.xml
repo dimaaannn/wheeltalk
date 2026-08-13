@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Пути, которые FileProvider готов отдать диалогу «поделиться» (DiagnosticsShare): внешний
-     каталог приложения, где лежат diagnostics.log и файлы поездок (LogFiles.Root). -->
+<!-- Корни, которые FileProvider готов отдать наружу (DiagnosticsShareActivity: «Отправить» и
+     «Открыть» у части комплекта). Их ровно два, и оба заняты комплектом диагностики:
+
+       external-files-path — внешний каталог приложения (RideFiles.Root): там лежат diagnostics.log,
+         его прошлое поколение diagnostics.log.1 и файлы поездок;
+       cache-path — внутренний кэш (DiagnosticsBundle.CacheRoot): там мы делаем то, что собрано под
+         раздачу, — выжимку rides.txt и сам архив wheeltalk-diagnostics-*.zip.
+
+     Больше корней объявлять нельзя: провайдер раздаёт ровно белый список, и каждый лишний — дверь,
+     открытая без нужды. Меньше — тоже нельзя: незаявленный корень роняет приложение при первом же
+     нажатии («Failed to find configured root that contains …» — телефон владельца, сборка 20).
+     Совпадение списка с тем, откуда просят ссылку, стережёт DiagnosticsShareRootsTests. -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
 	<external-files-path name="files" path="." />
+	<cache-path name="cache" path="." />
 </paths>
