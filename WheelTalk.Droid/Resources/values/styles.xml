@@ -11,7 +11,11 @@
          Пара values/values-night, а не Theme.DeviceDefault.DayNight: последняя появилась в API 29,
          а minSdk у нас 28. И не Material Components (как у SettingsTheme ниже): экраны — обычные
          Activity с системным ActionBar'ом, а темы AppCompat распоряжаются заголовком по-своему. -->
-    <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light.DarkActionBar">
+    <!-- Светлому варианту — светлый заголовок: DarkActionBar оставлял тёмную полосу над белой
+         страницей на всех экранах с системным ActionBar (корень настроек, «Что уйдёт», «Поездки»,
+         «Данные», поиск) — «заголовок выбивается», слово владельца 14.08.2026. Ночной вариант в
+         values-night тёмный целиком, его это не касается. -->
+    <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light">
         <!-- Прозрачная подложка статус-бара: окно и так рисуется под ним
              (EdgeToEdge.SetDecorFitsSystemWindows(false)), закрывал панель только фон самого бара.
              Значки времени и заряда ложатся поверх приборов, читаемость им обеспечивает градиент
