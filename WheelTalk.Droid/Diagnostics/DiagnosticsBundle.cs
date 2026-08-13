@@ -70,7 +70,9 @@ public static class DiagnosticsBundle
     {
         string path = System.IO.Path.Combine(
             CacheRoot(),
-            $"wheeltalk-diagnostics-{DateTimeOffset.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture)}.zip");
+            // Метка в начале — тем же порядком, что у частей: имена пересылок сортируются по
+            // времени, и никакая пара не тёзки.
+            $"{DateTimeOffset.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture)}-wheeltalk-diagnostics.zip");
 
         if (File.Exists(path)) File.Delete(path);
 
@@ -95,14 +97,17 @@ public static class DiagnosticsBundle
     /// а получателю показываем другое, с меткой времени пересылки. Без неё получатель складывает
     /// одноимённые файлы рядом, и старый открывается вместо нового (так уже было с APK в
     /// «Загрузках»).
+    /// <para>
+    /// Метка стоит <b>в начале</b> (решение владельца 14.08.2026): дисковое имя остаётся целым —
+    /// «20260814-0830-diagnostics.log.1» читается, а попытка воткнуть метку перед расширением
+    /// давала «diagnostics.log-….1». Заодно файлы у получателя сортируются по времени сами.
+    /// </para>
     /// </summary>
     public static string DisplayName(string diskName)
     {
-        string stem = System.IO.Path.GetFileNameWithoutExtension(diskName);
-        string extension = System.IO.Path.GetExtension(diskName);
         string stamp = DateTimeOffset.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture);
 
-        return $"{stem}-{stamp}{extension}";
+        return $"{stamp}-{diskName}";
     }
 
     /// <summary>

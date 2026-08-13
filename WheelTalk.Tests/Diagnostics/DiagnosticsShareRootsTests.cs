@@ -110,6 +110,11 @@ public class DiagnosticsShareRootsTests
         Assert.Equal(1, Regex.Matches(bundle, @"const string TimestampFormat\s*=").Count);
         Assert.Contains("DateTimeOffset.Now.ToString(TimestampFormat", bundle);
         Assert.Equal(2, Regex.Matches(bundle, @"\.ToString\(TimestampFormat").Count);
+
+        // Метка стоит В НАЧАЛЕ имени (решение владельца 14.08.2026): дисковое имя остаётся целым
+        // («…-diagnostics.log.1» читается), а файлы у получателя сортируются по времени сами.
+        Assert.Contains("return $\"{stamp}-{diskName}\";", bundle);
+        Assert.Contains("-wheeltalk-diagnostics.zip", bundle);
     }
 
     private static HashSet<string> Declared() =>
