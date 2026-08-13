@@ -34,6 +34,12 @@ public static class DiagnosticsBundle
     private const string RidesFile = "rides.txt";
 
     /// <summary>
+    /// Формат метки времени в именах, которые видит получатель пересылки: тот же, что у архива —
+    /// один способ отличать «новое» от «старое», а не два похожих рядом.
+    /// </summary>
+    private const string TimestampFormat = "yyyyMMdd-HHmmss";
+
+    /// <summary>
     /// Собрать части. Журнал пересобирается тут же (<see cref="CrashReport.CollectOnDemand"/> —
     /// он и дописывает свежий контекст с настройками), выжимка по поездкам пишется в кэш.
     /// <para>
@@ -64,7 +70,7 @@ public static class DiagnosticsBundle
     {
         string path = System.IO.Path.Combine(
             CacheRoot(),
-            $"wheeltalk-diagnostics-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.zip");
+            $"wheeltalk-diagnostics-{DateTimeOffset.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture)}.zip");
 
         if (File.Exists(path)) File.Delete(path);
 
@@ -81,6 +87,22 @@ public static class DiagnosticsBundle
         }
 
         return path;
+    }
+
+    /// <summary>
+    /// Имя, под которым часть комплекта уходит наружу при пересылке одним файлом (кнопка
+    /// «Открыть»): дисковое имя не трогаем — по нему живут ротация журнала и сбор комплекта, —
+    /// а получателю показываем другое, с меткой времени пересылки. Без неё получатель складывает
+    /// одноимённые файлы рядом, и старый открывается вместо нового (так уже было с APK в
+    /// «Загрузках»).
+    /// </summary>
+    public static string DisplayName(string diskName)
+    {
+        string stem = System.IO.Path.GetFileNameWithoutExtension(diskName);
+        string extension = System.IO.Path.GetExtension(diskName);
+        string stamp = DateTimeOffset.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture);
+
+        return $"{stem}-{stamp}{extension}";
     }
 
     /// <summary>

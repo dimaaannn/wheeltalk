@@ -26,6 +26,8 @@ public class DiagnosticsShareRootsTests
 {
     private const string Activity = "WheelTalk.Droid/Diagnostics/DiagnosticsShareActivity.cs";
 
+    private const string Bundle = "WheelTalk.Droid/Diagnostics/DiagnosticsBundle.cs";
+
     private const string Paths = "WheelTalk.Droid/Resources/xml/file_paths.xml";
 
     /// <summary>
@@ -77,6 +79,37 @@ public class DiagnosticsShareRootsTests
 
         // «archive» — то, что вернул упаковщик комплекта, а не самодельный путь рядом.
         Assert.Contains("string archive = DiagnosticsBundle.Pack(_parts);", RepoFiles.Read(Activity));
+    }
+
+    /// <summary>
+    /// Ссылка на отдельную часть (кнопка «Открыть») обязана нести имя с меткой времени, а не
+    /// дисковое: получатель пересылки складывает файлы рядом по имени, и без метки второй
+    /// «diagnostics.log» откроется поверх первого — так уже было с APK в «Загрузках» (мина 12.08).
+    /// Архив в метке не нуждается — дата уже в его дисковом имени, — и остаётся на трёхаргументном
+    /// вызове.
+    /// </summary>
+    [Fact]
+    public void The_part_link_carries_a_display_name_dated_the_same_way_as_the_archive()
+    {
+        string activity = RepoFiles.Read(Activity);
+
+        Assert.Contains("DiagnosticsBundle.DisplayName(part.Name)", activity);
+        Assert.Contains(
+            "FileProvider.GetUriForFile(this, Authority, new Java.IO.File(part.Path), displayName)",
+            activity);
+
+        // Архив — тем же вызовом, что и раньше: дисковое имя уже уникально, показывать другое незачем.
+        Assert.Contains(
+            "FileProvider.GetUriForFile(this, Authority, new Java.IO.File(archive));",
+            activity);
+
+        // Один способ собрать метку времени, а не два похожих рядом: у Pack (имя архива) и
+        // DisplayName (имя части) общая константа формата, а не свой литерал у каждого.
+        string bundle = RepoFiles.Read(Bundle);
+
+        Assert.Equal(1, Regex.Matches(bundle, @"const string TimestampFormat\s*=").Count);
+        Assert.Contains("DateTimeOffset.Now.ToString(TimestampFormat", bundle);
+        Assert.Equal(2, Regex.Matches(bundle, @"\.ToString\(TimestampFormat").Count);
     }
 
     private static HashSet<string> Declared() =>

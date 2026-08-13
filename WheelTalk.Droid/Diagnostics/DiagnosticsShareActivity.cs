@@ -135,7 +135,10 @@ public sealed class DiagnosticsShareActivity : Activity
     /// </summary>
     private void Open(DiagnosticsPart part)
     {
-        var uri = FileProvider.GetUriForFile(this, Authority, new Java.IO.File(part.Path));
+        // Дисковое имя не показываем: два прошедших вечера дадут два diagnostics.log в одной папке
+        // «Загрузки», и получатель откроет первый попавшийся, а не только что присланный.
+        string displayName = DiagnosticsBundle.DisplayName(part.Name);
+        var uri = FileProvider.GetUriForFile(this, Authority, new Java.IO.File(part.Path), displayName);
 
         var view = new Intent(Intent.ActionView);
         view.SetDataAndType(uri, "text/plain");
