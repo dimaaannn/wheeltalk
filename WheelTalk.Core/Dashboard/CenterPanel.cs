@@ -76,4 +76,55 @@ public static class CenterLayout
     public static IReadOnlyList<CenterRow> Sane(IEnumerable<CenterRow>? rows) => rows is null
         ? Default
         : rows.Where(row => row.First.Metric.Length > 0).Take(MaxRows).ToList();
+
+    /// <summary>
+    /// Можно ли сложить эту строку с нижней в пару. Нельзя трижды: под последней строкой соседа нет,
+    /// в паре уже двое, и третьему показанию в строке места нет — «А / Б / В» не влезает ни по
+    /// ширине, ни по смыслу.
+    /// </summary>
+    public static bool CanMerge(IReadOnlyList<CenterRow> rows, int at) =>
+        at >= 0 && at + 1 < rows.Count && rows[at].Second is null && rows[at + 1].Second is null;
+
+    /// <summary>
+    /// Сложить строку с нижней: верхняя становится первой половиной, нижняя — второй (решение
+    /// владельца 13.08.2026). Пара разных величин законна — так стоит «Заряд % / V ▼» с самого
+    /// первого состава.
+    /// <para>
+    /// Нельзя — состав возвращается <b>как был</b>: молчаливый отказ честнее молчаливой потери
+    /// показания.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<CenterRow> Merge(IReadOnlyList<CenterRow> rows, int at)
+    {
+        if (!CanMerge(rows, at)) return rows;
+
+        var merged = rows.ToList();
+        merged[at] = new CenterRow(merged[at].First, merged[at + 1].First);
+        merged.RemoveAt(at + 1);
+
+        return merged;
+    }
+
+    /// <summary>
+    /// Можно ли разобрать пару обратно. Дело не в самой паре, а в месте: разделение <b>добавляет
+    /// строку</b>, и на потолке её поставить некуда. Отказ здесь честнее, чем разделить и дать
+    /// <see cref="Sane"/> срезать хвост: срезанное — это половина показания, пропавшая молча.
+    /// </summary>
+    public static bool CanSplit(IReadOnlyList<CenterRow> rows, int at) =>
+        at >= 0 && at < rows.Count && rows[at].Second is not null && rows.Count < MaxRows;
+
+    /// <summary>
+    /// Разобрать пару: первая половина остаётся на своём месте, вторая встаёт сразу под ней —
+    /// порядок тот же, каким человек его видел, только строк стало две.
+    /// </summary>
+    public static IReadOnlyList<CenterRow> Split(IReadOnlyList<CenterRow> rows, int at)
+    {
+        if (!CanSplit(rows, at) || rows[at].Second is not { } second) return rows;
+
+        var split = rows.ToList();
+        split[at] = new CenterRow(split[at].First, null);
+        split.Insert(at + 1, new CenterRow(second, null));
+
+        return split;
+    }
 }

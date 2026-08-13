@@ -633,7 +633,150 @@ public class CentrePanelTests
             RepoFiles.Read("WheelTalk.Lab.Droid/LabSettings.cs"));
     }
 
+    /// <summary>
+    /// <b>Пару собирают и разбирают в редакторе</b> (решение владельца 13.08.2026): до этого пары
+    /// умел рисовать показ и хранить кодек, а завести их мог только тот, кто писал умолчание, — в
+    /// редакторе строки были только одиночные.
+    /// <para>
+    /// Верхняя строка становится первой половиной, нижняя — второй: порядок пары тот же, каким
+    /// человек видел строки до нажатия, — иначе «сложил две» означало бы «получил третье».
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Two_rows_become_a_pair_in_the_order_they_stood()
+    {
+        var rows = (IReadOnlyList<CenterRow>)
+        [
+            new("battery_level"),
+            new("voltage", CenterAspect.Min),
+            new("distance"),
+        ];
+
+        Assert.True(CenterLayout.CanMerge(rows, 0));
+
+        var merged = CenterLayout.Merge(rows, 0);
+
+        Assert.Equal(2, merged.Count);
+        Assert.Equal(new CenterReading("battery_level", CenterAspect.Current), merged[0].First);
+        Assert.Equal(new CenterReading("voltage", CenterAspect.Min), merged[0].Second);
+
+        // Соседи не поехали: под парой осталось то же, что стояло третьим.
+        Assert.Equal(new CenterRow("distance"), merged[1]);
+
+        // Пара разных величин законна и переживает круг «запись — чтение» целиком.
+        Assert.Equal(merged, CenterLayoutJson.Read(CenterLayoutJson.Write(merged)));
+    }
+
+    /// <summary>
+    /// Разделение возвращает две одиночные <b>подряд</b>: первая на своём месте, вторая сразу под
+    /// ней. Круг «сложил — разобрал» приводит состав ровно туда, откуда начали, — иначе человек
+    /// боялся бы нажать.
+    /// </summary>
+    [Fact]
+    public void A_pair_splits_back_into_the_two_rows_it_was_made_of()
+    {
+        var rows = (IReadOnlyList<CenterRow>)[.. CenterLayout.Default];
+
+        Assert.True(CenterLayout.CanSplit(rows, 1));
+
+        var split = CenterLayout.Split(rows, 1);
+
+        Assert.Equal(rows.Count + 1, split.Count);
+        Assert.Equal(new CenterRow("system_temp"), split[1]);
+        Assert.Equal(new CenterRow("system_temp", CenterAspect.Max), split[2]);
+
+        Assert.Equal(rows, CenterLayout.Merge(split, 1));
+    }
+
+    /// <summary>
+    /// <b>На потолке разделение отказывает, а не теряет.</b> Пара занимает одну строку, а разбитая —
+    /// две: на шести строках седьмой взяться неоткуда. Разделить и дать <see cref="CenterLayout.Sane"/>
+    /// срезать хвост нельзя — срезанное здесь не «лишняя строка», а половина показания, пропавшая
+    /// молча. Отказ виден заранее: знак гаснет, а под списком в этот миг стоит и причина.
+    /// </summary>
+    [Fact]
+    public void At_the_ceiling_a_pair_refuses_to_split_rather_than_losing_a_half()
+    {
+        var full = (IReadOnlyList<CenterRow>)
+        [
+            new(new CenterReading("system_temp", CenterAspect.Current),
+                new CenterReading("system_temp", CenterAspect.Max)),
+            .. Enumerable.Repeat(new CenterRow("pwm"), CenterLayout.MaxRows - 1),
+        ];
+
+        Assert.Equal(CenterLayout.MaxRows, full.Count);
+        Assert.False(CenterLayout.CanSplit(full, 0));
+        Assert.Equal(full, CenterLayout.Split(full, 0));
+
+        // Освободилось место — то же самое разделение проходит: запрет держится на месте, а не на паре.
+        var shorter = full.Take(CenterLayout.MaxRows - 1).ToList();
+
+        Assert.True(CenterLayout.CanSplit(shorter, 0));
+        Assert.Equal(CenterLayout.MaxRows, CenterLayout.Split(shorter, 0).Count);
+    }
+
+    /// <summary>
+    /// Третьему показанию в строке места нет, и соседа под последней строкой не бывает: обе попытки
+    /// отвечают отказом и оставляют состав нетронутым.
+    /// </summary>
+    [Fact]
+    public void A_third_reading_and_a_missing_neighbour_are_both_refused()
+    {
+        var rows = (IReadOnlyList<CenterRow>)
+        [
+            new("pwm"),
+            new(new CenterReading("system_temp", CenterAspect.Current),
+                new CenterReading("system_temp", CenterAspect.Max)),
+        ];
+
+        // Под одиночной стоит пара — складывать не с чем: вышло бы три показания в строке.
+        Assert.False(CenterLayout.CanMerge(rows, 0));
+        Assert.Equal(rows, CenterLayout.Merge(rows, 0));
+
+        // Последняя строка: соседа снизу нет вовсе.
+        Assert.False(CenterLayout.CanMerge(rows, 1));
+        Assert.Equal(rows, CenterLayout.Merge(rows, 1));
+
+        // Одиночную не разделить — делить нечего.
+        Assert.False(CenterLayout.CanSplit(rows, 0));
+        Assert.Equal(rows, CenterLayout.Split(rows, 0));
+    }
+
+    /// <summary>
+    /// Вход в оба действия — <b>один знак в строке редактора</b>: та самая косая, которой пара
+    /// подписана на панели. Пара — разделится, одиночная — сложится с нижней; нельзя — знак гаснет,
+    /// а не пропадает, иначе кнопки соседних строк плясали бы от строки к строке.
+    /// <para>
+    /// Слов знак не просит вовсе — оттого в ресурсах и в словаре стенда ничего не прибавилось. Сам
+    /// редактор живёт в android-библиотеке, потому и проверяется по исходнику; что он делает с
+    /// составом — считано выше, ядром.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_pair_switch_is_a_single_sign_in_the_row()
+    {
+        string editor = RepoFiles.Read(Editor);
+
+        // Знак — косая, и он тот же, что на панели.
+        Assert.Contains("private const string PairSign = \"/\";", editor);
+        Assert.Contains("[(PairSign, pair), (\"↑\", up), (\"↓\", down), (\"✕\", remove)]", editor);
+
+        // Одно действие на два случая, и оба считает ядро — своего счёта у редактора нет.
+        string pair = RepoFiles.MethodBody(
+            editor, "private static Action? Pair(List<CenterRow> rows, int at, Action<List<CenterRow>> changed)");
+
+        Assert.Contains("CenterLayout.CanSplit(rows, at)", pair);
+        Assert.Contains("CenterLayout.Split(rows, at)", pair);
+        Assert.Contains("CenterLayout.CanMerge(rows, at)", pair);
+        Assert.Contains("CenterLayout.Merge(rows, at)", pair);
+
+        // Нельзя — кнопка гаснет, а не исчезает.
+        Assert.Contains("Enabled = click is not null", editor);
+    }
+
     private const string Readings = "WheelTalk.Dashboard.Droid/Widgets/CenterReadings.cs";
+
+    private const string Editor = "WheelTalk.Dashboard.Droid/Screen/CentreEditor.cs";
 
     private const string Points = "WheelTalk.Dashboard.Droid/Screen/Tiles/TripPoints.cs";
 

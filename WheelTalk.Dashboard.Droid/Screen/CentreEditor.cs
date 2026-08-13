@@ -10,7 +10,8 @@ namespace WheelTalk.Dashboard.Droid.Screen;
 
 /// <summary>
 /// Правка справочного блока центра: список того, что показано, кнопки «вверх», «вниз», «убрать» и
-/// «добавить» (решение владельца 12.08.2026 — «редактирование долгим тапом, добавление элементов»).
+/// «добавить» (решение владельца 12.08.2026 — «редактирование долгим тапом, добавление элементов»),
+/// а с 13.08.2026 — и косая, которой две строки складывают в пару либо разбирают обратно.
 /// <para>
 /// <b>Почему окном, а не прямо на панели.</b> Правило панели старше этой задачи (прогон 3):
 /// индикаторы независимы, всё рисуется канвой в своей вьюхе, <b>разметка после сборки не
@@ -56,6 +57,7 @@ public static class CentreEditor
             {
                 int at = index;
                 Add(list, Row(context, CenterReadings.Title(current[at], words),
+                    pair: Pair(current, at, changed => { current = changed; Apply(); }),
                     up: () => { Swap(current, at, at - 1); Apply(); },
                     down: () => { Swap(current, at, at + 1); Apply(); },
                     remove: () => { current.RemoveAt(at); Apply(); }));
@@ -117,14 +119,19 @@ public static class CentreEditor
         new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
     /// <summary>
-    /// Строка списка: что показано и три действия над ним. Кнопки — знаками, они короче слов.
+    /// Строка списка: что показано и четыре действия над ним. Кнопки — знаками, они короче слов.
     /// <para>
     /// Подпись берёт <b>всё, что осталось от кнопок</b> (ширина 0 + вес 1), кнопки — по себе. Долями,
     /// а не пикселями: подписи разной длины («Заряд / Напряжение ▼» — самая длинная из нынешних),
     /// экраны разной ширины, и число, подогнанное под один, режет другой.
     /// </para>
+    /// <para>
+    /// <b>Косая стоит первой, крестик — последним.</b> Порядок не случаен: правка содержимого строки
+    /// впереди, перестановка в середине, а то, что отнимает строку, — с краю, дальше всего от пальца,
+    /// метящего в соседний знак.
+    /// </para>
     /// </summary>
-    private static View Row(Context context, string caption, Action up, Action down, Action remove)
+    private static View Row(Context context, string caption, Action? pair, Action up, Action down, Action remove)
     {
         var row = new LinearLayout(context) { Orientation = Android.Widget.Orientation.Horizontal };
         row.SetGravity(GravityFlags.CenterVertical);
@@ -138,13 +145,40 @@ public static class CentreEditor
         label.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
         row.AddView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        foreach (var (sign, click) in ((string, Action)[])[("↑", up), ("↓", down), ("✕", remove)])
+        foreach (var (sign, click) in ((string, Action?)[])[(PairSign, pair), ("↑", up), ("↓", down), ("✕", remove)])
         {
             row.AddView(Button(context, sign, click), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
         }
 
         return row;
+    }
+
+    /// <summary>
+    /// Знак пары — <b>та самая косая, которой пара подписана на панели</b>: «t° / ▲», «Заряд % / V ▼».
+    /// Не слово: словам в строке места нет (её ширину и без того делят четыре кнопки), а знак стоит
+    /// ровно там, где человек его уже видел, и означает то же самое — «эти двое в одной строке».
+    /// </summary>
+    private const string PairSign = "/";
+
+    /// <summary>
+    /// Что сделает косая у этой строки. Пара — <b>разделится</b>, одиночная — <b>сложится с
+    /// нижней</b>: один знак на два действия потому, что действие ровно одно — поставить косую или
+    /// убрать, а что именно выйдет, видно в подписи прямо перед знаком. И оно обратимо одним
+    /// нажатием, чем и объясняет себя тому, кто нажал впервые.
+    /// <para>
+    /// <c>null</c> — сейчас нельзя, и знак гаснет: место под ним остаётся, чтобы кнопки соседних
+    /// строк не плясали. Нельзя в трёх случаях, и все они честные: под строкой нет соседа, сосед сам
+    /// пара (третьему показанию в строке места нет) либо состав уже на потолке — разделение просит
+    /// седьмую строку, которой не будет (<see cref="CenterLayout.CanSplit"/>). Отказ виден до
+    /// нажатия, а внизу списка в этот миг стоит и его причина — «Больше строк в центр не помещается».
+    /// </para>
+    /// </summary>
+    private static Action? Pair(List<CenterRow> rows, int at, Action<List<CenterRow>> changed)
+    {
+        if (CenterLayout.CanSplit(rows, at)) return () => changed([.. CenterLayout.Split(rows, at)]);
+
+        return CenterLayout.CanMerge(rows, at) ? () => changed([.. CenterLayout.Merge(rows, at)]) : null;
     }
 
     private static View AddButton(Context context, Func<string, string> words, Action<CenterRow> added)
@@ -177,18 +211,24 @@ public static class CentreEditor
     /// <summary>
     /// Кнопка-знак. Ширина по себе, но не уже цели касания: 44 dp — та же мера, какой меряют палец
     /// на всех прочих экранах, и меньше неё промах становится правилом.
+    /// <para>
+    /// Действия нет (<c>null</c>) — кнопка гаснет средствами темы, а не исчезает: пропавшая двигала
+    /// бы соседние знаки от строки к строке, и палец, привыкший к месту, попадал бы не туда.
+    /// </para>
     /// </summary>
-    private static View Button(Context context, string sign, Action click)
+    private static View Button(Context context, string sign, Action? click)
     {
-        var button = new Button(context) { Text = sign };
+        var button = new Button(context) { Text = sign, Enabled = click is not null };
 
         // Обе ручки разом: SetMinimumWidth ставит минимум вью, но у Button есть ещё свой minWidth
         // из темы (~88 dp) — и три кнопки съедали весь диалог, оставляя подписи одну букву
-        // (поймано прогоном 12.08.2026). Его перебивает только SetMinWidth.
+        // (поймано прогоном 12.08.2026). Его перебивает только SetMinWidth. С четвёртым знаком это
+        // стало ещё нужнее: подписи остаётся всё, что не забрали четыре цели касания.
         button.SetMinWidth(context.Dp(44));
         button.SetMinimumWidth(context.Dp(44));
         button.SetPadding(context.Dp(8), 0, context.Dp(8), 0);
-        button.Click += (_, _) => click();
+
+        if (click is { } act) button.Click += (_, _) => act();
 
         return button;
     }
