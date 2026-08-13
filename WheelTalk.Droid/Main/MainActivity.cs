@@ -241,7 +241,7 @@ public sealed class MainActivity : Activity
         // читает их каждым кадром, а библиотека ресурсов приложения не видит (тот же порядок, каким
         // слова получают плитки и шторка).
         _centreLayout = MainApplication.Services.GetRequiredService<ICentreLayoutStore>();
-        _dashboardOptions.CentreRows = CenterLayout.Sane(_centreLayout.Load());
+        _dashboardOptions.CentreRows = CenterReadings.Known(CenterLayout.Sane(_centreLayout.Load()));
         _dashboardOptions.Words = TranslateExtension.Get;
         _timeProvider = MainApplication.Services.GetRequiredService<TimeProvider>();
         _logger = MainApplication.Services.GetRequiredService<ILogger<MainActivity>>();

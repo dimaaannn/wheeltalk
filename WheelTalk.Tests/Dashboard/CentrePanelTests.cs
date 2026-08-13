@@ -610,6 +610,29 @@ public class CentrePanelTests
         Assert.DoesNotContain("Func<double>", points);
     }
 
+    /// <summary>
+    /// Прочитанный состав проверяется на знакомость величин (решение владельца 13.08.2026 —
+    /// «подключить проверку»; до того <c>Knows</c> была задумана и не позвана — сирота, найденная
+    /// приёмкой 12.08). Фильтр стоит на обеих дверях загрузки — боевой и стендовой, — снимает пару
+    /// с незнакомой половиной целиком и не трогает хранилище: сборка, знающая величину, вернёт
+    /// человеку его строку.
+    /// </summary>
+    [Fact]
+    public void What_was_read_is_checked_against_what_the_panel_knows()
+    {
+        string readings = RepoFiles.Read(Readings);
+
+        // Сам фильтр: непозванной Knows больше нет — Known зовёт её на каждое показание строки.
+        Assert.Contains("public static IReadOnlyList<CenterRow> Known(", readings);
+        Assert.Contains("!Knows(row.First) || (row.Second is { } second && !Knows(second))", readings);
+
+        // Обе двери загрузки — через фильтр; запись состава им не трогается.
+        Assert.Contains("CenterReadings.Known(CenterLayout.Sane(_centreLayout.Load()))",
+            RepoFiles.Read("WheelTalk.Droid/Main/MainActivity.cs"));
+        Assert.Contains("CenterReadings.Known(CenterLayout.Sane(new LabCentreLayoutFile().Load()))",
+            RepoFiles.Read("WheelTalk.Lab.Droid/LabSettings.cs"));
+    }
+
     private const string Readings = "WheelTalk.Dashboard.Droid/Widgets/CenterReadings.cs";
 
     private const string Points = "WheelTalk.Dashboard.Droid/Screen/Tiles/TripPoints.cs";

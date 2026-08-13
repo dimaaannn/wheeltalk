@@ -48,6 +48,24 @@ public static class CenterReadings
         Offered.Any(offer => offer.Metric == reading.Metric && offer.Aspects.Contains(reading.Aspect));
 
     /// <summary>
+    /// Состав без строк, которых панель не знает (решение владельца 13.08.2026 — «подключить
+    /// проверку»; до того <see cref="Knows"/> была задумана и не позвана, и незнакомая строка
+    /// стояла прочерком с сырым именем). Незнакомое берётся откуда угодно: состав, сохранённый
+    /// более новой сборкой, или величина, которой больше нет.
+    /// <para>
+    /// <b>Фильтр — на показ, не на хранилище</b>: сохранённый состав не переписывается, и сборка,
+    /// которая величину знает, вернёт человеку его строку целой. Пара с незнакомой половиной
+    /// снимается целиком: показать «текущее» без «максимума», о котором просили, — значит молча
+    /// подменить смысл строки.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<CenterRow> Known(IReadOnlyList<CenterRow> rows) =>
+        rows.Any(Unknown) ? [.. rows.Where(row => !Unknown(row))] : rows;
+
+    private static bool Unknown(CenterRow row) =>
+        !Knows(row.First) || (row.Second is { } second && !Knows(second));
+
+    /// <summary>
     /// Число показания из кадра. <c>null</c> — колесо об этом молчит: рисуется прочерк, а не ноль
     /// (общее правило показа, план 23 §3.1).
     /// </summary>

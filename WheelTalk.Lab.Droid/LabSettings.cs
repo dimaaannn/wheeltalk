@@ -1,5 +1,6 @@
 ﻿using WheelTalk.Core.Dashboard;
 using WheelTalk.Dashboard.Droid;
+using WheelTalk.Dashboard.Droid.Widgets;
 using WheelTalk.Lab.Droid.Scenarios;
 
 namespace WheelTalk.Lab.Droid;
@@ -26,7 +27,7 @@ public sealed class LabSettings
     public DashboardOptions Options { get; } = new()
     {
         Words = Ui.LabMetricWords.Get,
-        CentreRows = CenterLayout.Sane(new LabCentreLayoutFile().Load()),
+        CentreRows = CenterReadings.Known(CenterLayout.Sane(new LabCentreLayoutFile().Load())),
     };
 
     /// <summary>Правка записи. Меняется целиком, потому что запись после неё пересобирается.</summary>
