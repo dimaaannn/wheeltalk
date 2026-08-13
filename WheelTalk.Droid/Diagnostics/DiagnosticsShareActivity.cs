@@ -52,7 +52,7 @@ public sealed class DiagnosticsShareActivity : Activity
     private View BuildLayout()
     {
         var scroll = new ScrollView(this);
-        scroll.SetBackgroundColor(this.PageBackground());
+        scroll.SetBackgroundColor(this.Surface());
 
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
         int pad = this.Dp(16);
@@ -189,7 +189,7 @@ public sealed class DiagnosticsShareActivity : Activity
         var drawable = new Android.Graphics.Drawables.GradientDrawable();
         drawable.SetShape(Android.Graphics.Drawables.ShapeType.Rectangle);
         drawable.SetCornerRadius(this.Dp(12));
-        drawable.SetStroke(this.Dp(1), Color.ParseColor("#40808080"));
+        drawable.SetStroke(this.Dp(1), this.ShareBorder());
         return drawable;
     }
 }

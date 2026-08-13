@@ -49,20 +49,11 @@ public sealed class SettingsActivity : Activity
         (SettingsPage.Experimental, "SettingsPageExperimental"),
     ];
 
-    /// <summary>Янтарь «своё» — тот же, что на строке категории: один цвет на одно понятие (план настроек §2.3).</summary>
-    private static readonly Color OwnColor = Color.ParseColor("#FF8F00");
-
-    /// <summary>Подложка ярлыка — тот же янтарь, приглушённый: ярлык читается, но не спорит с подписью.</summary>
-    private static readonly Color OwnBadgeFill = Color.ParseColor("#29FF8F00");
-
-    private static readonly Color CardFill = Color.ParseColor("#282828");
-    private static readonly Color CardBorder = Color.ParseColor("#3A3A3A");
-    private static readonly Color DimText = Color.ParseColor("#9A9A9A");
-    private static readonly Color Chevron = Color.ParseColor("#6E6E6E");
-
-    /// <summary>Зелёная точка «колесо выбрано» — из палитры Ванга, тот же цвет, что «хорошо» на панели.</summary>
-    private static readonly Color WheelPicked = Color.ParseColor("#009E73");
-
+    /// <summary>
+    /// Цвета корня — ролями из палитры документных экранов (план 33, <see cref="DocPalette"/>):
+    /// янтарь «своё» и его подложка, карточка с обводкой, тихий текст, стрелка перехода и точка
+    /// выбранного колеса. Значения читаются из ресурсов и меняются вместе с системной темой.
+    /// </summary>
     private SettingsBinder _binder = null!;
     private LayeredSettings _settings = null!;
     private WheelOptions _wheel = null!;
@@ -113,7 +104,7 @@ public sealed class SettingsActivity : Activity
         _scopeLabel.SetText(picked
             ? name.Length > 0 ? $"{name} · {_wheel.Address}" : _wheel.Address
             : AppStrings.SettingsScopeGlobal);
-        _scopeDot.Background = Dot(picked ? WheelPicked : DimText);
+        _scopeDot.Background = Dot(picked ? this.Picked() : this.TextSecondary());
 
         for (int i = 0; i < Categories.Length; i++)
         {
@@ -153,7 +144,7 @@ public sealed class SettingsActivity : Activity
     private View BuildLayout()
     {
         var scroll = new ScrollView(this);
-        scroll.SetBackgroundColor(this.PageBackground());
+        scroll.SetBackgroundColor(this.Surface());
 
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
         int pad = this.Dp(16);
@@ -197,7 +188,7 @@ public sealed class SettingsActivity : Activity
 
         var hint = new TextView(this) { Text = AppStrings.SettingsDisplayHint };
         hint.SetTextSize(ComplexUnitType.Sp, 13);
-        hint.SetTextColor(Color.ParseColor("#7A7A7A"));
+        hint.SetTextColor(this.HintDim());
         root.AddView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
         {
             TopMargin = this.Dp(18),
@@ -221,7 +212,7 @@ public sealed class SettingsActivity : Activity
 
         _scopeLabel = new TextView(this) { Text = "" };
         _scopeLabel.SetTextSize(ComplexUnitType.Sp, 14);
-        _scopeLabel.SetTextColor(DimText);
+        _scopeLabel.SetTextColor(this.TextSecondary());
         line.AddView(_scopeLabel);
 
         return line;
@@ -251,12 +242,12 @@ public sealed class SettingsActivity : Activity
         var title = new TextView(this) { Text = TranslateExtension.Get(titleKey) };
         title.SetTextSize(ComplexUnitType.Sp, 19);
         title.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
-        title.SetTextColor(experimental ? Color.ParseColor("#D8D8D8") : UiKit.PlainText(this));
+        title.SetTextColor(experimental ? this.TextTitle() : UiKit.PlainText(this));
         words.AddView(title);
 
         var summary = new TextView(this) { Text = "" };
         summary.SetTextSize(ComplexUnitType.Sp, 14);
-        summary.SetTextColor(experimental ? Color.ParseColor("#8A8A8A") : DimText);
+        summary.SetTextColor(experimental ? this.Hint() : this.TextSecondary());
         words.AddView(summary, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
         {
             TopMargin = this.Dp(4),
@@ -268,7 +259,7 @@ public sealed class SettingsActivity : Activity
         var badge = new TextView(this) { Text = "", Visibility = ViewStates.Gone };
         badge.SetTextSize(ComplexUnitType.Sp, 12);
         badge.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
-        badge.SetTextColor(OwnColor);
+        badge.SetTextColor(this.Override());
         badge.SetSingleLine(true);
         badge.SetPadding(this.Dp(8), this.Dp(4), this.Dp(8), this.Dp(4));
         badge.Background = BadgeBackground();
@@ -281,7 +272,7 @@ public sealed class SettingsActivity : Activity
 
         var chevron = new TextView(this) { Text = "›" };
         chevron.SetTextSize(ComplexUnitType.Sp, 22);
-        chevron.SetTextColor(Chevron);
+        chevron.SetTextColor(this.Chevron());
         card.AddView(chevron, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
         {
@@ -300,12 +291,12 @@ public sealed class SettingsActivity : Activity
         if (experimental)
         {
             // Пунктиром и без заливки: карточка на месте, но видом говорит «это не четвёртая тема».
-            drawable.SetStroke(this.Dp(1), Color.ParseColor("#4A4A4A"), this.Dp(5), this.Dp(4));
+            drawable.SetStroke(this.Dp(1), this.Border(), this.Dp(5), this.Dp(4));
             return drawable;
         }
 
-        drawable.SetColor(CardFill);
-        drawable.SetStroke(this.Dp(1), CardBorder);
+        drawable.SetColor(this.Card());
+        drawable.SetStroke(this.Dp(1), this.CardBorder());
         return drawable;
     }
 
@@ -314,7 +305,7 @@ public sealed class SettingsActivity : Activity
         var drawable = new GradientDrawable();
         drawable.SetShape(ShapeType.Rectangle);
         drawable.SetCornerRadius(this.Dp(6));
-        drawable.SetColor(OwnBadgeFill);
+        drawable.SetColor(this.OverrideFill());
         return drawable;
     }
 }

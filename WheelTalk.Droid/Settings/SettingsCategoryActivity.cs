@@ -64,36 +64,13 @@ public sealed class SettingsCategoryActivity : Activity
     /// <summary>Ключ строки, которую подсветить после прокрутки. Необязателен: без него страница просто встанет на разделе.</summary>
     public const string ExtraKey = "key";
 
-    private static readonly Color OverrideColor = Color.ParseColor("#FF8F00");
-    private static readonly Color BorderColor = Color.ParseColor("#4A4A4A");
-
-    /// <summary>Карточка раздела: заливка, обводка, черта между строками и слово заголовка (макет 2b).</summary>
-    private static readonly Color SectionFill = Color.ParseColor("#282828");
-
-    private static readonly Color SectionBorder = Color.ParseColor("#3A3A3A");
-
-    private static readonly Color RowDivider = Color.ParseColor("#333333");
-
-    private static readonly Color SectionTitleColor = Color.ParseColor("#9A9A9A");
-
-    private static readonly Color HintColor = Color.ParseColor("#8A8A8A");
-
-    /// <summary>Отбивка зависимой строки — та вертикальная черта, по которой видно, чья она.</summary>
-    private static readonly Color DependantBar = Color.ParseColor("#3F3F3F");
-
-    /// <summary>Акцент выбранного: тот же, что у корешков экранов и кнопок «Готово».</summary>
-    private static readonly Color AccentColor = Color.ParseColor("#AC99EA");
-
-    /// <summary>Подсветка строки, к которой привели: гаснет сама через <see cref="HighlightMs"/>.</summary>
-    private static readonly Color HighlightColor = Color.ParseColor("#33FF8F00");
-
-    /// <summary>Цвет ссылки на связанную настройку. Синий: янтарь занят «переопределено», красный — предупреждением.</summary>
-    private static readonly Color LinkColor = Color.ParseColor("#4FA3E3");
-
+    /// <summary>
+    /// Цвета страницы — <b>ролями из палитры документных экранов</b> (план 33): их значения живут в
+    /// ресурсах и переключаются вместе с системной темой. Прежде здесь стояли тринадцать тёмных
+    /// литералов, и в светлой теме страница выходила о двух хозяевах — фон по теме, карточки по
+    /// ночи (снимок владельца 13.08.2026).
+    /// </summary>
     private const int HighlightMs = 1200;
-
-    /// <summary>Цвет предупреждения под строкой. Красный, а не янтарь переопределения: тот говорит «не заводское», это — «похоже на ошибку».</summary>
-    private static readonly Color WarningColor = Color.ParseColor("#E53935");
 
     private SettingsBinder _binder = null!;
     private WheelOptions _wheel = null!;
@@ -202,10 +179,13 @@ public sealed class SettingsCategoryActivity : Activity
         });
     }
 
-    /// <summary>Вспышка карточки: цвет гаснет сам, чтобы подсветка не осталась вторым «переопределено».</summary>
+    /// <summary>
+    /// Вспышка карточки: цвет гаснет сам, чтобы подсветка не осталась вторым «переопределено». Роль
+    /// спрашивается у контекста самой карточки — метод статический, своего под рукой нет.
+    /// </summary>
     private static void Highlight(View card)
     {
-        card.SetBackgroundColor(HighlightColor);
+        card.SetBackgroundColor(card.Context!.Highlight());
         card.PostDelayed(() => card.SetBackgroundColor(Color.Transparent), HighlightMs);
     }
 
@@ -471,7 +451,7 @@ public sealed class SettingsCategoryActivity : Activity
         var header = new TextView(this) { Text = TranslateExtension.Get(section.Key).ToUpperInvariant() };
         header.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         header.SetTextSize(ComplexUnitType.Sp, 13);
-        header.SetTextColor(SectionTitleColor);
+        header.SetTextColor(this.TextSecondary());
         header.LetterSpacing = 0.09f;
         header.SetPadding(this.Dp(16), this.Dp(12), this.Dp(16), this.Dp(8));
         card.AddView(header);
@@ -493,7 +473,7 @@ public sealed class SettingsCategoryActivity : Activity
     private View RowLine()
     {
         var line = new View(this);
-        line.SetBackgroundColor(RowDivider);
+        line.SetBackgroundColor(this.RowDivider());
         return line;
     }
 
@@ -521,7 +501,7 @@ public sealed class SettingsCategoryActivity : Activity
 
         var title = new TextView(this) { Text = AppStrings.SettingsAdvanced };
         title.SetTextSize(ComplexUnitType.Sp, 17);
-        title.SetTextColor(Color.ParseColor("#D8D8D8"));
+        title.SetTextColor(this.TextTitle());
         words.AddView(title);
 
         var howMany = new TextView(this)
@@ -530,7 +510,7 @@ public sealed class SettingsCategoryActivity : Activity
                 AppStrings.SettingsSummaryCount1, AppStrings.SettingsSummaryCount2, AppStrings.SettingsSummaryCount5),
         };
         howMany.SetTextSize(ComplexUnitType.Sp, 13);
-        howMany.SetTextColor(HintColor);
+        howMany.SetTextColor(this.Hint());
         words.AddView(howMany, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
         {
@@ -541,7 +521,7 @@ public sealed class SettingsCategoryActivity : Activity
 
         var chevron = new TextView(this) { Text = _advancedShown ? "⌃" : "⌄" };
         chevron.SetTextSize(ComplexUnitType.Sp, 18);
-        chevron.SetTextColor(HintColor);
+        chevron.SetTextColor(this.Hint());
         row.AddView(chevron);
 
         return row;
@@ -552,8 +532,8 @@ public sealed class SettingsCategoryActivity : Activity
         var drawable = new GradientDrawable();
         drawable.SetShape(ShapeType.Rectangle);
         drawable.SetCornerRadius(this.Dp(14));
-        drawable.SetColor(SectionFill);
-        drawable.SetStroke(this.Dp(1), SectionBorder);
+        drawable.SetColor(this.Card());
+        drawable.SetStroke(this.Dp(1), this.CardBorder());
         return drawable;
     }
 
@@ -563,7 +543,7 @@ public sealed class SettingsCategoryActivity : Activity
         var drawable = new GradientDrawable();
         drawable.SetShape(ShapeType.Rectangle);
         drawable.SetCornerRadius(this.Dp(14));
-        drawable.SetStroke(this.Dp(1), SectionBorder);
+        drawable.SetStroke(this.Dp(1), this.CardBorder());
         return drawable;
     }
 
@@ -605,7 +585,7 @@ public sealed class SettingsCategoryActivity : Activity
         {
             var hint = new TextView(this) { Text = TranslateExtension.Get(hintKey) };
             hint.SetTextSize(ComplexUnitType.Sp, 13);
-            hint.SetTextColor(HintColor);
+            hint.SetTextColor(this.Hint());
             words.AddView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
             {
                 TopMargin = this.Dp(4),
@@ -649,7 +629,7 @@ public sealed class SettingsCategoryActivity : Activity
         {
             var note = new TextView(this) { Text = warning };
             note.SetTextSize(ComplexUnitType.Sp, 12);
-            note.SetTextColor(WarningColor);
+            note.SetTextColor(this.Warning());
             card.AddView(note, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
             {
                 TopMargin = this.Dp(2),
@@ -694,7 +674,7 @@ public sealed class SettingsCategoryActivity : Activity
         {
             var link = new TextView(this) { Text = $"→ {TranslateExtension.Get(target.LabelKey)}" };
             link.SetTextSize(ComplexUnitType.Sp, 12);
-            link.SetTextColor(LinkColor);
+            link.SetTextColor(this.Link());
             link.SetPadding(0, 0, this.Dp(16), 0);
             link.Clickable = true;
             link.Click += (_, _) => Reveal(target);
@@ -734,7 +714,7 @@ public sealed class SettingsCategoryActivity : Activity
         var readout = new TextView(this) { Text = ValueWord(descriptor, current), Gravity = GravityFlags.Center };
         readout.SetTextSize(ComplexUnitType.Sp, 19);
         readout.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
-        readout.SetTextColor(resolved.IsOverridden ? OverrideColor : UiKit.PlainText(this));
+        readout.SetTextColor(resolved.IsOverridden ? this.Override() : UiKit.PlainText(this));
         readout.SetMinimumWidth(this.Dp(64));
 
         // Слой у такой строки меняется долгим нажатием на значение — тем же листом, но без ползунка
@@ -783,12 +763,12 @@ public sealed class SettingsCategoryActivity : Activity
             Text = descriptor.HintKey is { } hintKey ? TranslateExtension.Get(hintKey) : "",
         };
         hint.SetTextSize(ComplexUnitType.Sp, 13);
-        hint.SetTextColor(HintColor);
+        hint.SetTextColor(this.Hint());
         footer.AddView(hint, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
         var range = new TextView(this) { Text = RangeText(descriptor) };
         range.SetTextSize(ComplexUnitType.Sp, 13);
-        range.SetTextColor(HintColor);
+        range.SetTextColor(this.Hint());
         footer.AddView(range, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
         {
@@ -821,10 +801,10 @@ public sealed class SettingsCategoryActivity : Activity
     {
         var button = new TextView(this) { Text = sign, Gravity = GravityFlags.Center };
         button.SetTextSize(ComplexUnitType.Sp, 22);
-        button.SetTextColor(Color.ParseColor("#DDDDDD"));
+        button.SetTextColor(this.TextControl());
         button.Clickable = true;
         button.Click += (_, _) => tapped();
-        button.Background = Framed(this.Dp(9), this.Dp(1), BorderColor);
+        button.Background = Framed(this.Dp(9), this.Dp(1), this.Border());
         button.LayoutParameters = new LinearLayout.LayoutParams(this.Dp(38), this.Dp(38));
         return button;
     }
@@ -853,7 +833,7 @@ public sealed class SettingsCategoryActivity : Activity
         var bar = new GradientDrawable();
         bar.SetShape(ShapeType.Rectangle);
         bar.SetColor(Color.Transparent);
-        bar.SetStroke(this.Dp(2), DependantBar);
+        bar.SetStroke(this.Dp(2), this.DependantBar());
         return new InsetDrawable(bar, 0, -this.Dp(2), -this.Dp(2), -this.Dp(2));
     }
 
@@ -946,7 +926,7 @@ public sealed class SettingsCategoryActivity : Activity
         var view = new TextView(this) { Text = text };
         view.SetTextSize(ComplexUnitType.Sp, dashed ? 15 : 17);
         view.SetTypeface(dashed ? Typeface.Default : Typeface.DefaultBold, dashed ? TypefaceStyle.Normal : TypefaceStyle.Bold);
-        view.SetTextColor(dashed ? HintColor : UiKit.PlainText(this));
+        view.SetTextColor(dashed ? this.Hint() : UiKit.PlainText(this));
         view.SetPadding(this.Dp(12), this.Dp(7), this.Dp(12), this.Dp(7));
         view.Clickable = true;
         view.Background = EditorBackground(resolved.IsOverridden, dashed);
@@ -974,7 +954,7 @@ public sealed class SettingsCategoryActivity : Activity
         var own = new TextView(this) { Text = AppStrings.SettingsValueOwn };
         own.SetTextSize(ComplexUnitType.Sp, 12);
         own.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
-        own.SetTextColor(OverrideColor);
+        own.SetTextColor(this.Override());
         block.AddView(own, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
         {
@@ -993,11 +973,11 @@ public sealed class SettingsCategoryActivity : Activity
 
         if (dashed)
         {
-            drawable.SetStroke(this.Dp(1), BorderColor, this.Dp(4), this.Dp(3));
+            drawable.SetStroke(this.Dp(1), this.Border(), this.Dp(4), this.Dp(3));
             return drawable;
         }
 
-        drawable.SetStroke(this.Dp(overridden ? 2 : 1), overridden ? OverrideColor : BorderColor);
+        drawable.SetStroke(this.Dp(overridden ? 2 : 1), overridden ? this.Override() : this.Border());
         return drawable;
     }
 
@@ -1023,7 +1003,7 @@ public sealed class SettingsCategoryActivity : Activity
             var button = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
             button.SetGravity(GravityFlags.Center);
             button.SetPadding(this.Dp(10), this.Dp(10), this.Dp(10), this.Dp(10));
-            button.Background = Framed(this.Dp(10), this.Dp(picked ? 2 : 1), picked ? AccentColor : BorderColor);
+            button.Background = Framed(this.Dp(10), this.Dp(picked ? 2 : 1), picked ? this.Accent() : this.Border());
             button.Clickable = true;
             button.Click += (_, _) => Commit(descriptor, choice);
 
@@ -1038,7 +1018,7 @@ public sealed class SettingsCategoryActivity : Activity
 
             var label = new TextView(this) { Text = SettingsFormat.ChoiceLabel(descriptor, choice) };
             label.SetTextSize(ComplexUnitType.Sp, 15);
-            label.SetTextColor(picked ? UiKit.PlainText(this) : Color.ParseColor("#CFCFCF"));
+            label.SetTextColor(picked ? UiKit.PlainText(this) : this.TextMuted());
             if (picked) label.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
             button.AddView(label);
 
@@ -1198,12 +1178,12 @@ public sealed class SettingsCategoryActivity : Activity
                 : SettingsFormat.Display(descriptor, descriptor.Minimum),
         };
         low.SetTextSize(ComplexUnitType.Sp, 13);
-        low.SetTextColor(HintColor);
+        low.SetTextColor(this.Hint());
         ends.AddView(low, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
         var high = new TextView(this) { Text = SettingsFormat.Display(descriptor, descriptor.Maximum) };
         high.SetTextSize(ComplexUnitType.Sp, 13);
-        high.SetTextColor(HintColor);
+        high.SetTextColor(this.Hint());
         ends.AddView(high);
         sheet.AddView(ends, SheetGap(this.Dp(10)));
 
@@ -1321,10 +1301,10 @@ public sealed class SettingsCategoryActivity : Activity
     {
         var chip = new TextView(this) { Text = caption, Gravity = GravityFlags.Center };
         chip.SetTextSize(ComplexUnitType.Sp, 14);
-        chip.SetTextColor(picked ? OverrideColor : Color.ParseColor("#CFCFCF"));
+        chip.SetTextColor(picked ? this.Override() : this.TextMuted());
         if (picked) chip.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         chip.SetPadding(0, this.Dp(11), 0, this.Dp(11));
-        chip.Background = Framed(this.Dp(10), this.Dp(picked ? 2 : 1), picked ? OverrideColor : BorderColor);
+        chip.Background = Framed(this.Dp(10), this.Dp(picked ? 2 : 1), picked ? this.Override() : this.Border());
         chip.Clickable = true;
         chip.Click += (_, _) =>
         {
@@ -1345,7 +1325,7 @@ public sealed class SettingsCategoryActivity : Activity
         background.SetShape(ShapeType.Rectangle);
         float radius = this.Dp(22);
         background.SetCornerRadii([radius, radius, radius, radius, 0, 0, 0, 0]);
-        background.SetColor(SectionFill);
+        background.SetColor(this.Card());
         sheet.Background = background;
 
         return sheet;
@@ -1357,7 +1337,7 @@ public sealed class SettingsCategoryActivity : Activity
         var fill = new GradientDrawable();
         fill.SetShape(ShapeType.Rectangle);
         fill.SetCornerRadius(this.Dp(2));
-        fill.SetColor(BorderColor);
+        fill.SetColor(this.Border());
         grabber.Background = fill;
         grabber.LayoutParameters = new LinearLayout.LayoutParams(this.Dp(40), this.Dp(4))
         {
@@ -1380,7 +1360,7 @@ public sealed class SettingsCategoryActivity : Activity
     {
         var hint = new TextView(this) { Text = text };
         hint.SetTextSize(ComplexUnitType.Sp, 14);
-        hint.SetTextColor(Color.ParseColor("#9A9A9A"));
+        hint.SetTextColor(this.TextSecondary());
         hint.LayoutParameters = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent)
         {
@@ -1394,7 +1374,7 @@ public sealed class SettingsCategoryActivity : Activity
         var caption = new TextView(this) { Text = text.ToUpperInvariant() };
         caption.SetTextSize(ComplexUnitType.Sp, 13);
         caption.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
-        caption.SetTextColor(SectionTitleColor);
+        caption.SetTextColor(this.TextSecondary());
         caption.LetterSpacing = 0.05f;
         return caption;
     }
@@ -1403,10 +1383,10 @@ public sealed class SettingsCategoryActivity : Activity
     {
         var button = new TextView(this) { Text = sign, Gravity = GravityFlags.Center };
         button.SetTextSize(ComplexUnitType.Sp, 28);
-        button.SetTextColor(Color.ParseColor("#DDDDDD"));
+        button.SetTextColor(this.TextControl());
         button.Clickable = true;
         button.Click += (_, _) => tapped();
-        button.Background = Framed(this.Dp(12), this.Dp(1), BorderColor);
+        button.Background = Framed(this.Dp(12), this.Dp(1), this.Border());
         button.LayoutParameters = new LinearLayout.LayoutParams(this.Dp(54), this.Dp(54));
         return button;
     }
@@ -1418,7 +1398,7 @@ public sealed class SettingsCategoryActivity : Activity
 
         var cancel = new TextView(this) { Text = AppStrings.Cancel, Gravity = GravityFlags.Center };
         cancel.SetTextSize(ComplexUnitType.Sp, 16);
-        cancel.SetTextColor(Color.ParseColor("#CFCFCF"));
+        cancel.SetTextColor(this.TextMuted());
         cancel.SetPadding(0, this.Dp(15), 0, this.Dp(15));
         cancel.Clickable = true;
         cancel.Click += (_, _) => _windows.Close();
@@ -1427,7 +1407,7 @@ public sealed class SettingsCategoryActivity : Activity
         var done = new TextView(this) { Text = accept, Gravity = GravityFlags.Center };
         done.SetTextSize(ComplexUnitType.Sp, 16);
         done.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
-        done.SetTextColor(Color.ParseColor("#1F1F1F"));
+        done.SetTextColor(this.OnAccent());
         done.SetPadding(0, this.Dp(15), 0, this.Dp(15));
         done.Clickable = true;
         done.Click += (_, _) =>
@@ -1439,7 +1419,7 @@ public sealed class SettingsCategoryActivity : Activity
         var fill = new GradientDrawable();
         fill.SetShape(ShapeType.Rectangle);
         fill.SetCornerRadius(this.Dp(12));
-        fill.SetColor(AccentColor);
+        fill.SetColor(this.Accent());
         done.Background = fill;
 
         row.AddView(done, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1.4f)
@@ -1551,7 +1531,7 @@ public sealed class SettingsCategoryActivity : Activity
     private View BuildLayout()
     {
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
-        root.SetBackgroundColor(this.PageBackground());
+        root.SetBackgroundColor(this.Surface());
 
         root.AddView(BuildScopeRow());
         if (BuildSectionChips() is { } chips) root.AddView(chips);

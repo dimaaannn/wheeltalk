@@ -16,7 +16,6 @@ using WheelTalk.Core.Services;
 using WheelTalk.Droid.Ble;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Resources.Strings;
-using WheelTalk.Dashboard.Droid;
 using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Droid.Ui;
 
@@ -48,7 +47,6 @@ public sealed class ScanActivity : Activity
     private WheelSession _session = null!;
     private UserSettingsStore _settings = null!;
     private BoundWheels _bound = null!;
-    private DashboardOptions _dashboard = null!;
     private ILogger<ScanActivity> _logger = null!;
 
     /// <summary>Что нашёл скан — <b>всё</b>, включая безымянное: привязанное колесо узнаётся по MAC, а не по имени.</summary>
@@ -80,7 +78,6 @@ public sealed class ScanActivity : Activity
         _session = MainApplication.Services.GetRequiredService<WheelSession>();
         _settings = MainApplication.Services.GetRequiredService<UserSettingsStore>();
         _bound = MainApplication.Services.GetRequiredService<BoundWheels>();
-        _dashboard = MainApplication.Services.GetRequiredService<DashboardOptions>();
         _logger = MainApplication.Services.GetRequiredService<ILogger<ScanActivity>>();
 
         var root = BuildLayout();
@@ -382,7 +379,7 @@ public sealed class ScanActivity : Activity
     private View BuildLayout()
     {
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
-        root.SetBackgroundColor(this.PageBackground());
+        root.SetBackgroundColor(this.Surface());
         int pad = this.Dp(16);
         root.SetPadding(pad, pad, pad, pad);
 
@@ -398,7 +395,7 @@ public sealed class ScanActivity : Activity
         var list = new RecyclerView(this) { LayoutParameters = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, 0, 1f) { TopMargin = this.Dp(12) } };
         list.SetLayoutManager(new LinearLayoutManager(this));
-        _adapter = new WheelAdapter(this, _rows, _dashboard, OnWheelSelected, OnWheelLongPressed);
+        _adapter = new WheelAdapter(this, _rows, OnWheelSelected, OnWheelLongPressed);
         list.SetAdapter(_adapter);
         root.AddView(list);
 
@@ -418,7 +415,6 @@ public sealed class ScanActivity : Activity
     private sealed class WheelAdapter(
         Context context,
         List<WheelRow> rows,
-        DashboardOptions dashboard,
         Action<WheelRow> onSelected,
         Action<WheelRow> onLongPress)
         : RecyclerView.Adapter
@@ -448,8 +444,11 @@ public sealed class ScanActivity : Activity
             var row = rows[position];
             var h = (Holder)holder;
             h.Name.SetText(row.Caption);
+            // Ролями страницы, а не палитрой панели: панель всегда тёмная, и её зелёный с серым на
+            // светлом фоне поиска давали 3,4:1 — числа, которых не прочесть (план 33). Значения
+            // ночью те же, что были: «нашлось» — зелень выбранного, «молчит» — цвет подсказки.
             h.Name.SetTextColor(row.Bound
-                ? row.Found ? dashboard.Palette.Good : dashboard.Palette.Dim
+                ? row.Found ? context.Picked() : context.Hint()
                 : UiKit.PlainText(context));
             h.Details.SetText(row.Details);
 

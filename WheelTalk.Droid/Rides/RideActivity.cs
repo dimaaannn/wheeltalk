@@ -189,7 +189,7 @@ public sealed class RideActivity : Activity
     private View BuildLayout()
     {
         var scroll = new ScrollView(this);
-        scroll.SetBackgroundColor(this.PageBackground());
+        scroll.SetBackgroundColor(this.Surface());
 
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
         int pad = this.Dp(16);

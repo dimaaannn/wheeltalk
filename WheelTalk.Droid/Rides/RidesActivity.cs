@@ -329,7 +329,7 @@ public sealed class RidesActivity : Activity
     private View BuildLayout()
     {
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
-        root.SetBackgroundColor(this.PageBackground());
+        root.SetBackgroundColor(this.Surface());
         int padH = this.Dp(16), padV = this.Dp(12);
         root.SetPadding(padH, padV, padH, padV);
 

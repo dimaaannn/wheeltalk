@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ================= Палитра документных экранов, ночь (план 33) =================
+
+         Каждое значение здесь — <b>тот самый литерал</b>, которым эти места красились до перекладки
+         на роли: тёмная тема не должна перемениться ни на байт (решение владельца 13.08.2026 — он
+         ездит на тёмной, и «починка светлой» не имеет права тронуть его экран). Соответствие
+         «роль → прежний литерал → откуда взят» заперто тестом DocumentPaletteTests: правка любого
+         значения здесь роняет сборку, и это намеренно — менять их можно только осознанно.
+
+         Дневной набор лежит в values/colors.xml. Дублируются здесь только роли: colorPrimary и
+         прочее темы ночного варианта не требуют. -->
+
+    <color name="doc_surface">#1F1F1F</color>
+
+    <color name="doc_card">#282828</color>
+    <color name="doc_card_border">#3A3A3A</color>
+    <color name="doc_row_divider">#333333</color>
+
+    <color name="doc_border">#4A4A4A</color>
+    <color name="doc_dependant_bar">#3F3F3F</color>
+
+    <color name="doc_text_primary">#FFFFFF</color>
+    <color name="doc_text_title">#D8D8D8</color>
+    <color name="doc_text_control">#DDDDDD</color>
+    <color name="doc_text_muted">#CFCFCF</color>
+    <color name="doc_text_secondary">#9A9A9A</color>
+
+    <color name="doc_hint">#8A8A8A</color>
+    <color name="doc_hint_dim">#7A7A7A</color>
+    <color name="doc_chevron">#6E6E6E</color>
+
+    <color name="doc_accent">#AC99EA</color>
+    <color name="doc_on_accent">#1F1F1F</color>
+
+    <color name="doc_override">#FF8F00</color>
+    <color name="doc_override_fill">#29FF8F00</color>
+    <color name="doc_highlight">#33FF8F00</color>
+
+    <color name="doc_link">#4FA3E3</color>
+    <color name="doc_warning">#E53935</color>
+    <color name="doc_picked">#009E73</color>
+
+    <color name="doc_cell_low">#FF4500</color>
+    <color name="doc_cell_high">#3CB371</color>
+
+    <color name="doc_share_border">#40808080</color>
+    <color name="doc_divider">#888888</color>
+</resources>

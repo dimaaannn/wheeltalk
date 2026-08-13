@@ -25,6 +25,8 @@ public static class ScreenKit
     public static bool IsDarkTheme(this Context context) =>
         (context.Resources!.Configuration!.UiMode & UiMode.NightMask) == UiMode.NightYes;
 
-    public static Color PageBackground(this Context context) =>
-        context.IsDarkTheme() ? Color.ParseColor("#1f1f1f") : Color.White;
+    // Фон страницы здесь больше не считается: он стал ролью палитры документных экранов
+    // (WheelTalk.Droid/Ui/DocPalette, план 33) и живёт в ресурсах приложения, которых библиотека не
+    // видит. Двух ответов на вопрос «какого цвета страница» не держим: страницы — приложения, а
+    // библиотеке остались приборные поверхности, у которых тема одна и всегда тёмная.
 }

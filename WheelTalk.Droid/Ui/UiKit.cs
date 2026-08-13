@@ -35,12 +35,12 @@ internal static class UiKit
         var button = new Button(context) { Text = text };
         button.SetTextSize(ComplexUnitType.Sp, 14);
         button.SetAllCaps(false);
-        button.SetTextColor(Color.White);
+        button.SetTextColor(context.OnAccent());
         button.StateListAnimator = null;
         var background = new GradientDrawable();
         background.SetShape(ShapeType.Rectangle);
         background.SetCornerRadius(context.Dp(8));
-        background.SetColor(context.IsDarkTheme() ? Color.ParseColor("#AC99EA") : Color.ParseColor("#512BD4"));
+        background.SetColor(context.Accent());
         button.Background = background;
         return button;
     }
@@ -52,11 +52,15 @@ internal static class UiKit
         {
             LayoutParameters = new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, context.Dp(1)),
         };
-        view.SetBackgroundColor(Color.Gray);
+        view.SetBackgroundColor(context.Divider());
         view.Alpha = 0.2f;
         return view;
     }
 
-    public static Color PlainText(Context context) =>
-        context.IsDarkTheme() ? Color.White : Color.Black;
+    /// <summary>
+    /// Основной текст страницы. Роль из палитры документных экранов (план 33): прежде цвет
+    /// выбирался здесь по ночному режиму, и это был второй ответ на вопрос «какая сейчас тема» —
+    /// первый даёт система, переключая ресурсы.
+    /// </summary>
+    public static Color PlainText(Context context) => context.TextPrimary();
 }

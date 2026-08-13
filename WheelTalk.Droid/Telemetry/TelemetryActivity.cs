@@ -177,8 +177,8 @@ public sealed class TelemetryActivity : Activity
                 label.SetText($"{i + 1,2}:{volts:F3}");
 
                 var color = max - min < 0.001 ? _plain
-                    : volts <= min ? Color.OrangeRed
-                    : volts >= max ? Color.MediumSeaGreen
+                    : volts <= min ? this.CellLow()
+                    : volts >= max ? this.CellHigh()
                     : _plain;
                 if (label.CurrentTextColor != color) label.SetTextColor(color);
             }
@@ -241,7 +241,7 @@ public sealed class TelemetryActivity : Activity
     private View BuildLayout()
     {
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
-        root.SetBackgroundColor(this.PageBackground());
+        root.SetBackgroundColor(this.Surface());
         int pad = this.Dp(16);
         root.SetPadding(pad, pad, pad, pad);
 
