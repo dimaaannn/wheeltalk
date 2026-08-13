@@ -112,4 +112,25 @@ public class TileEditingEntryTests
         // А зашитая раскладка встаёт лишь там, где хранилище смолчало.
         Assert.Contains("layout?.Load() ?? TilesLayout.Fixed", Screen());
     }
+
+    /// <summary>
+    /// Новая плитка предлагается <b>«Числом» со скоростью</b>, а не «Пустом» (решение владельца
+    /// 13.08.2026): «+» → «Сохранить» кладёт живую плитку. Дырку ставят решением, а не тем, что
+    /// забыли сменить вид, — и из пустого экрана, где «+» жмут первым делом, это заметнее всего.
+    /// </summary>
+    [Fact]
+    public void A_new_tile_is_offered_as_a_number_with_speed_and_not_as_a_void()
+    {
+        string editor = RepoFiles.Read("WheelTalk.Dashboard.Droid/Screen/Tiles/TileEditor.cs");
+
+        // Вид по умолчанию — «Число» (позиция 0), и новая плитка пустой не считается: иначе меню
+        // открылось бы с погашенной строкой величины.
+        Assert.Contains("null => 0,", editor);
+        Assert.DoesNotContain("null => 4", editor);
+        Assert.Contains("bool empty = tile?.Kind == TileKind.Empty;", editor);
+
+        // Величина по умолчанию — первая в каталоге, и это скорость. Настоящая проверка, не чтение
+        // исходника: порядок каталога — тоже решение (план 23 §3.3), и съехать он может молча.
+        Assert.Equal("speed", WheelTalk.Core.Metrics.MetricCatalogue.All[0].Id);
+    }
 }

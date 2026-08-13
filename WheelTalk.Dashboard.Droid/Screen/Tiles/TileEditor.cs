@@ -46,7 +46,11 @@ internal static class TileEditor
         var charted = Offered(MetricCatalogue.All.Where(metric => metric.Column is not null));
 
         bool chart = tile?.Kind == TileKind.Chart;
-        bool empty = tile is null || tile.Kind == TileKind.Empty;
+
+        // Новая плитка (tile is null) пустой НЕ считается: её заводят ради числа, и меню открывается
+        // видом «Число» с первой величиной каталога — скоростью (решение владельца 13.08.2026;
+        // раньше «+» → «Сохранить» молча клал пустое место, что из пустого экрана особенно заметно).
+        bool empty = tile?.Kind == TileKind.Empty;
 
         // Порядок видов в списке — он же порядок чисел в Result: «число», «график», «крайнее»,
         // «дистанция», «пусто».
@@ -57,7 +61,8 @@ internal static class TileEditor
             TileKind.Trip => 3,
             TileKind.Empty => 4,
             TileKind.Divider => 5,
-            null => 4,
+            // Новая плитка — «Число», не «Пусто»: дырку ставят решением, а не забывчивостью.
+            null => 0,
             _ => 0,
         };
 
@@ -144,7 +149,7 @@ internal static class TileEditor
         // умолчанию», то есть размерность типа величины; он же стоит у новой плитки.
         var roundingPick = Pick(context, Roundings(translate), RoundingIndex(tile?.Decimals));
 
-        Select(metricPick, empty ? 0 : IndexOfMetric(chart ? charted : all, tile!.MetricId));
+        Select(metricPick, tile is null || empty ? 0 : IndexOfMetric(chart ? charted : all, tile.MetricId));
 
         // Окно и наложение числа — свойства одного только графика: у плитки значения их нет, и
         // показывать их выключенными значило бы спрашивать о том, чего не бывает.
