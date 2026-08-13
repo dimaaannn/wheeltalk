@@ -4,6 +4,7 @@ using Android.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Alerts;
+using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Logging;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
@@ -118,6 +119,12 @@ public static class CrashGuard
         // its constructor, and the ring would stay empty forever.
         var bleFrames = MainApplication.Services.GetRequiredService<BleFrameTail>();
         CrashReport.BleFrames = bleFrames.FormatSection;
+
+        // По той же причине и тем же приёмом — сердцебиение фона (BackgroundWatch). Синглтон,
+        // которого никто не спросил, не выполнил конструктора, а именно конструктор читает отметку
+        // прошлого запуска. Спросить его надо здесь и до первого подключения: дальше он сам начнёт
+        // писать в тот же файл.
+        MainApplication.Services.GetRequiredService<BackgroundWatch>();
 
         // Кнопка «отправить диагностику» шла без контекста и без настроек — план 11 §4.2. Оба
         // раздела читаются лениво, в момент сбора: снятые сейчас, они устарели бы к первой же

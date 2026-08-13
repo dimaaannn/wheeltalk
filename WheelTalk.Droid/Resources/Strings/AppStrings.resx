@@ -362,6 +362,7 @@
   <data name="CrashPromptDontAskAgain" xml:space="preserve"><value>Больше не предлагать</value></data>
   <data name="CrashPromptSend" xml:space="preserve"><value>Отправить</value></data>
   <data name="CrashPromptDismiss" xml:space="preserve"><value>Не сейчас</value></data>
+  <data name="BackgroundStopped" xml:space="preserve"><value>Фоновая работа была остановлена системой · пропущено {0}</value></data>
   <data name="DiagnosticsBundleTitle" xml:space="preserve"><value>Что уйдёт</value></data>
   <data name="DiagnosticsBundleLog" xml:space="preserve"><value>Журнал приложения, колесо и настройки, отличные от заводских</value></data>
   <data name="DiagnosticsBundlePrevious" xml:space="preserve"><value>Журнал прошлого запуска</value></data>

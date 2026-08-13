@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Playback;
 using WheelTalk.Core.Detection;
 using WheelTalk.Core.Ports;
@@ -66,6 +67,15 @@ public static class TransportServiceCollectionExtensions
             sp.GetRequiredService<WheelDetector>(),
             sp.GetRequiredService<ILoggerFactory>(),
             sp.GetRequiredService<IOptions<ReplayOptions>>().Value.Protocol));
+
+        // Сердцебиение фона — рядом с сессией, потому что живёт ровно её незаконченной работой.
+        // Поднимается в CrashGuard, до первого подключения: свой файл он обязан прочитать раньше,
+        // чем сам начнёт его писать.
+        services.AddSingleton(sp => new BackgroundWatch(
+            Path.Combine(RideFiles.Root, "background.beat"),
+            sp.GetRequiredService<WheelSession>().State,
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<BackgroundWatch>>()));
 
         return services;
     }

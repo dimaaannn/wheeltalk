@@ -1,4 +1,5 @@
-﻿using System.Reactive.Linq;
+﻿using System.Globalization;
+using System.Reactive.Linq;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -16,6 +17,7 @@ using WheelTalk.Core.Alerts;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Dashboard;
 using WheelTalk.Core.Detection;
+using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
 using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
@@ -99,6 +101,7 @@ public sealed class MainActivity : Activity
     private ScreenOptions _screenOptions = null!;
     private PowerOptions _power = null!;
     private DiagnosticsOptions _diagnostics = null!;
+    private BackgroundWatch _backgroundWatch = null!;
     private SettingsBinder _binder = null!;
     private IWheelConfig _wheelConfig = null!;
     private IObservable<AlertState> _alerts = null!;
@@ -173,6 +176,13 @@ public sealed class MainActivity : Activity
     /// </summary>
     private string _problemDetail = "";
 
+    /// <summary>
+    /// Служебная строка полосы: то, что сказано человеку не про колесо, а про само приложение
+    /// (сейчас — остановленный системой фон). Пустая значит «сказать нечего»; тревога колеса всегда
+    /// перебивает её, см. <see cref="ShowWheelAlert"/>.
+    /// </summary>
+    private string _notice = "";
+
     private Typeface _regular = Typeface.Default!;
     private Typeface _bold = Typeface.DefaultBold!;
 
@@ -226,6 +236,7 @@ public sealed class MainActivity : Activity
         _screenOptions = MainApplication.Services.GetRequiredService<IOptions<ScreenOptions>>().Value;
         _power = MainApplication.Services.GetRequiredService<IOptions<PowerOptions>>().Value;
         _diagnostics = MainApplication.Services.GetRequiredService<IOptions<DiagnosticsOptions>>().Value;
+        _backgroundWatch = MainApplication.Services.GetRequiredService<BackgroundWatch>();
         _binder = MainApplication.Services.GetRequiredService<SettingsBinder>();
         _wheelConfig = MainApplication.Services.GetRequiredService<IWheelConfig>();
         _alerts = MainApplication.Services.GetRequiredService<IObservable<AlertState>>();
@@ -406,6 +417,10 @@ public sealed class MainActivity : Activity
         _banner.Changed += OnBannerChanged;
         ShowWheelAlert();
 
+        // После полосы тревоги, а не до неё: своё сообщение она перебьёт, и это верный порядок —
+        // тревога колеса важнее рассказа о вчерашнем.
+        TellAboutStoppedBackground();
+
         _driver.Start();
 
         // Реплей не запускается сам: на телефоне это внезапная тревога в полный голос, и не факт,
@@ -447,6 +462,10 @@ public sealed class MainActivity : Activity
         _alertSubscription?.Dispose();
         _alertSubscription = null;
         _banner.Changed -= OnBannerChanged;
+
+        // Сказанное однажды не висит вечно: ушли с экрана — сообщение о пропавшем фоне отслужило,
+        // и в журнале оно всё равно осталось.
+        _notice = "";
 
         _driver.Stop();
 
@@ -1112,7 +1131,31 @@ public sealed class MainActivity : Activity
     private void ShowWheelAlert()
     {
         if (_banner.WheelText is { Length: > 0 } text) _alertStrip.Show(text, AlertStrip.Danger);
+        else if (_notice.Length > 0) _alertStrip.Show(_notice, AlertStrip.Notice);
         else _alertStrip.Hide();
+    }
+
+    /// <summary>
+    /// Фон стоял, пока нас не было (<see cref="BackgroundWatch"/>) — сказать об этом один раз. Не
+    /// предупреждение и не совет: голый факт и величина пропуска, всё остальное человек решит сам.
+    /// <para>
+    /// Спрашивается на каждом возвращении экрана, а не только при создании процесса: в случае
+    /// владельца 13.08.2026 процесс пережил заморозку целиком, и другого мига «мы снова живы» у
+    /// приложения не было вовсе.
+    /// </para>
+    /// <para>
+    /// Второго окна поверх краха не будет: <see cref="CrashReport.PreviousRunCrashed"/> уже вывел
+    /// свой диалог, и рассказ о том же перерыве другими словами — это два сообщения об одном.
+    /// Пропуск при этом всё равно забирается (и уже записан в журнал строкой
+    /// <c>Background.Stopped</c>) — чтобы не всплыть на следующем открытии экрана.
+    /// </para>
+    /// </summary>
+    private void TellAboutStoppedBackground()
+    {
+        if (_backgroundWatch.TakeGap() is not { } gap || CrashReport.PreviousRunCrashed) return;
+
+        _notice = string.Format(CultureInfo.CurrentCulture, AppStrings.BackgroundStopped, RideFormat.Duration(gap));
+        ShowWheelAlert();
     }
 
     private async void OnStateTapped()
