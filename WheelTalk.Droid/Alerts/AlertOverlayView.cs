@@ -12,18 +12,24 @@ namespace WheelTalk.Droid.Alerts;
 /// Тревога поверх обычного экрана: полосы сверху и снизу — тем же самостоятельным элементом, что на
 /// главном экране (<see cref="AlertBarsView"/>), — и строка со словами над ними.
 /// <para>
-/// <b>Насквозь для пальца.</b> Под наложением живые кнопки, списки и ползунки, и тревога не смеет
-/// отнимать у райдера ни одного касания. Держится это не настройкой флагов, а тем, что здесь нет ни
-/// одного обработчика: <c>View</c>, которая не <see cref="View.Clickable"/> и не
-/// <see cref="View.Focusable"/>, возвращает из <c>onTouchEvent</c> ложь, а <c>FrameLayout</c>
-/// продолжает разбор по своим детям вниз, к экрану под наложением. Оба свойства выставлены явно —
-/// умолчание тут слишком дорого стоит, чтобы полагаться на память.
+/// <b>Насквозь для пальца — кроме самой строки.</b> Под наложением живые кнопки, списки и ползунки,
+/// и полосы краёв не отнимают у райдера ни одного касания: сам контейнер и <see cref="AlertBarsView"/>
+/// не <see cref="View.Clickable"/> и не <see cref="View.Focusable"/>, <c>FrameLayout</c> ведёт
+/// разбор вниз, к экрану под наложением. Единственное исключение с 15.08.2026 — <b>строка слов</b>:
+/// она ловит касание по себе ради смахивания («убрать любое сообщение смахиванием» — слово
+/// владельца), и это осознанный обмен — узкая полоса на время тревоги против возможности её убрать.
 /// </para>
 /// </summary>
 public sealed class AlertOverlayView : FrameLayout
 {
     private readonly AlertStrip _strip;
     private readonly AlertBarsView _bars;
+
+    /// <summary>
+    /// Смахнутые слова: этот текст строка не показывает, пока тревога не кончится или не сменит
+    /// слова. Полосы краёв смахивание не трогает — тревога остаётся видимой, убраны только слова.
+    /// </summary>
+    private string _hushed = "";
 
     public AlertOverlayView(Context context, DashboardOptions options, Func<AlertState> alert) : base(context)
     {
@@ -32,6 +38,7 @@ public sealed class AlertOverlayView : FrameLayout
 
         _bars = new AlertBarsView(context, options) { Alert = alert };
         _strip = new AlertStrip(context);
+        _strip.Dismissed += shown => _hushed = shown;
 
         // Полосы — нижним слоем, слова — поверх: полоса тревоги в полный голос выше строки, и
         // текст, накрытый мигающим прямоугольником, читался бы урывками.
@@ -50,7 +57,13 @@ public sealed class AlertOverlayView : FrameLayout
 
     public void Show(string text)
     {
-        _strip.Show(text, AlertStrip.Danger);
+        // Другие слова — глушение отслужило; те же — строка остаётся убранной, тревога видна полосами.
+        if (text != _hushed)
+        {
+            _hushed = "";
+            _strip.Show(text, AlertStrip.Danger);
+        }
+
         // Пинок из тишины: слова появляются тем же событием банера, что и тревога, а дальше мигание
         // и рост силы элемент ведёт сам, своим кадровым циклом.
         _bars.Invalidate();
@@ -60,5 +73,7 @@ public sealed class AlertOverlayView : FrameLayout
     public void Hide()
     {
         if (Visibility != ViewStates.Gone) Visibility = ViewStates.Gone;
+        // Тревога кончилась — глушение снимается: следующая обязана показаться и словами тоже.
+        _hushed = "";
     }
 }

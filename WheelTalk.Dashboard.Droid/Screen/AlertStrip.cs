@@ -69,5 +69,61 @@ public sealed class AlertStrip : TextView
     public void Hide()
     {
         if (Visibility != ViewStates.Gone) Visibility = ViewStates.Gone;
+        TranslationX = 0;
+        Alpha = 1f;
+    }
+
+    /// <summary>
+    /// Сообщение смахнули в сторону (решение владельца 15.08.2026 — «убрать любое сообщение
+    /// смахиванием»). Наружу уходит смахнутый текст: полоса лишь прячет себя, а <b>что заглушить и
+    /// надолго ли</b> — решает хозяин, у него для этого есть состояние, которого у полосы нет.
+    /// </summary>
+    public event Action<string>? Dismissed;
+
+    private float _downX;
+    private bool _tracking;
+
+    /// <summary>
+    /// Смахивание — своим счётом, без GestureDetector: жест один, и три ветки короче обвязки.
+    /// Полоса ловит касания только по себе и только пока видима — экран под ней ничего не теряет
+    /// (нюанс наложения на чужие экраны: полосы краёв там остаются насквозь, см.
+    /// <c>AlertOverlayView</c>).
+    /// </summary>
+    public override bool OnTouchEvent(MotionEvent? e)
+    {
+        switch (e?.Action)
+        {
+            case MotionEventActions.Down:
+                _downX = e.RawX;
+                _tracking = true;
+                return true;
+
+            case MotionEventActions.Move when _tracking:
+                TranslationX = e.RawX - _downX;
+                // Полоса бледнеет по ходу жеста — палец видит, что тянет её прочь, а не скроллит.
+                Alpha = 1f - Math.Min(0.6f, Math.Abs(TranslationX) / Math.Max(Width, 1f));
+                return true;
+
+            case MotionEventActions.Up when _tracking:
+                _tracking = false;
+                bool far = Math.Abs(TranslationX) > Width / 3f;
+                string shown = Text ?? "";
+                TranslationX = 0;
+                Alpha = 1f;
+                if (far)
+                {
+                    Hide();
+                    Dismissed?.Invoke(shown);
+                }
+                return true;
+
+            case MotionEventActions.Cancel:
+                _tracking = false;
+                TranslationX = 0;
+                Alpha = 1f;
+                return true;
+        }
+
+        return base.OnTouchEvent(e);
     }
 }

@@ -183,6 +183,13 @@ public sealed class MainActivity : Activity
     /// </summary>
     private string _notice = "";
 
+    /// <summary>
+    /// Смахнутая тревога колеса: этот текст полоса не показывает, пока тревога не пропадёт или не
+    /// сменит слова (решение владельца 15.08.2026 — «убрать любое сообщение смахиванием»). Ушла —
+    /// глушение снимается: вернувшаяся тревога обязана показаться, даже теми же словами.
+    /// </summary>
+    private string _hushedAlert = "";
+
     private Typeface _regular = Typeface.Default!;
     private Typeface _bold = Typeface.DefaultBold!;
 
@@ -464,8 +471,9 @@ public sealed class MainActivity : Activity
         _banner.Changed -= OnBannerChanged;
 
         // Сказанное однажды не висит вечно: ушли с экрана — сообщение о пропавшем фоне отслужило,
-        // и в журнале оно всё равно осталось.
+        // и в журнале оно всё равно осталось. Глушение тревоги — тоже: новый экран, чистый счёт.
         _notice = "";
+        _hushedAlert = "";
 
         _driver.Stop();
 
@@ -1130,9 +1138,28 @@ public sealed class MainActivity : Activity
     /// </summary>
     private void ShowWheelAlert()
     {
-        if (_banner.WheelText is { Length: > 0 } text) _alertStrip.Show(text, AlertStrip.Danger);
+        string wheel = _banner.WheelText ?? "";
+
+        // Тревога ушла — глушение смахиванием отслужило: следующая обязана показаться, даже если
+        // слова совпадут с прежними.
+        if (wheel.Length == 0) _hushedAlert = "";
+
+        if (wheel.Length > 0 && wheel != _hushedAlert) _alertStrip.Show(wheel, AlertStrip.Danger);
         else if (_notice.Length > 0) _alertStrip.Show(_notice, AlertStrip.Notice);
         else _alertStrip.Hide();
+    }
+
+    /// <summary>
+    /// Смахнули полосу: заглушить ровно то, что показывалось. Служебное сообщение гаснет совсем
+    /// (оно одноразовое по природе), тревога колеса — до пропажи или смены слов
+    /// (<see cref="_hushedAlert"/>): глушить её насовсем значило бы прятать следующую беду.
+    /// </summary>
+    private void OnStripDismissed(string shown)
+    {
+        if (shown == _notice) _notice = "";
+        else _hushedAlert = shown;
+
+        ShowWheelAlert();
     }
 
     /// <summary>
@@ -1565,6 +1592,7 @@ public sealed class MainActivity : Activity
 
         _alertStrip = _screen.Alert;
         _alertStrip.SetTypeface(_bold, TypefaceStyle.Bold);
+        _alertStrip.Dismissed += OnStripDismissed;
 
         _sheet = _screen.Sheet;
         _sheet.PinLabel = () => AppStrings.ButtonPin;
