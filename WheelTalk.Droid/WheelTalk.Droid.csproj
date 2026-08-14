@@ -24,8 +24,8 @@
 		     ApplicationVersion — versionCode, целое, растёт на единицу на каждую выпущенную
 		     сборку и никогда не убывает: по нему Android решает, обновление это или откат.
 		     ApplicationDisplayVersion — versionName, то, что видит человек. -->
-		<ApplicationVersion>21</ApplicationVersion>
-		<ApplicationDisplayVersion>1.5.2</ApplicationDisplayVersion>
+		<ApplicationVersion>22</ApplicationVersion>
+		<ApplicationDisplayVersion>1.5.3</ApplicationDisplayVersion>
 
 		<!-- То же обоснование, что в WheelTalk.App: 23 хватило бы транспорту, но проверка включённых
 		     служб геолокации перед сканом (Android ≤11) хочет 28. -->
