@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
@@ -35,14 +35,33 @@ public sealed class DiagnosticsShareActivity : Activity
 {
     private const string Authority = "com.wheeltalk.droid.fileprovider";
 
+    /// <summary>
+    /// Признак «полный журнал» в намерении: тот же экран, другой состав (решение владельца
+    /// 15.08.2026). Второй активности заводить незачем — вопрос у экрана один и тот же, «что уйдёт»,
+    /// и вторая копия разошлась бы с первой первой же правкой.
+    /// </summary>
+    public const string ExtraFullLog = "full-log";
+
     private IReadOnlyList<DiagnosticsPart> _parts = [];
+
+    private bool _fullLog;
+
+    /// <summary>
+    /// Готовый архив полного режима. Собирается <b>при открытии</b>, а не по «Отправить»: владелец
+    /// просил показать, сколько будет передано, — а это размер уже сжатого архива, и другого способа
+    /// его узнать, кроме как собрать, нет.
+    /// </summary>
+    private string _archive = "";
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
 
-        Title = AppStrings.DiagnosticsBundleTitle;
-        _parts = DiagnosticsBundle.Prepare();
+        _fullLog = Intent?.GetBooleanExtra(ExtraFullLog, false) ?? false;
+
+        Title = _fullLog ? AppStrings.DiagnosticsFullTitle : AppStrings.DiagnosticsBundleTitle;
+        _parts = _fullLog ? DiagnosticsBundle.PrepareFullLog() : DiagnosticsBundle.Prepare();
+        if (_fullLog && _parts.Count > 0) _archive = DiagnosticsBundle.PackFullLog(_parts);
 
         var root = BuildLayout();
         SetContentView(root);
@@ -58,7 +77,10 @@ public sealed class DiagnosticsShareActivity : Activity
         int pad = this.Dp(16);
         root.SetPadding(pad, this.Dp(20), pad, pad);
 
-        var title = new TextView(this) { Text = AppStrings.DiagnosticsBundleTitle };
+        var title = new TextView(this)
+        {
+            Text = _fullLog ? AppStrings.DiagnosticsFullTitle : AppStrings.DiagnosticsBundleTitle,
+        };
         title.SetTextSize(ComplexUnitType.Sp, 24);
         title.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         title.SetTextColor(UiKit.PlainText(this));
@@ -74,13 +96,7 @@ public sealed class DiagnosticsShareActivity : Activity
 
         foreach (var part in _parts) root.AddView(PartCard(part), Below(this.Dp(12)));
 
-        var total = new TextView(this)
-        {
-            Text = string.Format(
-                CultureInfo.CurrentCulture,
-                AppStrings.DiagnosticsBundleTotal,
-                DiagnosticsBundlePlan.Weigh(DiagnosticsBundlePlan.TotalBytes(_parts))),
-        };
+        var total = new TextView(this) { Text = Total() };
         total.SetTextSize(ComplexUnitType.Sp, 15);
         total.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
         total.SetTextColor(UiKit.PlainText(this));
@@ -121,11 +137,33 @@ public sealed class DiagnosticsShareActivity : Activity
         return card;
     }
 
+    /// <summary>
+    /// Сколько уйдёт. В обычном комплекте это вес частей: архив собирается только по «Отправить», и
+    /// до нажатия его ещё нет. В полном режиме архив уже лежит, и показывается <b>его</b> размер —
+    /// владелец просил число, которое реально уедет по мобильной связи, а не то, что весит на диске.
+    /// </summary>
+    private string Total()
+    {
+        if (!_fullLog)
+        {
+            return string.Format(
+                CultureInfo.CurrentCulture,
+                AppStrings.DiagnosticsBundleTotal,
+                DiagnosticsBundlePlan.Weigh(DiagnosticsBundlePlan.TotalBytes(_parts)));
+        }
+
+        long packed = _archive.Length > 0 && new FileInfo(_archive) is { Exists: true } file ? file.Length : 0;
+
+        return string.Format(
+            CultureInfo.CurrentCulture, AppStrings.DiagnosticsFullTotal, DiagnosticsBundlePlan.Weigh(packed));
+    }
+
     /// <summary>Что это за файл — словами, а не именем: имя говорит машине, строка под ним — человеку.</summary>
     private static string Explain(string name) => name switch
     {
         "diagnostics.log" => AppStrings.DiagnosticsBundleLog,
         "diagnostics.log.1" => AppStrings.DiagnosticsBundlePrevious,
+        DiagnosticsBundle.FullLogFile => AppStrings.DiagnosticsFullPart,
         _ => AppStrings.DiagnosticsBundleRides,
     };
 
@@ -172,7 +210,9 @@ public sealed class DiagnosticsShareActivity : Activity
     /// </summary>
     private void Share()
     {
-        string archive = DiagnosticsBundle.Pack(_parts);
+        // В полном режиме архив собран при открытии — его вес человек уже прочёл на экране, и
+        // пересобирать его значило бы отправить не то, что показали.
+        string archive = _archive.Length > 0 ? _archive : DiagnosticsBundle.Pack(_parts);
         var uri = FileProvider.GetUriForFile(this, Authority, new Java.IO.File(archive));
 
         var send = new Intent(Intent.ActionSend);

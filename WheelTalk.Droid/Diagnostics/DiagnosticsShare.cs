@@ -30,7 +30,16 @@ public static class DiagnosticsShare
     /// кто нажал случайно и тут же передумал.
     /// </para>
     /// </summary>
-    public static void Send()
+    public static void Send() => Open(fullLog: false);
+
+    /// <summary>
+    /// Кнопка «Полный журнал» (решение владельца 15.08.2026): тот же экран состава, но с одной
+    /// частью — срезом ленты за сутки. Отдельная кнопка, а не строка комплекта: комплект уходит
+    /// килобайтами и по любому поводу, а лента — мегабайтами и по нужде.
+    /// </summary>
+    public static void SendFullLog() => Open(fullLog: true);
+
+    private static void Open(bool fullLog)
     {
         var context = Application.Context;
 
@@ -38,6 +47,8 @@ public static class DiagnosticsShare
         // нет: каталог настроек статичен и об экранах не знает.
         var screen = new Intent(context, typeof(DiagnosticsShareActivity));
         screen.AddFlags(ActivityFlags.NewTask);
+        if (fullLog) screen.PutExtra(DiagnosticsShareActivity.ExtraFullLog, true);
+
         context.StartActivity(screen);
     }
 }

@@ -363,6 +363,11 @@
   <data name="CrashPromptSend" xml:space="preserve"><value>Отправить</value></data>
   <data name="CrashPromptDismiss" xml:space="preserve"><value>Не сейчас</value></data>
   <data name="BackgroundStopped" xml:space="preserve"><value>Фоновая работа была остановлена системой · пропущено {0} · замечено {1:HH:mm}</value></data>
+  <data name="SettingFullLog" xml:space="preserve"><value>Полный журнал</value></data>
+  <data name="SettingFullLogHint" xml:space="preserve"><value>Лента журнала за последние 24 часа, одним сжатым архивом. Крупнее отладочной информации: отправляйте, когда разбор её просит</value></data>
+  <data name="DiagnosticsFullTitle" xml:space="preserve"><value>Полный журнал</value></data>
+  <data name="DiagnosticsFullPart" xml:space="preserve"><value>Лента журнала за последние 24 часа</value></data>
+  <data name="DiagnosticsFullTotal" xml:space="preserve"><value>Будет передано: {0}</value></data>
   <data name="DiagnosticsBundleTitle" xml:space="preserve"><value>Что уйдёт</value></data>
   <data name="DiagnosticsBundleLog" xml:space="preserve"><value>Журнал приложения, колесо и настройки, отличные от заводских</value></data>
   <data name="DiagnosticsBundlePrevious" xml:space="preserve"><value>Журнал прошлого запуска</value></data>

@@ -1,4 +1,4 @@
-using WheelTalk.Core.Alerts;
+﻿using WheelTalk.Core.Alerts;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Decoding;
 using WheelTalk.Core.Services;
@@ -47,6 +47,7 @@ public sealed record CatalogueContext(
     WheelOptions Selected,
     DashboardOptions Dashboard,
     Action Share,
+    Action ShareFullLog,
     WheelIdentity Identity,
     ScreenOptions Screen,
     PowerOptions Power,

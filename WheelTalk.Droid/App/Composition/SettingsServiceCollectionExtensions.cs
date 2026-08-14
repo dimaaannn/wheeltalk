@@ -46,6 +46,7 @@ public static class SettingsServiceCollectionExtensions
             sp.GetRequiredService<IOptions<WheelOptions>>().Value,
             sp.GetRequiredService<DashboardOptions>(),
             DiagnosticsShare.Send,
+            DiagnosticsShare.SendFullLog,
             sp.GetRequiredService<WheelIdentity>(),
             sp.GetRequiredService<IOptions<ScreenOptions>>().Value,
             sp.GetRequiredService<IOptions<PowerOptions>>().Value,

@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.IO.Compression;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Droid.App;
@@ -62,17 +63,77 @@ public static class DiagnosticsBundle
         ]);
     }
 
+    /// <summary>Имя среза полной ленты — и на диске, и внутри архива, и на экране состава.</summary>
+    public const string FullLogFile = "wheeltalk-log-24h.log";
+
+    /// <summary>
+    /// Срез полной ленты журнала за сутки (решение владельца 15.08.2026) — <b>отдельная кнопка, не
+    /// часть комплекта</b>: в комплекте лежит выжимка <c>diagnostics.log</c>, а это лента целиком, и
+    /// смешивать их значило бы каждый раз пересылать мегабайты там, где хватает килобайтов.
+    /// <para>
+    /// Обе поколения ленты по порядку — сперва прошлое, затем нынешнее: окно суток почти всегда
+    /// пересекает ротацию, и без предыдущего файла срез обрывался бы на самом интересном.
+    /// </para>
+    /// <para>
+    /// Пусто (журнал не заведён или сутки прошли молча) — <see cref="DiagnosticsBundlePlan.Compose"/>
+    /// вернёт пустой состав, и экран честно скажет, что отправлять нечего. Пустой архив, который
+    /// «вроде отправился», — худший из ответов.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<DiagnosticsPart> PrepareFullLog()
+    {
+        string path = System.IO.Path.Combine(CacheRoot(), FullLogFile);
+
+        try
+        {
+            // Построчно и потоком: два файла по два мегабайта потолком, тянуть их в память целиком
+            // незачем — тем более что срез обычно короче самих файлов.
+            using var writer = new StreamWriter(path, append: false, new UTF8Encoding(false));
+            foreach (string line in LogWindow.Tail(Lines(), DateTime.Now)) writer.WriteLine(line);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Не отдать срез — обидно; уронить приложение на кнопке диагностики — стыдно.
+            File.WriteAllText(path, $"Срез журнала недоступен: {ex.Message}{Environment.NewLine}");
+        }
+
+        return DiagnosticsBundlePlan.Compose([Part(FullLogFile, path)]);
+    }
+
+    /// <summary>Лента по порядку: прошлое поколение, затем нынешнее. Пропавшего файла просто нет.</summary>
+    private static IEnumerable<string> Lines()
+    {
+        foreach (string path in (string[])[FileLog.PreviousPath, FileLog.Path])
+        {
+            if (!File.Exists(path)) continue;
+
+            foreach (string line in File.ReadLines(path)) yield return line;
+        }
+    }
+
     /// <summary>
     /// Упаковать отобранное в один архив в кэше. Имя с датой — чтобы в переписке два отчёта не
     /// оказались одним файлом, и чтобы было видно, когда он снят.
     /// </summary>
-    public static string Pack(IReadOnlyList<DiagnosticsPart> parts)
+    public static string Pack(IReadOnlyList<DiagnosticsPart> parts) =>
+        Pack(parts, "wheeltalk-diagnostics", CompressionLevel.Optimal);
+
+    /// <summary>
+    /// Тот же архив для среза полной ленты, но <b>сжатый до предела</b> (<see cref="CompressionLevel.SmallestSize"/>,
+    /// решение владельца 15.08.2026: «максимальное сжатие»). У комплекта это лишняя работа ради
+    /// килобайтов, а здесь — мегабайты однообразных строк, которые ужимаются в разы, и передаёт их
+    /// человек со своего мобильного.
+    /// </summary>
+    public static string PackFullLog(IReadOnlyList<DiagnosticsPart> parts) =>
+        Pack(parts, "wheeltalk-log24h", CompressionLevel.SmallestSize);
+
+    private static string Pack(IReadOnlyList<DiagnosticsPart> parts, string name, CompressionLevel level)
     {
         string path = System.IO.Path.Combine(
             CacheRoot(),
             // Метка в начале — тем же порядком, что у частей: имена пересылок сортируются по
             // времени, и никакая пара не тёзки.
-            $"{DateTimeOffset.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture)}-wheeltalk-diagnostics.zip");
+            $"{DateTimeOffset.Now.ToString(TimestampFormat, CultureInfo.InvariantCulture)}-{name}.zip");
 
         if (File.Exists(path)) File.Delete(path);
 
@@ -85,7 +146,7 @@ public static class DiagnosticsBundle
             // мгновение записи.
             if (!DiagnosticsBundlePlan.Allows(part.Name)) continue;
 
-            archive.CreateEntryFromFile(part.Path, part.Name, CompressionLevel.Optimal);
+            archive.CreateEntryFromFile(part.Path, part.Name, level);
         }
 
         return path;

@@ -77,8 +77,14 @@ public class DiagnosticsShareRootsTests
 
         Assert.Equal(["part.Path", "archive"], asked);
 
-        // «archive» — то, что вернул упаковщик комплекта, а не самодельный путь рядом.
-        Assert.Contains("string archive = DiagnosticsBundle.Pack(_parts);", RepoFiles.Read(Activity));
+        // «archive» — то, что вернул упаковщик комплекта, а не самодельный путь рядом. В полном
+        // режиме (кнопка «Полный журнал») архив собран тем же упаковщиком при открытии экрана —
+        // иначе показанный вес и отправленный файл разошлись бы.
+        string activity = RepoFiles.Read(Activity);
+
+        Assert.Contains(
+            "string archive = _archive.Length > 0 ? _archive : DiagnosticsBundle.Pack(_parts);", activity);
+        Assert.Contains("_archive = DiagnosticsBundle.PackFullLog(_parts);", activity);
     }
 
     /// <summary>
@@ -114,7 +120,11 @@ public class DiagnosticsShareRootsTests
         // Метка стоит В НАЧАЛЕ имени (решение владельца 14.08.2026): дисковое имя остаётся целым
         // («…-diagnostics.log.1» читается), а файлы у получателя сортируются по времени сами.
         Assert.Contains("return $\"{stamp}-{diskName}\";", bundle);
-        Assert.Contains("-wheeltalk-diagnostics.zip", bundle);
+
+        // Имя архива собирается одним местом на оба режима, и метка в нём тоже первая.
+        Assert.Contains("CultureInfo.InvariantCulture)}-{name}.zip", bundle);
+        Assert.Contains("Pack(parts, \"wheeltalk-diagnostics\", CompressionLevel.Optimal)", bundle);
+        Assert.Contains("Pack(parts, \"wheeltalk-log24h\", CompressionLevel.SmallestSize)", bundle);
     }
 
     private static HashSet<string> Declared() =>

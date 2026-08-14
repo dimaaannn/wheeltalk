@@ -1,4 +1,4 @@
-using WheelTalk.Core.Services;
+﻿using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Storage;
@@ -20,7 +20,7 @@ internal static class AppPage
 
     public static IReadOnlyList<SettingDescriptor> Build(
         ConnectionOptions connection, PowerOptions power, ScreenOptions screen, StorageOptions storage,
-        DiagnosticsOptions diagnostics, Action share)
+        DiagnosticsOptions diagnostics, Action share, Action fullLog)
     {
         return
         [
@@ -172,6 +172,22 @@ internal static class AppPage
                 HintKey = "SettingShareDiagnosticsHint",
                 Current = () => "",
                 Apply = _ => share(),
+            },
+
+            // Полная лента — отдельной кнопкой рядом (решение владельца 15.08.2026). В комплект выше
+            // она не входит и не войдёт: там выжимка получасовыми окнами, которую шлют по любому
+            // поводу, а здесь сутки строк подряд — их отправляют, когда разбор упёрся в дыры между
+            // окнами. Так и случилось с заморозкой 15.08.2026.
+            new()
+            {
+                Key = "Diagnostics:FullLog",
+                Kind = SettingKind.Action,
+                Page = SettingsPage.Application,
+                SectionKey = "SectionDiagnostics",
+                LabelKey = "SettingFullLog",
+                HintKey = "SettingFullLogHint",
+                Current = () => "",
+                Apply = _ => fullLog(),
             },
 
             // ---- О приложении ------------------------------------------------------------
