@@ -56,7 +56,11 @@ public class BackgroundWatchTests : IDisposable
         var gap = restarted.TakeGap();
 
         Assert.NotNull(gap);
-        Assert.Equal(157, (int)gap.Value.TotalMinutes);
+        Assert.Equal(157, (int)gap.Value.Missed.TotalMinutes);
+
+        // Момент обнаружения — миг рестарта: показ бывает часами позже, и без этой метки сообщение
+        // не привязать к журналу (слово владельца 15.08.2026).
+        Assert.Equal(time.GetUtcNow(), gap.Value.NoticedAt);
         Assert.Contains(logger.Entries, entry => entry.Message.Contains("Background.Stopped"));
 
         // Сказано один раз: второй экран того же запуска повторять это не станет.
@@ -82,7 +86,8 @@ public class BackgroundWatchTests : IDisposable
         var gap = watch.TakeGap();
 
         Assert.NotNull(gap);
-        Assert.Equal(156, (int)gap.Value.TotalMinutes);
+        Assert.Equal(156, (int)gap.Value.Missed.TotalMinutes);
+        Assert.Equal(time.GetUtcNow(), gap.Value.NoticedAt);
         Assert.Single(logger.Entries, entry => entry.Message.Contains("Background.Stopped"));
 
         // Оттаявший таймер приходит запоздалым тиком — и второй раз про тот же перерыв не пишет.
@@ -180,5 +185,23 @@ public class BackgroundWatchTests : IDisposable
 
         Assert.Contains("CrashReport.PreviousRunCrashed", guard);
         Assert.Contains("return;", guard);
+    }
+
+    /// <summary>
+    /// (е) Показ — тоже строка журнала (слово владельца 15.08.2026): обнаружение и показ разнесены
+    /// часами, и без строки показа разбор гадает, видел ли человек сообщение. В баннер при этом
+    /// едет момент обнаружения — вторым аргументом формата.
+    /// </summary>
+    [Fact]
+    public void The_telling_itself_is_logged_and_carries_the_moment_it_was_noticed()
+    {
+        string body = RepoFiles.MethodBody(
+            RepoFiles.Read("WheelTalk.Droid/Main/MainActivity.cs"), "private void TellAboutStoppedBackground()");
+
+        Assert.Contains("Background.Told", body);
+        Assert.Contains("told.NoticedAt.LocalDateTime", body);
+
+        Assert.Contains("замечено {1:HH:mm}",
+            RepoFiles.Read("WheelTalk.Droid/Resources/Strings/AppStrings.resx"));
     }
 }

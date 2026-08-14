@@ -13,6 +13,14 @@ namespace WheelTalk.Core.Diagnostics;
 /// ложной тревоге.
 /// </para>
 /// </summary>
+/// <summary>
+/// Найденный перерыв фона: сколько стояло и <b>когда это заметили</b> (конец стояния — миг, в
+/// который оттаявший или перезапущенный процесс увидел свою старую отметку). Показ человеку бывает
+/// часами позже обнаружения — телефон лежит с погашенным экраном, — и без момента обнаружения
+/// сообщение не привязать к журналу.
+/// </summary>
+public readonly record struct BackgroundGap(TimeSpan Missed, DateTimeOffset NoticedAt);
+
 public readonly record struct BackgroundBeat(DateTimeOffset At, ConnectionState Phase)
 {
     /// <summary>

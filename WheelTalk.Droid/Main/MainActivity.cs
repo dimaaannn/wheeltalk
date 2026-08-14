@@ -1179,9 +1179,15 @@ public sealed class MainActivity : Activity
     /// </summary>
     private void TellAboutStoppedBackground()
     {
-        if (_backgroundWatch.TakeGap() is not { } gap || CrashReport.PreviousRunCrashed) return;
+        if (_backgroundWatch.TakeGap() is not { } told || CrashReport.PreviousRunCrashed) return;
 
-        _notice = string.Format(CultureInfo.CurrentCulture, AppStrings.BackgroundStopped, RideFormat.Duration(gap));
+        // Сам показ — тоже строкой в журнал (слово владельца 15.08.2026): обнаружение и показ
+        // разнесены часами, и разбор 15.08 гадал, показывалось ли сообщение вообще.
+        _logger.LogWarning("Background.Told — показано человеку: пропущено {Minutes} мин, замечено {At:HH:mm}",
+            (int)told.Missed.TotalMinutes, told.NoticedAt.LocalDateTime);
+
+        _notice = string.Format(CultureInfo.CurrentCulture, AppStrings.BackgroundStopped,
+            RideFormat.Duration(told.Missed), told.NoticedAt.LocalDateTime);
         ShowWheelAlert();
     }
 

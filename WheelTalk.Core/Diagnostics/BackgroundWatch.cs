@@ -43,7 +43,7 @@ public sealed partial class BackgroundWatch : IDisposable
     private ITimer? _beats;
 
     /// <summary>Пропуск, о котором человеку ещё не сказали. Забирается один раз — <see cref="TakeGap"/>.</summary>
-    private TimeSpan? _unsaid;
+    private BackgroundGap? _unsaid;
 
     public BackgroundWatch(
         string path, IObservable<ConnectionState> states, TimeProvider time, ILogger<BackgroundWatch> logger)
@@ -67,7 +67,7 @@ public sealed partial class BackgroundWatch : IDisposable
     /// когда угодно, в том числе позже показа.
     /// <para>Возвращает раз: сказанное однажды не повторяется до следующего перерыва.</para>
     /// </summary>
-    public TimeSpan? TakeGap()
+    public BackgroundGap? TakeGap()
     {
         lock (_gate)
         {
@@ -159,7 +159,10 @@ public sealed partial class BackgroundWatch : IDisposable
         if (beat is not { } last || BackgroundBeat.Gap(last, now) is not { } gap) return;
 
         // Свежий перерыв важнее давнего: человеку показывается последний, в журнале остаются оба.
-        _unsaid = gap;
+        // Момент обнаружения едет вместе с длительностью (слово владельца 15.08.2026): показ может
+        // случиться часами позже — когда экран наконец включат, — и без этой метки разбор гадает,
+        // к какому месту журнала относится сообщение (так было с «пропущено 13 мин» 15.08).
+        _unsaid = new BackgroundGap(gap, now);
         LogStopped((int)gap.TotalMinutes, last.Phase);
     }
 
