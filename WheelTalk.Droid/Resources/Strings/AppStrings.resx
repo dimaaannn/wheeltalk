@@ -536,4 +536,23 @@
   <data name="SheetSectionRide" xml:space="preserve"><value>Поездка</value></data>
   <data name="SheetSectionPhone" xml:space="preserve"><value>Телефон</value></data>
   <data name="SheetSectionGo" xml:space="preserve"><value>Ссылки</value></data>
+  <data name="SettingWheelDevicePedalHardness" xml:space="preserve"><value>Ride mode setting</value></data>
+  <data name="SettingWheelDeviceGyro" xml:space="preserve"><value>Calibration</value></data>
+  <data name="SettingWheelDeviceGyroHint" xml:space="preserve"><value>Состояние калибровки гироскопа, как его сообщило колесо. Запускать калибровку приложение не умеет — только показывает</value></data>
+  <data name="SettingWheelDeviceTransportMode" xml:space="preserve"><value>Transportation mode</value></data>
+  <data name="SettingWheelDeviceHighSpeedMode" xml:space="preserve"><value>High speed mode</value></data>
+  <data name="SettingWheelDeviceUpOrDownSpeedHelper" xml:space="preserve"><value>Acceleration and deceleration assist</value></data>
+  <data name="SettingWheelDeviceUpSpeedCul" xml:space="preserve"><value>Accelerometer reduction</value></data>
+  <data name="SettingWheelDeviceStopSpeed" xml:space="preserve"><value>Tiltback speed setting</value></data>
+  <data name="SettingWheelDeviceStopSpeedHint" xml:space="preserve"><value>Колесо сообщает 200, когда отклонение выключено</value></data>
+  <data name="SettingWheelDeviceStopPowerRate" xml:space="preserve"><value>PWM value setting</value></data>
+  <data name="SettingWheelDeviceVol" xml:space="preserve"><value>Voltage correction</value></data>
+  <data name="SettingWheelDeviceLowVolMode" xml:space="preserve"><value>Low battery mode</value></data>
+  <data name="SettingWheelDeviceMaxChargeVol" xml:space="preserve"><value>Max charging voltage setting</value></data>
+  <data name="SettingWheelDeviceBrakePressureAlarm" xml:space="preserve"><value>Brake overpressure alarm setting</value></data>
+  <data name="SettingWheelDeviceScreenBacklightRate" xml:space="preserve"><value>Backlight adjustment</value></data>
+  <data name="SettingWheelDeviceUnit" xml:space="preserve"><value>Unit switch</value></data>
+  <data name="SettingWheelDeviceUnitKilometres" xml:space="preserve"><value>km | kph</value></data>
+  <data name="SettingWheelDeviceUnitMiles" xml:space="preserve"><value>mi | mph</value></data>
+  <data name="SettingWheelDeviceKeyTone" xml:space="preserve"><value>Button volume adjustment</value></data>
 </root>
