@@ -30,6 +30,8 @@ public sealed partial class GotwayDecoder : IWheelDecoder
     private const int LightModeOff = 0;
     private const int LightModeOn = 1;
     private const int LightModeStrobe = 2;
+    /// <summary>Страница 24 (0x18) — «ядро»: сводка всей связки, а не номер модуля BMS (begode-comparison.md §1.1).</summary>
+    private const int Frame01AggregatePage = 24;
 
     private readonly WheelState _state;
     private readonly IWheelConfig _config;
@@ -309,13 +311,17 @@ public sealed partial class GotwayDecoder : IWheelDecoder
         if (autoVoltage) _state.SetVoltage(batVoltage * 10);
 
         int bmsnum = buff[19] & 0xFF;
-        SmartBms bms = bmsnum < 2 ? _state.Bms1 : _state.Bms2;
         int bmsCurrentM = MathsUtil.SignedShortFromBytesBE(buff, 8);
         LogFrame01(bmsnum, batVoltage, bmsCurrentM);
-        bms.Current = bmsCurrentM / 10.0;
+        // Пакетные величины (напряжение/ток всей связки) снимаются с любой страницы, как в оригинале:
+        // они про колесо целиком, а не про модуль, поэтому от выбора слота не зависят.
         if (bmsCurrentM > 0) _bmsCurrent = false;
         if (_bmsCurrent) _state.SetCurrent(bmsCurrentM * 20); // double current, taking into account 2 BMS packs
 
+        SmartBms? bms = SelectBmsModule(bmsnum);
+        if (bms is null) return; // страница без своего слота — данные модуля не пишутся никуда, след уже в журнале
+
+        bms.Current = bmsCurrentM / 10.0;
         if (bmsnum % 2 == 0)
         {
             bms.Temp1 = MathsUtil.SignedShortFromBytesBE(buff, 10);
@@ -328,6 +334,28 @@ public sealed partial class GotwayDecoder : IWheelDecoder
             bms.Temp4 = MathsUtil.SignedShortFromBytesBE(buff, 12);
             bms.SemiVoltage2 = MathsUtil.SignedShortFromBytesBE(buff, 14) / 10.0;
         }
+    }
+
+    /// <summary>
+    /// Страница кадра 0x01 — номер отдельного модуля BMS, а не окно среза пакета
+    /// (<c>docs/begode-comparison.md</c> §1.2). Слотов в состоянии два, и оригинал раскладывал по
+    /// ним лишь четыре первых номера: 0/1 — две половины <c>Bms1</c>, 2/3 — две половины
+    /// <c>Bms2</c> (`GotwayAdapter.java:212-213` плюс чётность ниже). Модули 4-6 он сваливал в
+    /// <c>Bms2</c> поверх уже записанного, а страница 24 — вообще не модуль, а сводка всей связки
+    /// (§1.1), и уходила туда же. Здесь оба случая возвращают <c>null</c>: чужое не переписывается,
+    /// факт остаётся в журнале.
+    /// </summary>
+    private SmartBms? SelectBmsModule(int bmsnum)
+    {
+        if (bmsnum == Frame01AggregatePage)
+        {
+            LogFrame01Aggregate(bmsnum);
+            return null;
+        }
+        if (bmsnum < 2) return _state.Bms1;
+        if (bmsnum < 4) return _state.Bms2;
+        LogFrame01NoBmsSlot(bmsnum);
+        return null;
     }
 
     /// <summary>Frames 0x02/0x03 — BMS cell voltages, 8 cells per page (GotwayAdapter.java:238-281).</summary>
@@ -686,6 +714,14 @@ public sealed partial class GotwayDecoder : IWheelDecoder
     [LoggerMessage(EventId = LogEvents.Decoding.Frame01Id, EventName = LogEvents.Decoding.Frame01Name,
         Level = LogLevel.Debug, Message = "Begode frame 01 found (BMS voltage/current). Bms#{BmsNum} Voltage={Voltage} Current={Current}")]
     private partial void LogFrame01(int bmsNum, int voltage, int current);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.Frame01AggregateId, EventName = LogEvents.Decoding.Frame01AggregateName,
+        Level = LogLevel.Debug, Message = "Begode frame 01 page {Page} is the whole-pack summary, not a BMS module — pack voltage/current taken, module fields not stored")]
+    private partial void LogFrame01Aggregate(int page);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.Frame01NoBmsSlotId, EventName = LogEvents.Decoding.Frame01NoBmsSlotName,
+        Level = LogLevel.Debug, Message = "Begode frame 01 reports BMS module #{BmsNum} — no free BMS slot (only #0-#3 map onto Bms1/Bms2), module data dropped instead of overwriting another module")]
+    private partial void LogFrame01NoBmsSlot(int bmsNum);
 
     [LoggerMessage(EventId = LogEvents.Decoding.Frame07Id, EventName = LogEvents.Decoding.Frame07Name,
         Level = LogLevel.Debug, Message = "Begode frame 07 found (motor current/temperature). Current={Current} MotorTemp={MotorTemp} Pwm={Pwm}")]

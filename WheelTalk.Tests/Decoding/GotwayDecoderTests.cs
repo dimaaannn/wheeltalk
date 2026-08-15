@@ -229,4 +229,94 @@ public class GotwayDecoderTests
         Assert.True(state.Bms1.CellCount > 0,
             $"CellCount = {state.Bms1.CellCount} — сетка банок снова пуста");
     }
+
+    // Кадры 0x01 для тестов ниже: [6:7] напряжение пака, [8:9] ток, [10:11]/[12:13] температуры,
+    // [14:15] полу-напряжение, [18]=0x01 тип, [19] страница = номер модуля BMS.
+    private const string Frame01Module0 = "55AA00000000177000640019001A00C8000001005A5A5A5A";
+    private const string Frame01Module1 = "55AA0000000017700065001B001C00D2000001015A5A5A5A";
+    private const string Frame01Module2 = "55AA0000000017700066001D001E00DC000001025A5A5A5A";
+    private const string Frame01Module4 = "55AA00000000177001900055005607D0000001045A5A5A5A";
+    private const string Frame01Aggregate = "55AA00000000177003E8006300640BB8000001185A5A5A5A"; // страница 24 (0x18)
+
+    private static (WheelState State, GotwayDecoder Decoder, CapturingLogger<GotwayDecoder> Logger) Frame01Rig()
+    {
+        var config = new AppWheelConfig();
+        var time = new FakeTimeProvider();
+        var state = new WheelState(config, time);
+        var logger = new CapturingLogger<GotwayDecoder>();
+        return (state, new GotwayDecoder(state, config, time, logger), logger);
+    }
+
+    /// <summary>
+    /// Боевой путь: страницы 0 и 1 — две половины первого BMS, ровно как в оригинале
+    /// (<c>GotwayAdapter.java:212-213</c>, слот по <c>bmsnum &lt; 2</c>, поля по чётности).
+    /// Замок на то, что правка «страница ≠ модулю» этот путь не сдвинула ни на байт.
+    /// </summary>
+    [Fact]
+    public void Bms_module_pages_0_and_1_still_fill_the_first_slot_exactly_as_before()
+    {
+        var (state, decoder, _) = Frame01Rig();
+
+        decoder.Decode(Convert.FromHexString(Frame01Module0));
+        decoder.Decode(Convert.FromHexString(Frame01Module1));
+
+        Assert.Equal(25.0, state.Bms1.Temp1);
+        Assert.Equal(26.0, state.Bms1.Temp2);
+        Assert.Equal(20.0, state.Bms1.SemiVoltage1, 3);
+        Assert.Equal(27.0, state.Bms1.Temp3);
+        Assert.Equal(28.0, state.Bms1.Temp4);
+        Assert.Equal(21.0, state.Bms1.SemiVoltage2, 3);
+        Assert.Equal(10.1, state.Bms1.Current, 3); // ток последнего кадра, 0x0065 / 10
+        Assert.Equal(60000, state.Voltage); // напряжение пака берётся по-прежнему: 0x1770 * 10
+
+        // Второй слот эти страницы не трогают — ни раньше, ни теперь.
+        Assert.Equal(0.0, state.Bms2.Current);
+        Assert.Equal(0.0, state.Bms2.Temp1);
+        Assert.Equal(0.0, state.Bms2.SemiVoltage1);
+    }
+
+    /// <summary>
+    /// begode-comparison.md §1.1/§2.5: страница 24 в кадре 0x01 — сводка всей связки, а не седьмой
+    /// модуль. По формуле оригинала (<c>bmsnum &lt; 2 ? Bms1 : Bms2</c>) она чётная и садилась
+    /// поверх модуля №2. Теперь в слот модуля не пишется вовсе — пакетное напряжение с неё
+    /// по-прежнему снимается, а факт уходит в журнал.
+    /// </summary>
+    [Fact]
+    public void Whole_pack_summary_page_24_does_not_overwrite_a_bms_module()
+    {
+        var (state, decoder, logger) = Frame01Rig();
+
+        decoder.Decode(Convert.FromHexString(Frame01Module2));
+        decoder.Decode(Convert.FromHexString(Frame01Aggregate));
+
+        Assert.Equal(29.0, state.Bms2.Temp1); // было бы 99 из сводки
+        Assert.Equal(30.0, state.Bms2.Temp2); // было бы 100
+        Assert.Equal(22.0, state.Bms2.SemiVoltage1, 3); // было бы 300.0
+        Assert.Equal(10.2, state.Bms2.Current, 3); // было бы 100.0
+        Assert.Equal(60000, state.Voltage); // пакетная величина со сводки взята
+        Assert.Contains(logger.Entries, e => e.EventId.Id == LogEvents.Decoding.Frame01AggregateId);
+    }
+
+    /// <summary>
+    /// begode-comparison.md §1.2: «инфо»-страниц бывает до шести-семи (родное приложение держит
+    /// <c>info1..info6</c>), а слота у нас два — на номера 0-3. Модуль без слота теперь оставляет
+    /// строку в журнале вместо тихой перезаписи чужих данных. Шесть слотов не заводим: кадра
+    /// <c>type=1</c> со страницей больше единицы не было ни в одной из четырёх записей MTen3.
+    /// </summary>
+    [Fact]
+    public void Bms_module_without_a_slot_is_logged_instead_of_overwriting_another_module()
+    {
+        var (state, decoder, logger) = Frame01Rig();
+
+        decoder.Decode(Convert.FromHexString(Frame01Module2));
+        decoder.Decode(Convert.FromHexString(Frame01Module4));
+
+        Assert.Equal(29.0, state.Bms2.Temp1); // было бы 85 из модуля №4
+        Assert.Equal(30.0, state.Bms2.Temp2); // было бы 86
+        Assert.Equal(22.0, state.Bms2.SemiVoltage1, 3); // было бы 200.0
+        Assert.Equal(10.2, state.Bms2.Current, 3); // было бы 40.0
+        Assert.Equal(0.0, state.Bms1.Temp1); // и в первый слот его тоже не переложили
+        Assert.Contains(logger.Entries, e =>
+            e.EventId.Id == LogEvents.Decoding.Frame01NoBmsSlotId && e.Message.Contains("#4"));
+    }
 }

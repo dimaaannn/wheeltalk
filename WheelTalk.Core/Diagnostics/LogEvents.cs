@@ -231,5 +231,18 @@ public static class LogEvents
         /// План 35 §9: кадр больше не пропадает бесследно, но и не выдумывает данных.</summary>
         public const int ThirdFourthPackFrameId = 3031;
         public const string ThirdFourthPackFrameName = "ThirdFourthPackFrame";
+
+        /// <summary>Begode: кадр 0x01 со страницей 24 — сводка всей связки, а не отдельный модуль
+        /// BMS (<c>begode-comparison.md</c> §1.1). В слот модуля не пишется: у нас негде хранить
+        /// сводку, а запись затирала бы данные реального модуля. Пакетные величины (напряжение,
+        /// ток) с него снимаются, как и с любой страницы.</summary>
+        public const int Frame01AggregateId = 3032;
+        public const string Frame01AggregateName = "Frame01Aggregate";
+
+        /// <summary>Begode: кадр 0x01 принёс номер модуля BMS, для которого у <c>WheelState</c>
+        /// нет слота (два слота — четыре номера, 0-3). Данные модуля отброшены вместо тихой
+        /// перезаписи чужих; сколько модулей бывает на самом деле, покажет живая запись.</summary>
+        public const int Frame01NoBmsSlotId = 3033;
+        public const string Frame01NoBmsSlotName = "Frame01NoBmsSlot";
     }
 }
