@@ -210,4 +210,23 @@ public class GotwayDecoderTests
         Assert.Contains(logger.Entries, e =>
             e.EventId.Id == LogEvents.Decoding.ThirdFourthPackFrameId && e.Message.Contains(pack.ToString()));
     }
+
+    /// <summary>
+    /// Сетка банок на «Данных» строится по <c>CellCount</c>, а Gotway заполнял только портовый
+    /// <c>CellNum</c> — сетка была вечно пустой (аудит экрана 15.08.2026). Теперь размер даёт тот же
+    /// каскад счёта ячеек, что у Veteran.
+    /// </summary>
+    [Fact]
+    public void A_bms_cells_frame_fills_cell_count_for_the_grid()
+    {
+        var config = new AppWheelConfig();
+        var time = new FakeTimeProvider();
+        var state = new WheelState(config, time);
+        var decoder = new GotwayDecoder(state, config, time, new CapturingLogger<GotwayDecoder>());
+
+        decoder.Decode(Convert.FromHexString("55AA09C409C509C609C709C809C909CA09CB02005A5A5A5A"));
+
+        Assert.True(state.Bms1.CellCount > 0,
+            $"CellCount = {state.Bms1.CellCount} — сетка банок снова пуста");
+    }
 }

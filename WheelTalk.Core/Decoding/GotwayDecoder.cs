@@ -355,6 +355,12 @@ public sealed partial class GotwayDecoder : IWheelDecoder
             }
         }
 
+        // Наше поле показа, не порт (у оригинала его нет): сетке банок на «Данных» нужен размер, и
+        // Veteran заполняет его тем же каскадом (VeteranDecoder.cs:237). Без этой строки сетка на
+        // Gotway/Begode вечно пуста — декодер считал банки в CellNum, а экран читал CellCount
+        // (найдено аудитом экрана 15.08.2026).
+        bms.CellCount = Math.Min(GetCellsForWheel().Cells, bms.Cells.Length);
+
         bms.MinCell = bms.Cells[0];
         bms.MaxCell = bms.Cells[0];
         bms.MaxCellNum = 1;
