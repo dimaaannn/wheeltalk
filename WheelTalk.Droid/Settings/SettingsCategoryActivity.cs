@@ -846,7 +846,9 @@ public sealed class SettingsCategoryActivity : Activity
         // WheelTalk.App/Pages/SettingsListPage.xaml.cs).
         if (descriptor.ReportedByWheel)
         {
-            var reported = new TextView(this) { Text = SettingsFormat.ParseBool(value) ? AppStrings.Yes : AppStrings.No };
+            // По виду настройки, а не только «Да/Нет»: сообщённым приходят и числа (страница Veteran —
+            // 94, 200, 145), и варианты. Показывается как есть, без границ ручки и без «выкл.».
+            var reported = new TextView(this) { Text = SettingsFormat.ReportedText(descriptor, value) };
             reported.SetTypeface(Typeface.DefaultBold, TypefaceStyle.Bold);
             reported.SetTextSize(ComplexUnitType.Sp, 14);
             return reported;

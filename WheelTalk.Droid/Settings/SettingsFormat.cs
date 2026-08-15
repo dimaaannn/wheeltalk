@@ -49,6 +49,26 @@ internal static class SettingsFormat
         return index < descriptor.ChoiceLabelKeys.Count ? TranslateExtension.Get(descriptor.ChoiceLabelKeys[index]) : value;
     }
 
+    /// <summary>
+    /// Что сказано в строке «сообщено колесом» — значение по виду настройки: переключатель словом,
+    /// число числом (с единицей, если она у описания есть), выбор — названием варианта, а не кодом.
+    /// <para>
+    /// Отдельно от <see cref="ValueText"/> намеренно, и разница в том, чего здесь НЕТ. Нет прижатия
+    /// к границам ручки: у Veteran наклон приходит числом 200 при <c>Maximum</c> по умолчанию 100, и
+    /// клампом экран сказал бы 100 — то есть соврал. Нет и «выкл.» вместо нуля
+    /// (<see cref="SettingDescriptor.ZeroDisables"/>): это правило правимых ручек. Экран повторяет
+    /// слово колеса как есть и не толкует его (слово владельца 15.08.2026, план 34).
+    /// </para>
+    /// </summary>
+    public static string ReportedText(SettingDescriptor descriptor, string value) =>
+        descriptor.Kind switch
+        {
+            SettingKind.Toggle => ParseBool(value) ? AppStrings.Yes : AppStrings.No,
+            SettingKind.Number => Display(descriptor, ParseNumber(value)),
+            SettingKind.Choice => ChoiceLabel(descriptor, value),
+            _ => value,
+        };
+
     /// <summary>What a row says its value is, regardless of kind — used by the row itself and by the root summary.</summary>
     public static string ValueText(SettingDescriptor descriptor, ResolvedSetting resolved)
     {
