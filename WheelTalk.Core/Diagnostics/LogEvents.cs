@@ -225,5 +225,11 @@ public static class LogEvents
         /// позиционная догадка оригинала; лишние ответы отброшены, и об этом лучше знать.</summary>
         public const int ImV2P6BmsTooManyAddressesId = 3030;
         public const string ImV2P6BmsTooManyAddressesName = "ImV2P6BmsTooManyAddresses";
+
+        /// <summary>Begode: кадр третьего/четвёртого пакета ячеек (0x05/0x06) распознан, но не
+        /// разобран — у <c>WheelState</c> только два слота BMS, оба заняты пакетами A/B (0x02/0x03).
+        /// План 35 §9: кадр больше не пропадает бесследно, но и не выдумывает данных.</summary>
+        public const int ThirdFourthPackFrameId = 3031;
+        public const string ThirdFourthPackFrameName = "ThirdFourthPackFrame";
     }
 }

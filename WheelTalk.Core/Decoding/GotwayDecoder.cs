@@ -131,6 +131,10 @@ public sealed partial class GotwayDecoder : IWheelDecoder
             {
                 DecodeFrameB(buff, useRatio, isAlexovikFw);
             }
+            else if (frameType == 0x05 || frameType == 0x06)
+            {
+                DecodeThirdFourthPackFrame(frameType, buff[19]);
+            }
             else if (frameType == 0x07)
             {
                 DecodeFrame07(buff, isAlexovikFw, gotwayNegative, ref newDataFound);
@@ -234,6 +238,14 @@ public sealed partial class GotwayDecoder : IWheelDecoder
             ? (int)Math.Round((MathsUtil.SignedShortFromBytesBE(buff, 12) / 340.0 + 36.53) * 100) // mpu6050
             : (int)Math.Round((MathsUtil.SignedShortFromBytesBE(buff, 12) / 333.87 + 21.00) * 100); // mpu6500 (Alexovik "trick" byte 16 not ported)
 
+        // NOT real PWM despite the name inherited from the port (plan 35 §9, begode-comparison.md
+        // §2.1): the native app puts a settings echo here — angle10/angle5/power3/momm
+        // (showbad/HomeSettingActivity.java:1686-1723) — not duty cycle. Real PWM/output lives in
+        // frame 0x07 offset [8:9], which MTen3 never sends. Kept 1:1 (still feeds Output below) —
+        // it only reaches the rider's gauge when HwPwm/_truePwm is set, which stock firmware
+        // never does; CalculatedPwm shown to the rider comes from WheelState.CalculatePwm()'s
+        // speed formula instead, untouched by this field. Risk is confined to Alexovik CF/BF
+        // firmware (HwPwm=true), already outside this port's declared scope (class doc above).
         int hwPwm = MathsUtil.SignedShortFromBytesBE(buff, 14) * 10;
 
         if (gotwayNegative == 0)
@@ -363,6 +375,26 @@ public sealed partial class GotwayDecoder : IWheelDecoder
         bms.Voltage = totalVolt;
     }
 
+    /// <summary>
+    /// Frames 0x05/0x06 — cell voltages of the third/fourth physical battery pack (C/D), present
+    /// on wheels with 3-4 parallel packs (large Begode: EX30, Msuper Pro, RS19). Plan 35 §9: these
+    /// used to be entirely absent from the dispatch switch, exactly matching upstream WheelLog
+    /// (<c>GotwayAdapter.java</c> has no <c>case 5</c>/<c>case 6</c> either — this is not a port
+    /// omission, WheelLog itself never supported them). Cell-voltage byte layout is proven
+    /// identical to 0x02/0x03 (begode-comparison.md §1.2, <c>BatteryPackActivity.java:995-1004,
+    /// 1211-1249</c>), but <see cref="WheelState"/> only carries two pack slots (Bms1/Bms2), both
+    /// already claimed by 0x02 (pack A) and 0x03 (pack B). Folding pack C/D cells into either slot
+    /// would interleave three-four physically distinct battery packs' cells into one struct —
+    /// worse than not decoding at all, and not something proven by any source read for this task.
+    /// So the frame is recognized and logged, not silently dropped, and nothing is guessed into
+    /// <c>WheelState</c>. A fourth pack slot is future work, not this fix.
+    /// </summary>
+    private void DecodeThirdFourthPackFrame(byte frameType, byte page)
+    {
+        char pack = frameType == 0x05 ? 'C' : 'D';
+        LogThirdFourthPackFrame(pack, page);
+    }
+
     /// <summary>Frame 0x04 — total distance + alarm bits (GotwayAdapter.java:282-338, settings-echo half omitted).</summary>
     private void DecodeFrameB(byte[] buff, bool useRatio, bool isAlexovikFw)
     {
@@ -375,9 +407,16 @@ public sealed partial class GotwayDecoder : IWheelDecoder
         int alert = buff[14] & 0xFF;
         _state.SetWheelAlarm((alert & 0x01) == 1);
 
+        // Bits 1/2 renamed from the port's original "Speed2"/"Speed1" to the manufacturer's own
+        // names (plan 35 §9, owner decision 15.08.2026: manufacturer naming over WheelLog's —
+        // begode-comparison.md §2.2, HomeFragment.java:1312-1369). These are hardware-fault bits
+        // ("mos"/"gyroscope" in the native app), not a speed-limiting notice — WheelLog mislabeled
+        // them, silently downgrading a MOSFET/gyroscope failure to a routine "over speed" line.
+        // Not observed on the wire in any of our four MTen3 recordings (mten3-*.csv) — confirmed
+        // only by reading the manufacturer's decompiled source, not by a live faulty wheel.
         var alertLine = new StringBuilder();
-        if (((alert >> 1) & 0x01) == 1) alertLine.Append("Speed2 ");
-        if (((alert >> 2) & 0x01) == 1) alertLine.Append("Speed1 ");
+        if (((alert >> 1) & 0x01) == 1) alertLine.Append("errMosfet ");
+        if (((alert >> 2) & 0x01) == 1) alertLine.Append("errGyroscope ");
         if (((alert >> 3) & 0x01) == 1) alertLine.Append("LowVoltage ");
         if (((alert >> 4) & 0x01) == 1) alertLine.Append("OverVoltage ");
         if (((alert >> 5) & 0x01) == 1) alertLine.Append("OverTemperature ");
@@ -649,6 +688,10 @@ public sealed partial class GotwayDecoder : IWheelDecoder
     [LoggerMessage(EventId = LogEvents.Decoding.BmsCellsId, EventName = LogEvents.Decoding.BmsCellsName,
         Level = LogLevel.Debug, Message = "Begode BMS cells frame. Bms#{BmsNum} Page={Page}")]
     private partial void LogBmsCells(int bmsNum, int page);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.ThirdFourthPackFrameId, EventName = LogEvents.Decoding.ThirdFourthPackFrameName,
+        Level = LogLevel.Debug, Message = "Begode pack {Pack} cells frame (type 0x05/0x06) recognized, page {Page} — not decoded, no free BMS slot")]
+    private partial void LogThirdFourthPackFrame(char pack, int page);
 
     [LoggerMessage(EventId = LogEvents.Decoding.HandshakeId, EventName = LogEvents.Decoding.HandshakeName,
         Level = LogLevel.Debug, Message = "Handshake {Kind} recognized: {Value}")]

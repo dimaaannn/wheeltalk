@@ -11,8 +11,15 @@ namespace WheelTalk.Core.Decoding;
 public static class WheelAlertWords
 {
     /// <summary>
-    /// Speed limiting (Speed1/Speed2) is the wheel doing its job during fast riding, not a fault.
-    /// TransportMode is a mode announcement, not an alarm. Neither belongs in the strip.
+    /// TransportMode is a mode announcement, not an alarm — the only word left here.
+    /// <para>
+    /// <c>Speed1</c>/<c>Speed2</c> used to live in this set too, back when bits 1/2 were
+    /// (mis)named for speed limiting. Plan 35 §9 (owner decision 15.08.2026) renamed them to the
+    /// manufacturer's own words, <c>errMosfet</c>/<c>errGyroscope</c> — real hardware faults
+    /// (begode-comparison.md §2.2), not the wheel doing its job during fast riding. They no
+    /// longer belong in Noise: a MOSFET or gyroscope failure is exactly the kind of thing the
+    /// strip exists to surface, same as <c>errHallSensors</c> already does.
+    /// </para>
     /// <para>
     /// Чего здесь нет — тоже решение, а не умолчание. <c>LowVoltage</c>, <c>OverVoltage</c> и
     /// <c>OverTemperature</c> показываются **осознанно** (владелец, 03.08.2026): это состояния, в
@@ -23,8 +30,6 @@ public static class WheelAlertWords
     /// </summary>
     private static readonly HashSet<string> Noise = new(StringComparer.Ordinal)
     {
-        "Speed1",
-        "Speed2",
         "TransportMode",
     };
 
