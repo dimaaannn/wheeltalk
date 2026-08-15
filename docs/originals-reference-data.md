@@ -900,3 +900,106 @@ MTen3 не содержит кадра с настоящим отклонени�
   словарь), их можно взять напрямую из документа при реализации; отдельного извлечения сюда не
   делал, так как задание перечисляло только семь конкретных позиций, а это восьмая и девятая, не
   запрошенные.
+
+---
+
+## 14. LeaperKim — оригинальные подписи настроек (родное приложение)
+
+**Для экрана настроек колеса** (план [`android-plan-34-wheel-settings.md`](android-plan-34-wheel-settings.md),
+замысел — [`wheel-settings-architecture.md`](wheel-settings-architecture.md)). Источник — родное
+приложение производителя (`com.laoniao.leaperkim`, не LoEUC), три места:
+`src_leaper/resources/res/values/strings.xml` (314 строк, **единственный языковой набор** — других
+`values-*` в ресурсах нет, второго перевода не существует), `res/layout/*.xml` (разметка экранов —
+чей `android:id` стоит рядом с чьим `android:text`), `sources/com/laoniao/leaperkim/setting/**`
+(код, который читает эти же строки через `getString(R.string.…)`/`R.layout.…`). Опкоды и диапазоны —
+из §7 этого документа (уже прочитаны и сверены там же).
+
+**Связь «подпись ↔ ключ» — только из разметки и кода, не из соседства строк в файле.** Два пути
+подтверждения, оба показаны ниже как ссылка на файл и строку:
+
+1. **Программный путь** (девять слайдер-экранов на общей `BaseSetProgressActivity`):
+   `getCustomTitle()` возвращает `getString(R.string.X)` — заголовок экрана жёстко связан с кодом,
+   который в этом же файле строит команду записи (см. §7.1/7.2 — тот же класс, тот же файл).
+2. **Разметочный путь** (экраны на собственной разметке — `angle_trim`, `speed_alarm`,
+   `fallProtectionAngle`, `unit`, ride-mode-3-уровня, калибровка гироскопа): заголовок —
+   `android:text="@string/X"` у `TextView android:id="@+id/tv_title"` в файле разметки, который
+   `setContentView` этого же экрана подключает явно.
+3. **Строка меню** (главный экран настроек `layout_car_control.xml`, `car_control`=«Vehicle
+   Control»): у каждой настройки — блок `android:id="@+id/layout_<ключ>"`, и **следующий же**
+   `android:text="@string/…"` внутри того же блока — это подпись пункта меню, которая может
+   отличаться от заголовка отдельного экрана той же настройки (пример — `unit`, см. таблицу).
+
+### 14.1 Таблица — двадцать позиций с найденной командой
+
+Перевод в столбце «Мой перевод» — **не оригинал**, добавлен для удобства чтения этой таблицы и
+явно отделён форматированием (курсив). Где оригинал невнятен для русскоязычного читателя —
+отдельная пометка после таблицы, не в самой строке (правило: не править чужую строку).
+
+| Ключ | Опкод | Оригинальное название | Оригинальная подсказка/предупреждение | Диапазон | Единица | *Мой перевод названия* |
+|---|---|---|---|---|---|---|
+| `pedalHardness` | 15 | **«Ride mode setting»** (`padle_soft_setting`, экран; опечатка в самом имени ресурса — «padle» вместо «paddle», значение строки без опечатки) | нет | 0..100 | % | *Настройка режима педалей* |
+| `angle_trim` | 16 (пара) | **«Angle adjustment»** (`setting_gryo_angle_adjust`) — и как заголовок отдельного экрана, и как подпись в меню (`layout_gro`) | нет | −80..80 (÷10 → °) | ° | *Настройка угла* |
+| `stopSpeed` | 17 | **«Tiltback speed setting»** (`stop_speed_setting`, экран и меню); на приборной панели то же значение подписано отдельно — **«Over-speed Tilt-back»** (`stop_speed`, `frag_second.xml:138`, только чтение) | нет | 10..120 | км/ч | *Настройка скорости отклонения педалей* |
+| `speed_alarm` | 17 (пара, коллизия с `stopSpeed`) | **«Alarm speed setting»** (`setting_speed_setting`, экран и меню); на приборной панели — **«Over-speed Alarm»** (`danger_speed`, `frag_second.xml:159`, только чтение) | нет | 10..120 | км/ч | *Настройка скорости тревоги* |
+| `stopPowerRate` | 18 | **«PWM value setting»** (`stop_power_setting`) | нет | 30..100 | % | *Настройка значения ШИМ* |
+| `screenBacklightRate` | 20 | **«Backlight adjustment»** (`screen_backlight_setting`) | нет | 0..100 | % | *Настройка подсветки экрана* |
+| `gyro` (калибровка) | 21 | **«Calibration»** (`gyrocrope_setting` — опечатка в имени ресурса, «gyrocrope» вместо «gyroscope», значение без опечатки) | кнопка меняет текст по состоянию: **«Adjust\nattitude»** (`gyro_setting_start`, ожидание) / **«Start\ncalibration»** (`gyro_setting_stop`, готово к следующему шагу) / **«Wait 1s To Stop»** (`gyro_setting_stopwaiting`, неиспользуемая третья строка — не нашёл, откуда вызывается); предупреждение-тост **«Cant set while riding!»** (`set_gro_hint`) при попытке калибровки в движении | фикс. значение `1`, состояние 0/1/2 | — | *Калибровка* |
+| `transportMode` | 22 | **«Transportation mode»** (`setting_mode`, подпись в меню, `layout_transport_mode`); в словаре строк есть и второй, не используемый в коде дубль с тем же текстом — `transport_mode` (см. §14.3) | нет | 0/1 | toggle | *Транспортный режим* |
+| `fallProtectionAngle` | 22 (пара, коллизия с `transportMode` и питанием) | **«Lateral cut off angle adjustment»** (`set_save_angle_title`, экран и меню) | нет | 35..75 | ° | *Настройка угла бокового отключения* |
+| `unit` | 23 | В меню — **«Unit switch»** (`car_unit_setting`, `layout_unit`); на отдельном экране заголовок другой — **«Unit Switch»** (`unit_switch_title`); кнопки выбора — **«km \| kph»** (`unit_switch_kilomiter`) / **«mi \| mph»** (`unit_switch_mar`) | нет | 0/1 | toggle | *Переключение единиц* |
+| `vol` (voltage_correction) | 24 | **«Voltage correction»** (`setting_vol_adjust`) | нет | −15..15 (÷10 → %) | % | *Коррекция напряжения* |
+| `lowVolMode` | 25 (коллизия с паролем) | **«Low battery mode»** (`low_power_setting`) | нет | 0/1 | toggle | *Режим низкого заряда* |
+| `highSpeedMode` | 26 | **«High speed mode»** (`high_speed_setting`) | нет | 0/1 | toggle | *Высокоскоростной режим* |
+| `keyTone` | 28 | **«Button volume adjustment»** (`key_click_cound_setting` — опечатка в имени ресурса, «cound» вместо «count», значение без опечатки) | нет | 0..100 | % | *Настройка громкости кнопок* |
+| `maxChargeVol` | 29 | **«Max charging voltage setting»** (`chareg_max_power` — опечатка в имени ресурса, «chareg» вместо «charge», значение без опечатки) | нет | 0..120 (+ смещение базового напряжения, см. §7) | В | *Настройка максимального напряжения заряда* |
+| `upOrDownSpeedHelper` | 31 | **«Acceleration and deceleration assistt»** (`acc_dec_asssit` — опечатка **в самом отображаемом тексте**: лишняя «t» в конце «assistt», и в имени ресурса «asssit» с лишней «s»; не путать с опечаткой в id — здесь опечатка именно в том, что видит пользователь) | нет | 0..100 | % | *Помощь при разгоне и торможении* |
+| `upSpeedCul` | 33 | **«Accelerometer reduction»** (`acc_reduction`) | нет | 0..100 | % | *Снижение акселерометра* |
+| `brakePressureAlarm` | 34 | **«Brake overpressure alarm setting»** (`brake_overpressure_alarm`) | нет | 80..125 | % | *Настройка тревоги избыточного торможения* |
+| Ride mode, 3 уровня (старые Sherman, `padle_soft_setting`-экран не используется) | 12 (пара) | **«Ride Mode setting»** (`ride_mode`, отдельный экран `SetRideModeActivity`, отличается от `pedalHardness`) — кнопки **«Soft»** / **«Medium»** / **«Hard»** (`mode_soft`/`mode_medium`/`mode_hard`; короткие варианты `mode_soft_short`/`mode_hard_short` — тоже «Soft»/«Hard», без сокращений в самом тексте) | нет | 1/2/3 | preset | *Настройка режима езды* |
+
+### 14.2 Действия без диапазона — тоже с оригинальными подписями
+
+Не настройки со значением, а команды-действия; оригинальные подписи находятся тем же способом
+(разметка/код), приведены для полноты, раз экран настроек соседствует с ними в меню/на приборной
+панели:
+
+| Действие | Опкод | Оригинальная подпись | Оригинальная подсказка/предупреждение |
+|---|---|---|---|
+| Гудок/сигнал | 14 (пара) | **«Alarm»** (`horn`, кнопка на главном экране, `HomepageFragment`) | нет |
+| Свет вкл/выкл | 13 (пара) | **«Light»** (`light`); индикатор состояния — **«:on»** / **«:off»** (`light_on`/`light_off`) | нет |
+| Сброс поездки (`CLEARMETER`) | 11 (старая прошивка) / 13 (новая) | **«Reset Meter»** (`reset_short_meter`, главный экран) | подтверждение: **«Are you sure to reset short meter?»** (`reset_short_meter_confirm`) |
+| Питание/удержание (10 с до выключения) | 22 (пара, коллизия) | **«Shut Down in 10s»** (`shut_in_10`) / вариант **«Close in 10s»** (`close_in_10_hint`) — обе строки есть в ресурсах, какая где именно показывается — не устанавливал | предупреждение при попытке во время езды/заряда: **«Cant Set while riding or charging»** (`set_close_in_10_hint`) |
+| Пароль/блокировка колеса | 25 (коллизия с `lowVolMode`) | **«Locking Password»** (`setting_pwd`, пункт меню) → экран **«Password Setting»** (`set_pwd`) / **«Modify Password»** (`modify_pwd`) / **«Clear Password»** (`clear_pwd`); автоблокировка — **«Auto Lock When Shutdown»** (`auto_lock`) | **«Please Input Password with 6 digits»** (`old_pwd`), **«Please Input New Password with 6 digits»** (`new_pwd`), **«Please Confirm New Password»** (`confrim_pwd` — опечатка в имени ресурса, «confrim» вместо «confirm»); ошибки: **«Password must be 6 digits»** (`password_length_error`), **«Two passwords are inconsistent»** (`password_confirm_not_same`), **«Incorrect Password,Please try again»** (`pwd_weeor` — опечатка и в имени ресурса, и, вероятно, задумывался «pwd_error»); **«No Password Set»** (`no_pwd`) |
+| Чтение журнала ошибок | 20 (коллизия с `screenBacklightRate`) | **«Upload error log»** (`setting_upload_log`, пункт меню) / **«Download Log»** (`upload_log`, кнопка на самом экране — названо противоположно пункту меню: там «Upload», тут «Download») / **«Get Latest Log»** (`get_latest_log`) | нет |
+
+### 14.3 Капкан 2 — обе несостыковки, как просили
+
+**Подписи без команды (найдены в разметке/строках, кода-отправителя нет):**
+
+- **«Long endurance mode»** (`setting_long_endurance_mode`) — строка и целая строка разметки под
+  неё существуют в `layout_setting.xml:304-316`, но у этой строки разметки
+  `android:visibility="gone"` (жёстко скрыта) и в `SettingActivity.java` нет ни одного упоминания
+  «endurance» — ни `findViewById`, ни обработчика клика. Настройка задумывалась (место в макете
+  зарезервировано), но не подключена ни к какому опкоду в этой версии приложения (сборка 59).
+- **«Limited»** (`current_speed_limit`) — используется на главном экране (`frag_home.xml:58`) как
+  живой индикатор, но ни разу не встречается в коде как `R.string.current_speed_limit` — то есть в
+  разметке подпись стоит статически, а какое поле телеметрии (или отсутствие поля) должно менять
+  рядом стоящий индикатор — из разобранного кода не определяется. Это не настройка колеса
+  (не пишется, судя по всему — читается), но подпись есть, а откуда берётся значение — нет.
+- **`transport_mode`** (строка ресурса) — дублирует по тексту («Transportation mode») реально
+  используемую `setting_mode`, но сама нигде не читается кодом (`grep` по `R.string.transport_mode`
+  не находит совпадений). Похоже на переименование в ходе разработки, где старое имя ресурса
+  осталось неиспользуемым, а не на отдельную настройку.
+
+**Команда без подписи** — не нашёл ни одной среди двадцати позиций §14.1/14.2: у каждого опкода,
+разобранного в §7, нашлась хотя бы одна оригинальная строка интерфейса. Специально искал обратный
+случай и не нашёл — фиксирую как отрицательный результат, не как пропуск.
+
+### 14.4 Прочее увиденное по пути — не относится к настройкам колеса
+
+Для полноты (не потребовалось для таблицы, но всплыло при чтении `strings.xml`): единицы
+дисплея (`unit_switch_kilomiter`/`unit_switch_mar`), опознание моделей в интерфейсе
+(`car_sherman`/`car_abrams`/`car_patton`/`car_sherman_max`/`car_sherman_s` = «Sherman»/«Abrams»/
+«Patton»/«Sherman Max»/«Sherman-S» — те же имена, что в `CAR_DATA_JSON`, `leaperkim-official-app.md`
+§5.1), общие статусы подключения и сообщения об ошибках прошивки — всё это не подписи настроек,
+переносить в этот словарь не стал.
