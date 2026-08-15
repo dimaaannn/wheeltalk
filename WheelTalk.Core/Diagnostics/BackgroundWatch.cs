@@ -1,12 +1,13 @@
 using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Services;
 
 namespace WheelTalk.Core.Diagnostics;
 
 /// <summary>
 /// Замечает, что фоновую работу остановили не мы. Пока сессия занята колесом, раз в
-/// <see cref="BackgroundBeat.Period"/> кладёт на диск короткую отметку «жив, фаза, время»; на
-/// возвращении к людям сравнивает последнюю отметку с «сейчас» и, если пропуск велик
+/// <see cref="BackgroundBeat.Period"/> кладёт на диск короткую отметку «работа шла, фаза, время»;
+/// когда работа возобновляется, сравнивает отметку с «сейчас» и, если пропуск велик
 /// (<see cref="BackgroundBeat.Missed"/>), говорит об этом — строкой в журнал всегда и один раз
 /// человеку (<see cref="TakeGap"/>).
 /// <para>
@@ -21,10 +22,20 @@ namespace WheelTalk.Core.Diagnostics;
 /// (отметка осталась в памяти).
 /// </para>
 /// <para>
+/// <b>Меряется простой работы, а не простой таймера.</b> Первая мера считала перерыв законченным
+/// на первом же тике сердцебиения — и врала вдвое: EMUI размораживает процесс на минуту-другую, а
+/// настоящая работа (кадры с колеса) не возобновляется ещё долго. Разбор полной ленты 15.08.2026
+/// поймал это дважды: 29 минут заморозки попали в журнал как 13, а слитные 74 — пятью обрывками
+/// по 65 в сумме. Поэтому перерыв закрывает <b>кадр с колеса</b> (см. <see cref="OnFrame"/>) или
+/// возвращение к людям, а тик — лишь доказательство того, что мы дышим, и то не сразу.
+/// </para>
+/// <para>
 /// <b>Ложных тревог не плодит.</b> Отметка живёт ровно столько, сколько незаконченная работа:
 /// сессия ушла в <see cref="ConnectionState.Disconnected"/> — таймер снят, файл удалён. Значит и
 /// штатное отключение, и выход из приложения, и снятие руками при неактивной фазе оставляют
-/// молчание.
+/// молчание. Выключенное колесо тоже молчания не нарушает: перерыв растёт, только пока не доказано
+/// обратное, а <see cref="BackgroundBeat.Missed"/> ровного дыхания подряд — уже доказательство
+/// (см. <see cref="Beat"/>).
 /// </para>
 /// </summary>
 public sealed partial class BackgroundWatch : IDisposable
@@ -34,11 +45,21 @@ public sealed partial class BackgroundWatch : IDisposable
     private readonly ILogger<BackgroundWatch> _logger;
     private readonly Lock _gate = new();
     private readonly IDisposable _states;
+    private readonly IDisposable _frames;
 
     private ConnectionState _phase = ConnectionState.Disconnected;
 
-    /// <summary>Наша последняя отметка — она же зеркало файла. <c>null</c> значит «не при делах».</summary>
-    private BackgroundBeat? _last;
+    /// <summary>
+    /// Миг, когда работа шла в последний раз, и дело, за которым она шла, — он же зеркало файла.
+    /// <c>null</c> значит «не при делах». От него и мерится перерыв: не от последнего тика.
+    /// </summary>
+    private BackgroundBeat? _worked;
+
+    /// <summary>Последнее сердцебиение. По нему видно оттаивание — тик, пришедший много позже срока.</summary>
+    private DateTimeOffset _beatAt;
+
+    /// <summary>С какого мига сердцебиение идёт без пропусков; сдвигается каждым оттаиванием.</summary>
+    private DateTimeOffset _awakeSince;
 
     private ITimer? _beats;
 
@@ -46,7 +67,11 @@ public sealed partial class BackgroundWatch : IDisposable
     private BackgroundGap? _unsaid;
 
     public BackgroundWatch(
-        string path, IObservable<ConnectionState> states, TimeProvider time, ILogger<BackgroundWatch> logger)
+        string path,
+        IObservable<ConnectionState> states,
+        IObservable<TelemetrySnapshot> frames,
+        TimeProvider time,
+        ILogger<BackgroundWatch> logger)
     {
         _path = path;
         _time = time;
@@ -58,6 +83,7 @@ public sealed partial class BackgroundWatch : IDisposable
         Notice(Read(), time.GetUtcNow());
 
         _states = states.Subscribe(OnState);
+        _frames = frames.Subscribe(_ => OnFrame());
     }
 
     /// <summary>
@@ -71,7 +97,10 @@ public sealed partial class BackgroundWatch : IDisposable
     {
         lock (_gate)
         {
-            NoticeOwnGap(_time.GetUtcNow());
+            // Возвращение к людям — тоже возобновление работы, и перерыв кончается здесь: процесс
+            // жив, экран в руках, а число, которое человеку сейчас покажут, расти после показа не
+            // должно — иначе следующий кадр досчитает тот же перерыв вторым сообщением.
+            WorkGoesOn(_time.GetUtcNow());
 
             var gap = _unsaid;
             _unsaid = null;
@@ -82,6 +111,7 @@ public sealed partial class BackgroundWatch : IDisposable
     public void Dispose()
     {
         _states.Dispose();
+        _frames.Dispose();
 
         lock (_gate)
         {
@@ -107,51 +137,109 @@ public sealed partial class BackgroundWatch : IDisposable
 
             _beats ??= _time.CreateTimer(_ => Beat(), null, BackgroundBeat.Period, BackgroundBeat.Period);
 
+            // Смена фазы перерыва не закрывает: погоня объявляет «Reconnecting» на каждой попытке,
+            // и оттаявший процесс успевает выкрикнуть их несколько — приняв это за работу, мы бы
+            // снова резали слитную заморозку на куски. Отметка начинается только там, где работа
+            // началась: из отключённого состояния.
+            if (_worked is { } worked)
+            {
+                _worked = worked with { Phase = state };
+                return;
+            }
+
             // Отметка в памяти — да, на диск — нет: сюда приходят потоком той стороны, что меняла
             // состояние (подключение ждут с экрана, значит это бывает и главный поток), а диску там
             // не место. Файл пишет один только таймер, и первая запись случится через период.
-            Alive(_time.GetUtcNow(), toDisk: false);
+            var now = _time.GetUtcNow();
+            _beatAt = _awakeSince = now;
+            _worked = new BackgroundBeat(now, state);
         }
     }
 
+    /// <summary>
+    /// Тик сердцебиения: отмечается на диске и решает, засчитывать ли себе работу. Сам по себе тик
+    /// её не доказывает — замороженный процесс оттаивает на минуту-другую и успевает тикнуть, — а
+    /// вот <see cref="BackgroundBeat.Missed"/> ровного дыхания подряд доказывает: столько подряд
+    /// пропускает только остановленный. Этим же и закрывается перерыв при выключенном колесе, когда
+    /// кадров не будет вовсе: молчание живого процесса — забота сторожа данных, а не наша.
+    /// </summary>
     private void Beat()
     {
-        lock (_gate) Alive(_time.GetUtcNow(), toDisk: true);
+        lock (_gate)
+        {
+            if (_worked is not { } worked) return;
+
+            var now = _time.GetUtcNow();
+
+            // Тик много позже срока — это и есть оттаявший процесс: между тиками не работал никто,
+            // и счёт ровного дыхания начинается заново.
+            if (now - _beatAt >= BackgroundBeat.Missed) _awakeSince = now;
+            _beatAt = now;
+
+            if (now - worked.At < BackgroundBeat.Missed)
+            {
+                // Работа идёт своим чередом, стоять нечему.
+                _worked = new BackgroundBeat(now, _phase);
+            }
+            else if (now - _awakeSince >= BackgroundBeat.Missed)
+            {
+                // Перерыв кончился оттаиванием, а не этим тиком: минуты, за которые процесс доказал
+                // свою жизнь, он работал — просто колесу было нечего сказать.
+                WorkResumed(_awakeSince, now);
+            }
+
+            Write(_worked.Value);
+        }
     }
 
     /// <summary>
-    /// «Живы вот в этот миг». Прежде чем записать новую отметку, считает разрыв со старой: тик,
-    /// пришедший много позже срока, — это и есть оттаявший процесс, между отметками не работал никто.
+    /// Кадр с колеса — бесспорное доказательство работы: заморозке кадры не достаются, их некому
+    /// принять. Он и закрывает перерыв, каким бы длинным тот ни был.
+    /// <para>
+    /// Замок берётся на каждом кадре, десятки раз в секунду, и это по карману: под ним два
+    /// присваивания. Раз в минуту кадр подождёт, пока тик допишет отметку, — миллисекунда, которой
+    /// никто не заметит.
+    /// </para>
     /// </summary>
-    private void Alive(DateTimeOffset now, bool toDisk)
+    private void OnFrame()
     {
-        NoticeOwnGap(now);
-
-        _last = new BackgroundBeat(now, _phase);
-        if (toDisk) Write(_last.Value);
+        lock (_gate) WorkGoesOn(_time.GetUtcNow());
     }
 
     private void StopBeating()
     {
         // Перерыв досчитывается и здесь: то, что фон стоял два часа, остаётся правдой, даже если к
         // моменту разбора райдер уже нажал «Отключить».
-        NoticeOwnGap(_time.GetUtcNow());
+        WorkGoesOn(_time.GetUtcNow());
 
         _beats?.Dispose();
         _beats = null;
-        _last = null;
+        _worked = null;
         Delete();
     }
 
-    /// <summary>Пропуск по своей же прошлой отметке — та же мера, что и на старте, только из памяти.</summary>
-    private void NoticeOwnGap(DateTimeOffset now)
-    {
-        if (_last is not { } last) return;
+    /// <summary>
+    /// Работа доказана вот сейчас — обычный случай: пришёл кадр, вернулся экран, райдер отключился.
+    /// </summary>
+    private void WorkGoesOn(DateTimeOffset now) => WorkResumed(now, now);
 
-        // Перерыв засчитывается один раз: дальше счёт идёт от этого мига, иначе один и тот же
-        // пропуск попадал бы в журнал и на тике таймера, и на возвращении экрана.
-        _last = last with { At = now };
-        Notice(last, now);
+    /// <summary>
+    /// Перерыв, если он был, кончился в <paramref name="resumedAt"/> — его и заносим. Дальше счёт
+    /// идёт от <paramref name="countFrom"/>, поэтому один и тот же пропуск не попадёт в журнал
+    /// дважды.
+    /// <para>
+    /// Два мига, а не один, ради единственного случая: перерыв, закрытый ровным дыханием, кончился
+    /// не на том тике, который это доказал, а на оттаивании — пятью минутами раньше. Считать их
+    /// простоем значило бы соврать в другую сторону: пятиминутную заморозку такой счёт превратил бы
+    /// в одиннадцатиминутную.
+    /// </para>
+    /// </summary>
+    private void WorkResumed(DateTimeOffset resumedAt, DateTimeOffset countFrom)
+    {
+        if (_worked is not { } worked) return;
+
+        _worked = new BackgroundBeat(countFrom, _phase);
+        Notice(worked, resumedAt);
     }
 
     private void Notice(BackgroundBeat? beat, DateTimeOffset now)

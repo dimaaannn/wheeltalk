@@ -1,6 +1,7 @@
-using System.Reactive.Subjects;
+﻿using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
+using WheelTalk.Core.Contracts;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Services;
 using WheelTalk.Tests.TestSupport;
@@ -19,12 +20,23 @@ namespace WheelTalk.Tests.Diagnostics;
 /// процесс на возвращении экрана). Второй проверяется <see cref="SleepyTimeProvider"/> — часы
 /// уходят вперёд, тиков нет вовсе.
 /// </para>
+/// <para>
+/// Замки (ж), (з), (и) — вторая правда, добытая разбором полной ленты 15.08.2026: мерить надо
+/// простой <b>работы</b>, а не простой своего таймера. Оттаивание без работы перерыв не закрывает,
+/// иначе числа занижены (13 минут вместо 29) и слитная заморозка разваливается на куски (74 минуты
+/// пятью обрывками).
+/// </para>
 /// </summary>
 public class BackgroundWatchTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "wheeltalk-beat-" + Guid.NewGuid().ToString("N"));
 
+    /// <summary>Кадры с колеса — единственный признак того, что работа и вправду идёт.</summary>
+    private readonly Subject<TelemetrySnapshot> _frames = new();
+
     private string BeatFile => System.IO.Path.Combine(_folder, "background.beat");
+
+    private void Frame() => _frames.OnNext(new TelemetrySnapshot());
 
     public void Dispose()
     {
@@ -40,7 +52,7 @@ public class BackgroundWatchTests : IDisposable
         var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
 
         // Процесс с незаконченной работой: связь оборвалась, идёт погоня.
-        var killed = new BackgroundWatch(BeatFile, states, time, new CapturingLogger<BackgroundWatch>());
+        var killed = new BackgroundWatch(BeatFile, states, _frames, time, new CapturingLogger<BackgroundWatch>());
         states.OnNext(ConnectionState.Reconnecting);
         time.Advance(BackgroundBeat.Period);
         killed.Dispose();
@@ -51,7 +63,7 @@ public class BackgroundWatchTests : IDisposable
         time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromMinutes(37));
         var logger = new CapturingLogger<BackgroundWatch>();
         using var restarted = new BackgroundWatch(
-            BeatFile, new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected), time, logger);
+            BeatFile, new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected), _frames, time, logger);
 
         var gap = restarted.TakeGap();
 
@@ -78,7 +90,7 @@ public class BackgroundWatchTests : IDisposable
         var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
         var logger = new CapturingLogger<BackgroundWatch>();
 
-        using var watch = new BackgroundWatch(BeatFile, states, time, logger);
+        using var watch = new BackgroundWatch(BeatFile, states, _frames, time, logger);
         states.OnNext(ConnectionState.Reconnecting);
 
         time.Sleep(TimeSpan.FromHours(2) + TimeSpan.FromMinutes(36));
@@ -103,7 +115,7 @@ public class BackgroundWatchTests : IDisposable
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 8, 13, 20, 0, 0, TimeSpan.Zero));
         var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
 
-        var stopped = new BackgroundWatch(BeatFile, states, time, new CapturingLogger<BackgroundWatch>());
+        var stopped = new BackgroundWatch(BeatFile, states, _frames, time, new CapturingLogger<BackgroundWatch>());
         states.OnNext(ConnectionState.Connected);
         time.Advance(BackgroundBeat.Period);
         Assert.True(File.Exists(BeatFile));
@@ -119,7 +131,7 @@ public class BackgroundWatchTests : IDisposable
         time.Advance(TimeSpan.FromHours(3));
         var logger = new CapturingLogger<BackgroundWatch>();
         using var restarted = new BackgroundWatch(
-            BeatFile, new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected), time, logger);
+            BeatFile, new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected), _frames, time, logger);
 
         Assert.Null(restarted.TakeGap());
         Assert.Empty(logger.Entries);
@@ -132,7 +144,7 @@ public class BackgroundWatchTests : IDisposable
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 8, 13, 20, 0, 0, TimeSpan.Zero));
         var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
 
-        using var watch = new BackgroundWatch(BeatFile, states, time, new CapturingLogger<BackgroundWatch>());
+        using var watch = new BackgroundWatch(BeatFile, states, _frames, time, new CapturingLogger<BackgroundWatch>());
 
         time.Advance(BackgroundBeat.Period * 10);
 
@@ -149,12 +161,121 @@ public class BackgroundWatchTests : IDisposable
         var time = new SleepyTimeProvider();
         var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
 
-        using var watch = new BackgroundWatch(BeatFile, states, time, new CapturingLogger<BackgroundWatch>());
+        using var watch = new BackgroundWatch(BeatFile, states, _frames, time, new CapturingLogger<BackgroundWatch>());
         states.OnNext(ConnectionState.Connected);
 
         time.Sleep(TimeSpan.FromMinutes(2));
 
         Assert.Null(watch.TakeGap());
+    }
+
+    /// <summary>
+    /// (ж) Слитная заморозка не разваливается на куски. EMUI отпускает процесс на минуту-другую и
+    /// морозит снова — работа при этом не возобновляется: колесо говорит, а слушать по-прежнему
+    /// некому. Прежняя мера считала такой тик концом перерыва, и 74 минуты простоя легли в журнал
+    /// 15.08.2026 пятью обрывками. Теперь перерыв закрывает кадр с колеса, и сообщение выходит одно
+    /// — с полной длительностью.
+    /// </summary>
+    [Fact]
+    public void One_freeze_broken_by_a_brief_thaw_is_still_one_stop()
+    {
+        var time = new SleepyTimeProvider();
+        var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
+        var logger = new CapturingLogger<BackgroundWatch>();
+
+        using var watch = new BackgroundWatch(BeatFile, states, _frames, time, logger);
+        states.OnNext(ConnectionState.Connected);
+        var frozenAt = time.GetUtcNow();
+
+        time.Sleep(TimeSpan.FromMinutes(40));
+
+        // Оттаяло на минуту: два тика подряд — и снова заморозка. Кадров за эту минуту не было.
+        time.Tick();
+        time.Sleep(TimeSpan.FromMinutes(1));
+        time.Tick();
+
+        time.Sleep(TimeSpan.FromMinutes(33));
+
+        // А вот теперь работа и вправду возобновилась.
+        Frame();
+
+        var gap = watch.TakeGap();
+
+        Assert.NotNull(gap);
+        Assert.Equal(74, (int)gap.Value.Missed.TotalMinutes);
+        Assert.Equal(frozenAt + TimeSpan.FromMinutes(74), gap.Value.NoticedAt);
+        Assert.Single(logger.Entries, entry => entry.Message.Contains("стояла 74 мин"));
+    }
+
+    /// <summary>
+    /// (з) Считается простой <b>работы</b>, а не простой таймера. Разница между ними и есть та ложь,
+    /// из-за которой 15.08.2026 в журнале стояло 13 минут вместо двадцати девяти: процесс оттаял и
+    /// тикнул, но кадры с колеса пошли только через четверть часа — и все эти минуты приложение с
+    /// колесом не разговаривало.
+    /// </summary>
+    [Fact]
+    public void The_number_is_the_idle_time_of_work_not_of_the_timer()
+    {
+        var time = new SleepyTimeProvider();
+        var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
+        var logger = new CapturingLogger<BackgroundWatch>();
+
+        using var watch = new BackgroundWatch(BeatFile, states, _frames, time, logger);
+        states.OnNext(ConnectionState.Connected);
+        var frozenAt = time.GetUtcNow();
+
+        time.Sleep(TimeSpan.FromMinutes(13));
+        time.Tick();
+
+        time.Sleep(TimeSpan.FromMinutes(15));
+        Frame();
+
+        var gap = watch.TakeGap();
+
+        Assert.NotNull(gap);
+        Assert.Equal(28, (int)gap.Value.Missed.TotalMinutes);
+        Assert.Equal(frozenAt + TimeSpan.FromMinutes(28), gap.Value.NoticedAt);
+        Assert.Single(logger.Entries, entry => entry.Message.Contains("стояла 28 мин"));
+    }
+
+    /// <summary>
+    /// (и) Выключенное колесо не выдумывает простоя. Кадров нет и не будет — райдер выключил колесо
+    /// и забыл отключиться, — но процесс жив и гоняется за ним как ни в чём не бывало. Растить
+    /// перерыв на этом значило бы соврать в другую сторону: к утру в кармане набежало бы восемь
+    /// часов «остановленного фона».
+    /// <para>
+    /// Мера доказательства — своё же ровное сердцебиение: <see cref="BackgroundBeat.Missed"/> тиков
+    /// в срок подряд бывают только у работающего. Двадцать минут настоящей заморозки при этом
+    /// названы полностью, и концом их назван миг оттаивания, а не та минута, на которой процесс
+    /// это доказал.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_wheel_that_is_simply_off_grows_no_phantom_stop()
+    {
+        var time = new SleepyTimeProvider();
+        var states = new BehaviorSubject<ConnectionState>(ConnectionState.Disconnected);
+        var logger = new CapturingLogger<BackgroundWatch>();
+
+        using var watch = new BackgroundWatch(BeatFile, states, _frames, time, logger);
+        states.OnNext(ConnectionState.Reconnecting);
+        var frozenAt = time.GetUtcNow();
+
+        time.Sleep(TimeSpan.FromMinutes(20));
+
+        // Отпустили насовсем: сердцебиение идёт минута в минуту полтора часа. Кадров нет ни одного.
+        for (int minute = 0; minute < 90; minute++)
+        {
+            time.Sleep(TimeSpan.FromMinutes(1));
+            time.Tick();
+        }
+
+        var gap = watch.TakeGap();
+
+        Assert.NotNull(gap);
+        Assert.Equal(21, (int)gap.Value.Missed.TotalMinutes);
+        Assert.Equal(frozenAt + TimeSpan.FromMinutes(21), gap.Value.NoticedAt);
+        Assert.Single(logger.Entries, entry => entry.Message.Contains("Background.Stopped"));
     }
 
     /// <summary>Отметка читается такой же, какой записана, — иначе следующий запуск судит по мусору.</summary>
