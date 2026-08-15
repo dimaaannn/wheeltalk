@@ -119,6 +119,7 @@
   <data name="SectionChannels" xml:space="preserve"><value>Чем предупреждать</value></data>
   <data name="SectionAlarmSignal" xml:space="preserve"><value>Сигнал тревоги</value></data>
   <data name="SectionCellVoltage" xml:space="preserve"><value>Вольт на ячейку</value></data>
+  <data name="SectionPolling" xml:space="preserve"><value>Опрос колеса</value></data>
   <data name="SettingGotwayNegative" xml:space="preserve"><value>Знак скорости и тока</value></data>
   <data name="SettingGotwayNegativeHint" xml:space="preserve"><value>Если при езде вперёд скорость и ток показываются отрицательными — переключите на другой вариант.</value></data>
   <data name="SettingSignStraight" xml:space="preserve"><value>Прямой</value></data>
@@ -137,6 +138,8 @@
   <data name="SettingUseRatioHint" xml:space="preserve"><value>Пробег и скорость на платах MCM считаются с другим коэффициентом</value></data>
   <data name="SettingInMotionPassword" xml:space="preserve"><value>Пароль колеса</value></data>
   <data name="SettingInMotionPasswordHint" xml:space="preserve"><value>Шесть цифр, задаются в родном приложении InMotion — без них колесо не отвечает.</value></data>
+  <data name="SettingInMotionPollPeriod" xml:space="preserve"><value>Шаг опроса InMotion V2</value></data>
+  <data name="SettingInMotionPollPeriodHint" xml:space="preserve"><value>Пауза между запросами к колесу. Заводские 250 мс — четыре запроса в секунду. Больше значение — реже показания и меньше нагрузка на связь. Действует со следующего подключения.</value></data>
   <data name="SettingUseBetterPercents" xml:space="preserve"><value>Улучшенные проценты заряда</value></data>
   <data name="SettingUseBetterPercentsHint" xml:space="preserve"><value>Кривая ближе к настоящей, чем линейная по напряжению</value></data>
   <data name="SettingCustomPercents" xml:space="preserve"><value>Своя кривая заряда</value></data>
@@ -204,6 +207,7 @@
   <data name="UnitVolts" xml:space="preserve"><value>В</value></data>
   <data name="UnitPercent" xml:space="preserve"><value>%</value></data>
   <data name="UnitSeconds" xml:space="preserve"><value>с</value></data>
+  <data name="UnitMilliseconds" xml:space="preserve"><value>мс</value></data>
   <data name="UnitWattHours" xml:space="preserve"><value>Вт·ч</value></data>
   <data name="RecordingExportDone" xml:space="preserve"><value>Выгружено · {0}</value></data>
   <data name="RecordingExportFailed" xml:space="preserve"><value>Не удалось выгрузить: {0}</value></data>

@@ -23,6 +23,14 @@ namespace WheelTalk.Core.Decoding;
 /// <c>WheelSession</c>'s doc comment).
 /// </para>
 /// <para>
+/// <b>В бою этот таймер молчит.</b> Живое колесо семейства V2 всегда приходит через надстройку
+/// <see cref="InMotionDecoderV2_1"/> (<c>WheelSession.cs:409</c>), а она отдаёт порту часы без
+/// таймеров (<see cref="Ports.TimerlessTimeProvider"/>) и ведёт опрос сама — по времени, а не по
+/// ответу колеса (план 36 Л3). Сам порт не тронут ни знаком и остаётся сверяемым 1:1: описанный
+/// здесь тик 25 мс — это то, что делает <c>InmotionAdapterV2.java</c>, и то, что произойдёт, если
+/// декодер поднять напрямую (<see cref="Contracts.WheelProtocol.InMotionV2"/>, консоль и тесты).
+/// </para>
+/// <para>
 /// Scope of this port (narrower than V1's, for a specific reason — see below):
 ///   - Full live-telemetry path for every model family the original supports: six distinct
 ///     real-time-info layouts (<c>parseRealTimeInfoV11</c> pre-1.4 firmware,

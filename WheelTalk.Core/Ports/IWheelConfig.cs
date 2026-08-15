@@ -45,6 +45,15 @@ public interface IWheelConfig
     /// <summary>6-digit wheel-layer PIN (AppConfig.passwordForWheel) — sent on connect, six times, before the wheel answers with telemetry.</summary>
     string InMotionPassword { get; }
 
+    /// <summary>
+    /// Шаг опроса InMotion V2, мс: пауза между двумя исходящими запросами (план 36 Л3). Своего в
+    /// оригинале нет — там опроса по времени нет вовсе. Круг из трёх запросов (телеметрия,
+    /// одометр, телеметрия) при заводских 250 мс укладывается в 750 мс, то есть даёт темп
+    /// DarknessBot: 4 сообщения в секунду. Читается на подключении и держится всю сессию; за
+    /// границы 250…1000 мс не выпускается — <c>InMotionDecoderV2_1.PollPeriod</c>.
+    /// </summary>
+    int InMotionPollPeriodMs { get; }
+
     // (B) reported/derived — written by decoders
     bool LightEnabled { get; set; }
     /// <summary>Set true once the connected Begode firmware is identified as Alexovik's SmirnoV custom firmware ("BF" handshake).</summary>

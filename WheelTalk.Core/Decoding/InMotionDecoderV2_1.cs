@@ -30,9 +30,18 @@ namespace WheelTalk.Core.Decoding;
 ///     пока раскладка не известна.
 /// </para>
 /// <para>
-/// Опрос колеса при этом не выключается ни в одном из случаев: таймер V2 продолжает просить
+/// Опрос колеса при этом не выключается ни в одном из случаев: надстройка продолжает просить
 /// <c>RealTimeInfo</c>, и кадры продолжают приходить — их пишет сырой дамп (он снимает транспорт,
 /// до декодера). Именно по такому дампу раскладка новой модели и восстанавливается.
+/// </para>
+/// <para>
+/// <b>Опрос ведёт надстройка</b> (план 36 Л3, мастер-план §8). У порта он ответозависимый: тик
+/// 25 мс, а счётчик обнуляется на каждом принятом кадре (<c>InMotionDecoderV2.cs:93-95,154</c>) —
+/// то есть чем быстрее отвечает колесо, тем чаще мы его спрашиваем, 16–40 сообщений в секунду
+/// против 1–2 у производителя и 4–5 у DarknessBot. Здесь опрос <b>времязависимый</b>: приём кадра
+/// не запускает ничего, следующий запрос уходит по своему сроку — см. <see cref="Poll"/>. Порт при
+/// этом не тронут ни знаком: ему отданы часы без таймеров
+/// (<see cref="Ports.TimerlessTimeProvider"/>), и его собственный опрос молчит.
 /// </para>
 /// </summary>
 public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
@@ -57,11 +66,45 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
         Unknown,
     }
 
+    /// <summary>Ступени лестницы опроса — те же и в том же порядке, что у порта
+    /// (<c>InMotionDecoderV2.OnKeepAliveTick</c>): пока колесо себя не назвало, телеметрию просить
+    /// не о чем.</summary>
+    private const int StageCarType = 0;
+    private const int StageSerial = 1;
+    private const int StageVersions = 2;
+    private const int StageSettings = 3;
+    private const int StageUselessData = 4;
+    private const int StageCycle = 5;
+
+    /// <summary>
+    /// Круг установившегося опроса: телеметрия, одометр, телеметрия. Ровно так устроен круг
+    /// DarknessBot (телеметрия дважды за круг, общий пробег однажды), и это <b>неразделимая часть</b>
+    /// правки: у порта телеметрия и статистика чередуются один к одному, и если сменить только
+    /// принцип, телеметрия упала бы вдвое против нынешнего (мастер-план §8.2). При заводских 250 мс
+    /// круг занимает 750 мс: 4 запроса в секунду, из них телеметрия — 2,7.
+    /// </summary>
+    private const int CycleLength = 3;
+    private const int CycleStatsStep = 1;
+
+    /// <summary>Границы шага опроса — как у LoEUC, чей период тоже настройка. Ниже 250 мс начинается
+    /// наша же прежняя болезнь, выше 1000 показания становятся ступенчатыми.</summary>
+    private const int MinPollPeriodMs = 250;
+    private const int MaxPollPeriodMs = 1000;
+
+    /// <summary>Пауза до первого запроса: столько же ждёт порт и столько же — круг DarknessBot.</summary>
+    private static readonly TimeSpan FirstRequestDelay = TimeSpan.FromMilliseconds(100);
+
     private readonly InMotionDecoderV2 _v2;
     private readonly InMotionV2Unpacker _unpacker;
     private readonly WheelState _state;
     private readonly IWheelConfig _config;
     private readonly ILogger<InMotionDecoderV2_1> _logger;
+    private readonly ITimer _pollTimer;
+
+    /// <summary>Ступень лестницы; дошла до <see cref="StageCycle"/> — дальше круг без конца.</summary>
+    private int _stage;
+    private int _cycleStep;
+    private bool _carTypeAnswered;
 
     /// <summary>Кадр как он пришёл с провода, со всеми экранирующими <c>0xA5</c>: в V2 отдаётся
     /// именно он, иначе распаковщик V2 не соберёт то же самое.</summary>
@@ -87,9 +130,73 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
         _config = config;
         _logger = loggerFactory.CreateLogger<InMotionDecoderV2_1>();
         _unpacker = new InMotionV2Unpacker(loggerFactory.CreateLogger<InMotionDecoderV2>());
-        _v2 = new InMotionDecoderV2(state, config, timeProvider, loggerFactory.CreateLogger<InMotionDecoderV2>());
+
+        // Часы без таймеров: опрос порта молчит, расписание ведёт эта надстройка (см. doc класса).
+        // Команды порт по-прежнему строит и шлёт, поэтому подписка на его записи остаётся.
+        _v2 = new InMotionDecoderV2(state, config, new TimerlessTimeProvider(timeProvider),
+            loggerFactory.CreateLogger<InMotionDecoderV2>());
         _v2.WriteRequested += bytes => WriteRequested?.Invoke(bytes);
+
+        // Часы опроса. Шаг берётся из настройки в этот момент и держится всё подключение: правка
+        // настройки действует со следующего разговора с колесом.
+        _pollTimer = timeProvider.CreateTimer(_ => Poll(), null, FirstRequestDelay, PollPeriod);
     }
+
+    /// <summary>
+    /// Шаг опроса: <b>ровно один запрос</b>, что бы ни происходило на приёме. Здесь и держится вся
+    /// правка — отправку заводит таймер, а не кадр. Ответ колеса двигает ступень лестницы
+    /// (<see cref="NextRequest"/>), но темпа коснуться не может: сколько бы кадров ни пришло между
+    /// тиками, запрос уйдёт один.
+    /// </summary>
+    private void Poll() => RequestWrite(NextRequest());
+
+    /// <summary>Шаг опроса из настройки, приведённый к разумным границам.</summary>
+    private TimeSpan PollPeriod =>
+        TimeSpan.FromMilliseconds(Math.Clamp(_config.InMotionPollPeriodMs, MinPollPeriodMs, MaxPollPeriodMs));
+
+    /// <summary>
+    /// Что спросить на этом шаге. Лестница — из порта, ступень в ступень: тип колеса и серийник
+    /// переспрашиваются, пока колесо не ответит (без них раскладка телеметрии неизвестна), версии,
+    /// настройки и «бесполезные данные» спрашиваются по разу. Дальше расходимся: у порта телеметрия
+    /// и статистика чередуются один к одному, здесь — круг DarknessBot, где одометр спрашивается
+    /// однажды за круг (<see cref="CycleLength"/>).
+    /// <para>
+    /// Ступень двигает ответ колеса, и это не возврат ответозависимости: от ответа зависит
+    /// <b>что</b> спросят, а <b>когда</b> — только от таймера. Проверяется замком
+    /// <c>InMotionPollTests</c>: два прогона по виртуальному времени, с ответами и без, дают одно и
+    /// то же число исходящих.
+    /// </para>
+    /// </summary>
+    private byte[] NextRequest()
+    {
+        if (_stage == StageCarType && _carTypeAnswered) _stage = StageSerial;
+        if (_stage == StageSerial && _state.Serial.Length > 0) _stage = StageVersions;
+
+        switch (_stage)
+        {
+            case StageCarType:
+                return InMotionV2Message.GetCarType().WriteBuffer();
+            case StageSerial:
+                return InMotionV2Message.GetSerialNumber().WriteBuffer();
+            case StageVersions:
+                _stage = StageSettings;
+                return InMotionV2Message.GetVersions().WriteBuffer();
+            case StageSettings:
+                _stage = StageUselessData;
+                return InMotionV2Message.GetCurrentSettings().WriteBuffer();
+            case StageUselessData:
+                _stage = StageCycle;
+                return InMotionV2Message.GetUselessData().WriteBuffer();
+            default:
+                int step = _cycleStep;
+                _cycleStep = (step + 1) % CycleLength;
+                return step == CycleStatsStep
+                    ? InMotionV2Message.GetStatistics().WriteBuffer()
+                    : InMotionV2Message.GetRealTimeData().WriteBuffer();
+        }
+    }
+
+    private void RequestWrite(byte[] bytes) => WriteRequested?.Invoke(bytes);
 
     public bool IsReady => _v2.IsReady;
 
@@ -208,6 +315,10 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
 
     private void RememberModel(byte series, byte type)
     {
+        // Колесо назвалось — лестнице опроса есть куда шагнуть. Сам шаг делает NextRequest, и
+        // делает его по таймеру: ответ решает, что спросят, но не когда.
+        _carTypeAnswered = true;
+
         var model = InMotionV2Models.FindById(series, type);
         _layout = model != InMotionV2Model.Unknown ? Layout.Original
             : series == P6Series && type == P6Type ? Layout.P6
@@ -238,7 +349,11 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
 
     public byte[]? BuildCalibrate() => _v2.BuildCalibrate();
 
-    public void Dispose() => _v2.Dispose();
+    public void Dispose()
+    {
+        _pollTimer.Dispose();
+        _v2.Dispose();
+    }
 
     [LoggerMessage(EventId = LogEvents.Decoding.ImV2CarTypeId, EventName = LogEvents.Decoding.ImV2CarTypeName,
         Level = LogLevel.Information, Message = "InMotion car type {Series}, {Type} — {Model}")]

@@ -32,4 +32,7 @@ public sealed class AppWheelConfig : IWheelConfig
     // empty string would throw. Six zeros is a wheel that never got its owner's real PIN, not a
     // crash.
     public string InMotionPassword { get; set; } = "000000";
+
+    /// <summary>Шаг опроса InMotion V2 — заводские 250 мс дают круг 750 мс, темп DarknessBot.</summary>
+    public int InMotionPollPeriodMs { get; set; } = 250;
 }

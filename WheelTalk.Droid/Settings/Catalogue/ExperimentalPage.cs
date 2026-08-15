@@ -102,6 +102,31 @@ internal static class ExperimentalPage
                 Apply = text => previewAlarm(SettingsCatalogue.ParseNumber(text) / 100),
             },
 
+            // ---- Опрос InMotion (план 36 Л3) ---------------------------------------------
+            //
+            // Пауза между двумя запросами к колесу. Прежде опрос был ответозависимым — колесо
+            // отвечало быстрее, мы спрашивали чаще, — и разгонялся до 16–40 сообщений в секунду
+            // против 4–5 у DarknessBot. Теперь темп задаёт время, и это число — весь темп.
+            //
+            // Ручка заведена, чтобы подобрать шаг на живом колесе без пересборки (так же поступает
+            // LoEUC): границы её те же, 250…1000 мс. Заводские 250 дают круг «телеметрия, одометр,
+            // телеметрия» за 750 мс — темп DarknessBot.
+            new()
+            {
+                Key = "WheelConfig:InMotionPollPeriodMs",
+                Kind = SettingKind.Number,
+                Page = SettingsPage.Experimental,
+                SectionKey = "SectionPolling",
+                LabelKey = "SettingInMotionPollPeriod",
+                HintKey = "SettingInMotionPollPeriodHint",
+                UnitKey = "UnitMilliseconds",
+                Minimum = 250,
+                Maximum = 1000,
+                Step = 50,
+                Current = () => SettingsCatalogue.Whole(wheel.InMotionPollPeriodMs),
+                Apply = text => wheel.InMotionPollPeriodMs = (int)SettingsCatalogue.ParseNumber(text),
+            },
+
             // ---- Вольт на банку (план 27 §27.4) ------------------------------------------
             //
             // Ряд ячеек — верхняя ступень каскада: задан человеком — бьёт и умный BMS, и знание

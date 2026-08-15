@@ -31,4 +31,5 @@ public sealed class LabWheelConfig : IWheelConfig
     public string GotwayVoltage { get; set; } = "1";
     public bool IsAlexovikFW { get; set; }
     public string InMotionPassword { get; set; } = "000000";
+    public int InMotionPollPeriodMs { get; set; } = 250;
 }
