@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using WheelTalk.Core.Contracts;
+using WheelTalk.Core.Decoding;
 using WheelTalk.Core.Diagnostics;
 using WheelTalk.Core.Ports;
 
@@ -163,6 +164,24 @@ public sealed partial class WheelService : IDisposable
             WheelCommand.SetPedalsMode p => protocolDecoder.BuildUpdatePedalsMode(p.Mode),
             WheelCommand.ResetTrip => protocolDecoder.BuildResetTrip(),
             WheelCommand.Calibrate => protocolDecoder.BuildCalibrate(),
+
+            // Запись настроек умеет пока один протокол, и спрашиваем мы о ней так же, как
+            // WheelSession спрашивает о пароле, — примеркой интерфейса. Декодер, который такого
+            // не умеет, отдаёт null, и команда штатно пропускается с записью в журнал. Обобщать
+            // механизм заранее незачем: потребитель ровно один.
+            WheelCommand.SetUnitSystem c => VeteranSettings(protocolDecoder)?.BuildSetUnitSystem(c.Miles),
+            WheelCommand.SetHighSpeedMode c => VeteranSettings(protocolDecoder)?.BuildSetHighSpeedMode(c.Enabled),
+            WheelCommand.SetKeyToneVolume c => VeteranSettings(protocolDecoder)?.BuildSetKeyToneVolume(c.Percent),
+            WheelCommand.SetMaxChargeVoltage c => VeteranSettings(protocolDecoder)?.BuildSetMaxChargeVoltage(c.Value),
+            WheelCommand.SetAccelerationHelper c => VeteranSettings(protocolDecoder)?.BuildSetAccelerationHelper(c.Percent),
+            WheelCommand.SetAccelerationReduction c => VeteranSettings(protocolDecoder)?.BuildSetAccelerationReduction(c.Percent),
+            WheelCommand.SetBrakeOverpressureAlarm c => VeteranSettings(protocolDecoder)?.BuildSetBrakeOverpressureAlarm(c.Percent),
+            WheelCommand.SetVoltageCorrection c => VeteranSettings(protocolDecoder)?.BuildSetVoltageCorrection(c.TenthsOfPercent),
+            WheelCommand.SetStopSpeed c => VeteranSettings(protocolDecoder)?.BuildSetStopSpeed(c.SpeedKmh),
+            WheelCommand.SetSpeedAlarm c => VeteranSettings(protocolDecoder)?.BuildSetSpeedAlarm(c.SpeedKmh),
+            WheelCommand.SetStopPower c => VeteranSettings(protocolDecoder)?.BuildSetStopPower(c.Percent),
+            WheelCommand.SetScreenBacklight c => VeteranSettings(protocolDecoder)?.BuildSetScreenBacklight(c.Percent),
+
             _ => null,
         };
 
@@ -194,6 +213,9 @@ public sealed partial class WheelService : IDisposable
             LogCmdSent(cmd, Convert.ToHexString(bytes));
         }
     }
+
+    /// <summary>Умеет ли этот декодер писать настройки в колесо. Сегодня умеет один — Veteran.</summary>
+    private static IVeteranSettingsCommands? VeteranSettings(IWheelDecoder decoder) => decoder as IVeteranSettingsCommands;
 
     /// <summary>«Сброс максимумов» — see <see cref="Decoder.ResetPeaks"/>. Purely local, no BLE write.</summary>
     public void ResetPeaks() => _decoder.ResetPeaks();
