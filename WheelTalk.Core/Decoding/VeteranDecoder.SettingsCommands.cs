@@ -98,6 +98,27 @@ public sealed partial class VeteranDecoder : IVeteranSettingsCommands
         return CombineFrames(legacy, modern);
     }
 
+    // --- Только для новых поколений: команда, которой у старых колёс нет вовсе ---
+
+    public PedalGeneration Pedals => PedalGenerations.FromProtocolVersion(ProtocolVersion);
+
+    /// <summary>
+    /// Жёсткость педалей плавной шкалой, опкод 15 (<c>PedalSoftnessSettingActivity.java:37</c>,
+    /// диапазон — <c>BaseSetProgressActivity.java:46</c> с <c>getProgressMax()==100</c> и
+    /// тождественным <c>progressToCmdValue</c>).
+    /// <para>
+    /// Отказ здесь двойной, и второе условие важнее первого: колесу не того поколения плавной
+    /// шкалы не существует — старый Sherman этот опкод не понимает, а Oryx/Lynx S/Nosfet не назвал
+    /// нам никто (§5.3 плана). Гейт стоит в билдере, а не у вызывающего: билдер — единственное
+    /// место, которое знает версию протокола этого самого колеса, и защищает он всех вызывающих
+    /// сразу, а не одного.
+    /// </para>
+    /// </summary>
+    public byte[]? BuildSetPedalHardness(int percent) =>
+        Pedals == PedalGeneration.Continuous && InRange(percent, 0, 100)
+            ? BuildSettingWrite(opcode: 15, percent)
+            : null;
+
     // --- Общая сборка ---
 
     /// <summary>
@@ -114,8 +135,9 @@ public sealed partial class VeteranDecoder : IVeteranSettingsCommands
     {
         // Число заполнителей выведено из инварианта «длина кадра = опкод» (§4 плана): 4 байта
         // заголовка + опкод + b5 + b6 + N заполнителей + значение + 4 байта CRC = opcode, отсюда
-        // N = opcode − 12. Сходится со всеми тринадцатью литералами производителя: 17→5, 18→6,
+        // N = opcode − 12. Сходится со всеми четырнадцатью литералами производителя: 15→3, 17→5, 18→6,
         // 20→8, 21→9, 23→11, 24→12, 25→13, 26→14, 28→16, 29→17, 31→19, 33→21, 34→22.
+        // (15 — жёсткость педалей: {…,15,1,2,MIN,MIN,MIN,значение}, три заполнителя.)
         byte[] tail = new byte[opcode - 9]; // b5 + b6 + заполнители + значение
         tail[0] = 1;
         tail[1] = SettingWriteMarker;

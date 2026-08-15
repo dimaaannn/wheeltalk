@@ -47,4 +47,9 @@ public abstract record WheelCommand
     public sealed record SetScreenBacklight(int Percent) : WheelCommand;
     /// <summary>Режим низкого напряжения (тумблер) — опкод 25, тот же, что у записи пароля.</summary>
     public sealed record SetLowVoltageMode(bool Enabled) : WheelCommand;
+
+    /// <summary>Жёсткость педалей плавной шкалой, 0..100 — вторая, «новая» форма той же настройки,
+    /// что <see cref="SetPedalsMode"/> задаёт тремя положениями. Обе вместе колесу не шлются: какая
+    /// из двух ему подходит, решает <c>PedalGeneration</c> (план §5.3).</summary>
+    public sealed record SetPedalHardness(int Percent) : WheelCommand;
 }

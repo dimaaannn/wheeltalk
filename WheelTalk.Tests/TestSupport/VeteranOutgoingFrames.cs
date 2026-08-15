@@ -53,6 +53,10 @@ public static class VeteranOutgoingFrames
             yield return wheel.BuildSetStopSpeed(v)!;
             yield return wheel.BuildSetSpeedAlarm(v)!;
         }
+        // Жёсткость педалей строится только колесом нового поколения (план §5.3) — потому замки и
+        // берут колесо из NewProtocolWheel(), а не пустой харнесс: на старом эта команда молчит, и
+        // молча же выпала бы из-под обоих замков.
+        for (int v = 0; v <= 100; v++) yield return wheel.BuildSetPedalHardness(v)!;
     }
 
     /// <summary>Команды старого порта <c>VeteranAdapter</c> — те, что были у нас до записи настроек.

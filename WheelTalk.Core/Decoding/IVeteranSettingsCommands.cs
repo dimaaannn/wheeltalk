@@ -85,4 +85,19 @@ public interface IVeteranSettingsCommands
     /// построитель синхронизации времени и прибавляет к его опкоду 7, оттого и b5/b6 у неё чужие).
     /// Пароль запрещён навсегда (план §8) — но запрещена комбинация, а не опкод.</summary>
     byte[] BuildSetLowVoltageMode(bool enabled);
+
+    // --- Только для новых поколений (§1.6, §5.3) ---
+
+    /// <summary>Какую из двух педальных команд вообще принимает это колесо — выводится из версии
+    /// протокола (<see cref="PedalGenerations.FromProtocolVersion"/>). Спрашивает тот, кто строит
+    /// <b>чужую</b> педальную команду: плавную шкалу отсеивает сам
+    /// <see cref="BuildSetPedalHardness"/>, а три положения строит порт WheelLog, который о
+    /// поколениях не знает.</summary>
+    PedalGeneration Pedals { get; }
+
+    /// <summary>Жёсткость педалей плавной шкалой, 0..100. Опкод 15/<c>0x0F</c>, b6=2 —
+    /// <c>PedalSoftnessSettingActivity.java:37</c>. <c>null</c> не только вне диапазона, но и на
+    /// колесе, чьё поколение не <see cref="PedalGeneration.Continuous"/>: у остальных этой
+    /// настройки нет либо мы о ней ничего не знаем.</summary>
+    byte[]? BuildSetPedalHardness(int percent);
 }
