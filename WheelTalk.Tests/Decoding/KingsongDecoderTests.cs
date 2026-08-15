@@ -1,3 +1,4 @@
+using WheelTalk.Core.Decoding;
 using WheelTalk.Tests.TestSupport;
 
 namespace WheelTalk.Tests.Decoding;
@@ -83,17 +84,49 @@ public class KingsongDecoderTests
         Assert.Equal("King1234567890123", snapshot.Serial.TrimEnd('\0'));
     }
 
+    /// <summary>
+    /// Frame 0xB5 — four 16-bit fields (speedLevel1/2/3, waneSpeed), plan 35 §10, port-deviations.md.
+    /// Owner decision (plan 21 §7 q3): alarm tiers/tiltback are not ported — the wheel beeps on its
+    /// own thresholds, set from the stock app. This frame is still recognized (newDataFound stays
+    /// true, matching the original) but nothing in it is <see cref="WheelState"/> telemetry, so
+    /// nothing is written there — the parsed fields are only visible via <see cref="KingsongDecoder.KsAlarmAndWaneSpeed"/>.
+    /// </summary>
     [Fact]
-    public void Decodes_max_speed_and_alerts_frame_but_writes_nothing()
+    public void Decodes_speed_alarm_frame_as_16_bit_fields()
     {
-        // Owner decision (plan 21 §7 q3): alarm tiers/tiltback are not ported — the wheel beeps on
-        // its own thresholds, set from the stock app. This frame is still recognized (newDataFound
-        // stays true, matching the original) but nothing in it is telemetry, so nothing is written.
         var harness = DecoderHarness.ForKingSong();
-        bool result = harness.Decoder.ProtocolDecoder.Decode(
-            Convert.FromHexString("aa5502030405060708090a0b0c0d0e0fb5111213"));
+        var decoder = (KingsongDecoder)harness.Decoder.ProtocolDecoder;
+        byte[] frame = Convert.FromHexString("aa55000005010a000f02140000000000b5145a5a");
+
+        bool result = decoder.Decode(frame);
 
         Assert.True(result);
+        // Было (KingsongAdapter.java, портировано побайтово): buff[4]/[6]/[8]/[10] & 0xFF — читает
+        // только младший байт каждого поля.
+        Assert.Equal((5, 10, 15, 20), (frame[4] & 0xFF, frame[6] & 0xFF, frame[8] & 0xFF, frame[10] & 0xFF));
+        // Теперь (MainFragmentAty.java:8688-8747+): полные 16-битные поля — на смещениях 4 и 8
+        // старший байт ненулевой, и старое чтение теряло его молча.
+        Assert.Equal((261, 10, 527, 20), decoder.KsAlarmAndWaneSpeed);
+    }
+
+    /// <summary>
+    /// Frame 0xA4 — calibration/settings acknowledgement (two 0/1 flags at [2]/[3]), NOT the same
+    /// layout as 0xB5 despite sharing a handler before plan 35 §10. Recognized (newDataFound true,
+    /// matching the original's own return for this type) but writes nothing to <see cref="WheelState"/>.
+    /// </summary>
+    [Fact]
+    public void Decodes_calibration_ack_frame_separately_from_speed_alarm()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        var decoder = (KingsongDecoder)harness.Decoder.ProtocolDecoder;
+
+        bool result = decoder.Decode(
+            Convert.FromHexString("aa5501000405060708090a0b0c0d0e0fa4145a5a"));
+
+        Assert.True(result);
+        Assert.Equal((1, 0), decoder.KsCalibrationAck);
+        // 0xA4 не трогает раскладку 0xB5 — их разбор больше не пересекается.
+        Assert.Equal((0, 0, 0, 0), decoder.KsAlarmAndWaneSpeed);
     }
 
     [Fact]
@@ -137,6 +170,49 @@ public class KingsongDecoderTests
         Assert.Equal(12, snapshot.Output);
         // 5th data
         Assert.Equal(32.05, snapshot.SpeedLimit, 2);
+    }
+
+    /// <summary>
+    /// Frame 0xF6 also carries the wheel trouble code at offset 14-15 (docs/kingsong-trouble-codes.md,
+    /// plan 35 §10) — the port used to read only the speed limit at offset 2-3 and ignore it entirely.
+    /// Zero is silence, not "keep whatever alert was showing".
+    /// </summary>
+    [Fact]
+    public void Zero_trouble_code_clears_the_alert()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        // Было: смещение 14-15 не читалось вовсе, SetAlert для этого кадра не вызывался.
+        bool result = harness.Decoder.ProtocolDecoder.Decode(
+            Convert.FromHexString("aa55850c000000000000000000000000f6145a5a"));
+
+        Assert.False(result);
+        Assert.Equal(32.05, harness.Snapshot().SpeedLimit, 2);
+        Assert.Equal("", harness.Snapshot().Alert);
+    }
+
+    /// <summary>Known code (213) resolves to the manufacturer's own English text (ks-troublecode.json,
+    /// kingsong-trouble-codes.md §1) — dictionary text, not the bare number.</summary>
+    [Fact]
+    public void Known_trouble_code_sets_the_alert_text()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        bool result = harness.Decoder.ProtocolDecoder.Decode(
+            Convert.FromHexString("aa55850c00000000000000000000d500f6145a5a"));
+
+        Assert.False(result);
+        Assert.Equal("bms setting err", harness.Snapshot().Alert);
+    }
+
+    /// <summary>Code outside the 66-entry dictionary — shown as a number, not silently dropped.</summary>
+    [Fact]
+    public void Unknown_trouble_code_shows_the_number()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        bool result = harness.Decoder.ProtocolDecoder.Decode(
+            Convert.FromHexString("aa55850c000000000000000000000f27f6145a5a"));
+
+        Assert.False(result);
+        Assert.Equal("Ошибка колеса 9999", harness.Snapshot().Alert);
     }
 
     /// <summary>BMS frames are out of this slice's scope (see KingsongDecoder's class doc) — every
@@ -378,10 +454,12 @@ public class KingsongDecoderTests
         Assert.Equal(Empty(0x89), decoder.BuildCalibrate());
         Assert.Null(decoder.BuildResetTrip());
 
+        // Было (WheelLog/KingsongAdapter.java): pedals[17] = 0x15 — расхождение с производителем,
+        // который на этом месте держит обычный заполнитель 0x14 (см. port-deviations.md). Empty(0x87)
+        // уже несёт [17] = 0x14, так что сравнение с ним само по себе доказывает правку смещения 17.
         byte[] pedals = Empty(0x87);
         pedals[2] = 1;
         pedals[3] = 0xE0;
-        pedals[17] = 0x15;
         Assert.Equal(pedals, decoder.BuildUpdatePedalsMode(1));
 
         byte[] lightOn = Empty(0x73);

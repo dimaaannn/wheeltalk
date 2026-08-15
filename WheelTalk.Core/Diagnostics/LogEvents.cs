@@ -205,5 +205,10 @@ public static class LogEvents
         /// спрашивать перестали. Единственный след потолка в журнале.</summary>
         public const int KsIdentityGaveUpId = 3026;
         public const string KsIdentityGaveUpName = "KsIdentityGaveUp";
+
+        /// <summary>KingSong: код неисправности колеса (кадр 0xF6, смещение 14-15) не нашёлся в
+        /// словаре <c>docs/kingsong-trouble-codes.md</c> — показан номером, расшифровать нечем.</summary>
+        public const int KsTroubleCodeUnknownId = 3027;
+        public const string KsTroubleCodeUnknownName = "KsTroubleCodeUnknown";
     }
 }

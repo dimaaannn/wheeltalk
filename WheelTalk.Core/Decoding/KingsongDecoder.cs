@@ -39,7 +39,7 @@ namespace WheelTalk.Core.Decoding;
 ///   - Full live-telemetry path: frame 0xA9 (voltage/speed/distance/current/temperature/mode),
 ///     0xB9 (wheel distance/top speed/fan/charging/motor temperature), 0xBB (name/model/version),
 ///     0xB3 (serial number), 0xF5 (cpu load/output — feeds <see cref="WheelState.UpdatePwm"/>),
-///     0xF6 (speed limit).
+///     0xF6 (speed limit and wheel trouble code, see <see cref="DecodeSpeedLimit"/>).
 ///   - NOT ported: BMS frames (0xF1/0xF2 cell/temperature pages, 0xD0 extended F-series page,
 ///     0xE1/0xE2 serial, 0xE5/0xE6 firmware) — a second <see cref="SmartBms"/> path this slice
 ///     doesn't need. <see cref="Decode"/> recognizes them only by falling through to <c>false</c>,
@@ -47,10 +47,12 @@ namespace WheelTalk.Core.Decoding;
 ///   - NOT ported: writing alarm-tier speeds and max-speed (command 0x85, and the echo-request
 ///     follow-up that re-sends frame 0xA4 back as type 0x98) — owner decision (plan 21 §7 q3): the
 ///     wheel beeps on its own thresholds, set from the stock app, so command 0x85 is never built
-///     at all. Reading frame 0xA4/0xB5 IS kept (<see cref="DecodeAlarmAndMaxSpeed"/>) per the same
-///     decision's owner note: a 1:1 port's settings-frame parsing isn't thrown away, it just isn't
-///     persisted to <see cref="WheelState"/> or any setting yet — a future wheel-settings-import
-///     stage picks it up from there instead of re-deriving the byte layout.
+///     at all. Reading frames 0xA4 (<see cref="DecodeCalibrationAck"/>) and 0xB5
+///     (<see cref="DecodeAlarmAndMaxSpeed"/>) IS kept, per the same decision's owner note: a 1:1
+///     port's settings-frame parsing isn't thrown away, it just isn't persisted to
+///     <see cref="WheelState"/> or any setting yet — a future wheel-settings-import stage picks it
+///     up from there instead of re-deriving the byte layout. The two types were one handler until
+///     plan 35 §10 split them — see port-deviations.md.
 ///   - NOT ported: the raw BLE-advertised name (<c>WheelData.mBtName</c>) branch of the 84V-wheel
 ///     check — this slice has no wiring from the transport layer into the decoder for that name.
 ///     The model-name and "ROCKW"-prefix branches (both driven by decoded frame content) are kept.
@@ -106,12 +108,17 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     private int _attempt;
     private long _lastTryTimestamp;
 
-    // Alarm-tier speeds and max speed (frame 0xA4/0xB5) — parsed but deliberately not persisted
+    // Alarm-tier speeds and waneSpeed (frame 0xB5) — parsed but deliberately not persisted
     // anywhere this phase (see DecodeAlarmAndMaxSpeed).
     private int _ksAlarm1Speed;
     private int _ksAlarm2Speed;
     private int _ksAlarm3Speed;
-    private int _wheelMaxSpeed;
+    private int _ksWaneSpeed;
+
+    // Calibration/settings acknowledgement flags (frame 0xA4) — same "parsed, not persisted" deal
+    // as the speeds above (see DecodeCalibrationAck).
+    private byte _ksCalibrationFlag2;
+    private byte _ksCalibrationFlag3;
 
     public event Action<byte[]>? WriteRequested;
     public event Action<byte[]>? FrameRecognized;
@@ -166,7 +173,8 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
         0xB3 => DecodeSerial(data),
         0xF5 => DecodeCpuLoad(data),
         0xF6 => DecodeSpeedLimit(data),
-        0xA4 or 0xB5 => DecodeAlarmAndMaxSpeed(data),
+        0xA4 => DecodeCalibrationAck(data),
+        0xB5 => DecodeAlarmAndMaxSpeed(data),
         // BMS pages (0xF1/0xF2/0xD0/0xE1/0xE2/0xE5/0xE6) and anything else fall through to
         // false, exactly like the original — it never returns true for these either.
         _ => false,
@@ -294,30 +302,73 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
         return false;
     }
 
-    /// <summary>Frame 0xF6 — speed limit (KingsongAdapter.java:224-227).</summary>
+    /// <summary>
+    /// Frame 0xF6 — speed limit (KingsongAdapter.java:224-227, offset 2-3) plus the wheel trouble
+    /// code the port never read (offset 14-15, <c>MainFragmentAty.java:8973-9053</c> — same field
+    /// the manufacturer's app resolves through its cloud dictionary; ours resolves through
+    /// <see cref="KingsongTroubleCodes"/>, docs/kingsong-trouble-codes.md). Zero is silence, not
+    /// "keep whatever alert was showing" — the same rule <see cref="InMotionDecoderV2_1"/> uses for
+    /// P6 diagnostics.
+    /// </summary>
     private bool DecodeSpeedLimit(byte[] buff)
     {
         double speedLimit = MathsUtil.GetInt2R(buff, 2) / 100.0;
         LogSpeedLimit(speedLimit);
         _state.SetSpeedLimit(speedLimit);
+
+        _state.SetAlert(DescribeTroubleCode(MathsUtil.GetInt2R(buff, 14)));
         return false;
     }
 
+    /// <summary>Ноль → тишина; известный код → его текст из <see cref="KingsongTroubleCodes"/>;
+    /// неизвестный → номер плюс журнальная строка, раз расшифровать нечем.</summary>
+    private string DescribeTroubleCode(int code)
+    {
+        if (code == 0) return string.Empty;
+        if (KingsongTroubleCodes.TryGetText(code, out string text)) return text;
+
+        LogTroubleCodeUnknown(code);
+        return $"Ошибка колеса {code}";
+    }
+
     /// <summary>
-    /// Frame 0xA4/0xB5 — alarm-tier speeds and max speed (KingsongAdapter.java:228-242). Parsed
-    /// into fields (not thrown away — plan 21's owner note: a 1:1 port's settings-frame parsing
-    /// stays, for the future wheel-settings-import stage, even where nothing consumes it yet) but
-    /// deliberately not persisted anywhere this phase: no <c>WheelSettings</c> field exists for
-    /// these (owner decision, plan 21 §7 q3 — the wheel beeps on its own thresholds, set from the
-    /// stock app), and the write-back path is excluded entirely — command 0x85 is never built, and
-    /// the original's echo-request follow-up (repeating the frame back with type 0x98) isn't sent.
+    /// Frame 0xA4 — calibration/settings acknowledgement, NOT alarm-tier speeds despite sharing a
+    /// handler with 0xB5 in <c>KingsongAdapter.java:228-242</c> (WheelLog/our former port). The
+    /// manufacturer's own app reads only two 0/1 flags at offset 2-3 here and notifies its handler
+    /// (<c>sendEmptyMessage(4)</c>/<c>(5)</c>, <c>MainFragmentAty.java:8658-8687</c>) — it never
+    /// reads past offset 3. Split from 0xB5 per plan 35 §10 (port-deviations.md); the exact meaning
+    /// of the two flags wasn't traced past "acknowledgement", so they're kept as raw flags, not
+    /// named speeds.
+    /// </summary>
+    private bool DecodeCalibrationAck(byte[] buff)
+    {
+        _ksCalibrationFlag2 = buff[2];
+        _ksCalibrationFlag3 = buff[3];
+        return true;
+    }
+
+    /// <summary>
+    /// Frame 0xB5 — alarm-tier speeds and waneSpeed, four 16-bit fields at offsets 4/6/8/10
+    /// (<c>MainFragmentAty.java:8688-8747+</c>), not the single bytes <c>KingsongAdapter.java</c>
+    /// read (plan 35 §10, port-deviations.md — WheelLog applied 0xB5's byte layout to both 0xA4 and
+    /// 0xB5, and read only the low byte of each 16-bit field). Parsed into fields (not thrown away —
+    /// plan 21's owner note: a 1:1 port's settings-frame parsing stays, for the future
+    /// wheel-settings-import stage, even where nothing consumes it yet) but deliberately not
+    /// persisted anywhere this phase: no <c>WheelSettings</c> field exists for these (owner
+    /// decision, plan 21 §7 q3 — the wheel beeps on its own thresholds, set from the stock app), and
+    /// the write-back path is excluded entirely — command 0x85 is never built, and the original's
+    /// echo-request follow-up (repeating the frame back with type 0x98) isn't sent. Offset 10-11 is
+    /// named <c>waneSpeed</c> by the manufacturer, not "max speed" — <c>DeviceBleBean.maxSpeed</c> is
+    /// never assigned anywhere in the traced code, so this port's old <c>_wheelMaxSpeed</c> name was
+    /// a guess; renamed to match the source, exact physical meaning still open (kingsong-telemetry-
+    /// comparison.md, "Кадр 0xA4 и 0xB5").
     /// </summary>
     private bool DecodeAlarmAndMaxSpeed(byte[] buff)
     {
-        _wheelMaxSpeed = buff[10] & 0xFF;
-        _ksAlarm3Speed = buff[8] & 0xFF;
-        _ksAlarm2Speed = buff[6] & 0xFF;
-        _ksAlarm1Speed = buff[4] & 0xFF;
+        _ksAlarm1Speed = MathsUtil.GetInt2R(buff, 4);
+        _ksAlarm2Speed = MathsUtil.GetInt2R(buff, 6);
+        _ksAlarm3Speed = MathsUtil.GetInt2R(buff, 8);
+        _ksWaneSpeed = MathsUtil.GetInt2R(buff, 10);
         return true;
     }
 
@@ -419,6 +470,14 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     /// </summary>
     public CellCount GetCellsForWheel() => CellCountResolver.Resolve(CellInputs());
 
+    /// <summary>Раскладка 0xB5, доступна тестам через <c>InternalsVisibleTo</c> — прямого
+    /// потребителя в приложении нет (см. doc-комментарий <see cref="DecodeAlarmAndMaxSpeed"/>).</summary>
+    internal (int Alarm1, int Alarm2, int Alarm3, int WaneSpeed) KsAlarmAndWaneSpeed =>
+        (_ksAlarm1Speed, _ksAlarm2Speed, _ksAlarm3Speed, _ksWaneSpeed);
+
+    /// <summary>Раскладка 0xA4, тот же режим доступа — см. <see cref="KsAlarmAndWaneSpeed"/>.</summary>
+    internal (byte Flag2, byte Flag3) KsCalibrationAck => (_ksCalibrationFlag2, _ksCalibrationFlag3);
+
     /// <summary>Всё, что декодер знает о ряде. Считает по этому каскад — здесь только сбор.</summary>
     internal CellCountInputs CellInputs() => new()
     {
@@ -487,13 +546,19 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
         return data;
     }
 
-    /// <summary>Port of KingsongAdapter.updatePedalsMode(int) (KingsongAdapter.java:430-438).</summary>
+    /// <summary>
+    /// Port of KingsongAdapter.updatePedalsMode(int) (KingsongAdapter.java:430-438). Byte 17 is
+    /// <c>0x14</c> — the manufacturer's own builder (<c>GearAdjustmentActivity.java:279</c> →
+    /// <c>fw.H0(int)</c>, <c>fw.java:439-450</c>) holds the same filler constant every other frame
+    /// in the catalog uses there; the inherited WheelLog value <c>0x15</c> was this command's one
+    /// deviation from that constant (plan 35 §10, port-deviations.md).
+    /// </summary>
     public byte[]? BuildUpdatePedalsMode(int pedalsMode)
     {
         byte[] data = EmptyRequest(0x87);
         data[2] = (byte)pedalsMode;
         data[3] = 0xE0;
-        data[17] = 0x15;
+        data[17] = 0x14;
         return data;
     }
 
@@ -551,4 +616,8 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     [LoggerMessage(EventId = LogEvents.Decoding.KsIdentityGaveUpId, EventName = LogEvents.Decoding.KsIdentityGaveUpName,
         Level = LogLevel.Warning, Message = "KingSong identity request 0x{Ask:X2} unanswered after {Attempts} tries — asking no more")]
     private partial void LogIdentityGaveUp(byte ask, int attempts);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.KsTroubleCodeUnknownId, EventName = LogEvents.Decoding.KsTroubleCodeUnknownName,
+        Level = LogLevel.Warning, Message = "KingSong trouble code {Code} not found in dictionary")]
+    private partial void LogTroubleCodeUnknown(int code);
 }
