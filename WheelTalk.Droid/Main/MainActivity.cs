@@ -190,6 +190,12 @@ public sealed class MainActivity : Activity
     /// </summary>
     private string _hushedAlert = "";
 
+    /// <summary>
+    /// Краш-подавление баннера заморозки уже потрачено (на процесс, потому static — активность
+    /// пересоздаётся, а право съесть один показ у краш-диалога одно на запуск).
+    /// </summary>
+    private static bool s_crashHushSpent;
+
     private Typeface _regular = Typeface.Default!;
     private Typeface _bold = Typeface.DefaultBold!;
 
@@ -1176,10 +1182,22 @@ public sealed class MainActivity : Activity
     /// Пропуск при этом всё равно забирается (и уже записан в журнал строкой
     /// <c>Background.Stopped</c>) — чтобы не всплыть на следующем открытии экрана.
     /// </para>
+    /// <para>
+    /// <b>Подавление — одноразовое.</b> Флаг краха статичен на весь процесс, и ночь 14→15.08 он
+    /// съел молча семь заморозок подряд (65+ минут простоя поездки, шесть открытий экрана — ни
+    /// одного баннера; вскрыто полной лентой 15.08). Краш-диалог главнее ПЕРВОГО показа — но не
+    /// всех последующих: съев один, подавление гаснет.
+    /// </para>
     /// </summary>
     private void TellAboutStoppedBackground()
     {
-        if (_backgroundWatch.TakeGap() is not { } told || CrashReport.PreviousRunCrashed) return;
+        if (_backgroundWatch.TakeGap() is not { } told) return;
+
+        if (CrashReport.PreviousRunCrashed && !s_crashHushSpent)
+        {
+            s_crashHushSpent = true;
+            return;
+        }
 
         // Сам показ — тоже строкой в журнал (слово владельца 15.08.2026): обнаружение и показ
         // разнесены часами, и разбор 15.08 гадал, показывалось ли сообщение вообще.

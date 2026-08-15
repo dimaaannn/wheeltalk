@@ -181,10 +181,11 @@ public class BackgroundWatchTests : IDisposable
         string body = RepoFiles.MethodBody(
             RepoFiles.Read("WheelTalk.Droid/Main/MainActivity.cs"), "private void TellAboutStoppedBackground()");
 
-        string guard = body.Split('\n').First(line => line.Contains("TakeGap()"));
-
-        Assert.Contains("CrashReport.PreviousRunCrashed", guard);
-        Assert.Contains("return;", guard);
+        // Подавление стоит ПОСЛЕ забора пропуска (пропуск не должен всплыть позже) и одноразовое:
+        // статичный флаг краха ночью 14→15.08 съел семь показов подряд — потратив один, гаснет.
+        Assert.Contains("CrashReport.PreviousRunCrashed && !s_crashHushSpent", body);
+        Assert.Contains("s_crashHushSpent = true;", body);
+        Assert.Contains("return;", body);
     }
 
     /// <summary>
