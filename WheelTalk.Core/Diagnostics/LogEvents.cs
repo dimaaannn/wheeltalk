@@ -210,5 +210,20 @@ public static class LogEvents
         /// словаре <c>docs/kingsong-trouble-codes.md</c> — показан номером, расшифровать нечем.</summary>
         public const int KsTroubleCodeUnknownId = 3027;
         public const string KsTroubleCodeUnknownName = "KsTroubleCodeUnknown";
+
+        /// <summary>P6: плата BMS ответила на адресный запрос. Единственный след разведки шести
+        /// адресов в журнале — по нему и станет видно, какие из них у этой модели живые.</summary>
+        public const int ImV2P6BmsAddressId = 3028;
+        public const string ImV2P6BmsAddressName = "ImV2P6BmsAddress";
+
+        /// <summary>P6: сводка BMS подняла бит неисправности пака. Пишется на фронте — сводка
+        /// приходит раз в несколько секунд, строка на каждую была бы шумом.</summary>
+        public const int ImV2P6BmsFaultId = 3029;
+        public const string ImV2P6BmsFaultName = "ImV2P6BmsFault";
+
+        /// <summary>P6: отозвалось больше двух плат BMS. В состоянии два пака, раскладка по ним —
+        /// позиционная догадка оригинала; лишние ответы отброшены, и об этом лучше знать.</summary>
+        public const int ImV2P6BmsTooManyAddressesId = 3030;
+        public const string ImV2P6BmsTooManyAddressesName = "ImV2P6BmsTooManyAddresses";
     }
 }

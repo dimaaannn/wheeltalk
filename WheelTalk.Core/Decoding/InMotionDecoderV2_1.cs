@@ -22,10 +22,10 @@ namespace WheelTalk.Core.Decoding;
 /// кадр <c>carType</c>, и по нему запоминает модель. Дальше всё зависит от неё:
 ///   - модель из таблицы оригинала (V9/V11/V11y/V12/V12S/V13/V14) — кадр уходит в V2 целиком,
 ///     байт в байт с провода, и разбирается ровно как раньше;
-///   - P6 — в V2 не уходит только <c>RealTimeInfo</c>: его разбирает
-///     <see cref="InMotionP6RealTime"/> по своей раскладке. Всё остальное — рукопожатие, серийник,
-///     версии, статистика (в ней и одометр) — идёт в V2 нетронутым, это общая для всей V2 часть
-///     протокола;
+///   - P6 — в V2 не уходят <c>RealTimeInfo</c> (его разбирает <see cref="InMotionP6RealTime"/> по
+///     своей раскладке), диагностика и BMS (<see cref="InMotionP6Bms"/> — сводка паков и ответы на
+///     адресные запросы). Всё остальное — рукопожатие, серийник, версии, статистика (в ней и
+///     одометр) — идёт в V2 нетронутым, это общая для всей V2 часть протокола;
 ///   - модель неизвестна вовсе — <c>RealTimeInfo</c> отбрасывается, а телеметрия не показывается,
 ///     пока раскладка не известна.
 /// </para>
@@ -86,6 +86,22 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     private const int CycleLength = 3;
     private const int CycleStatsStep = 1;
 
+    /// <summary>
+    /// У P6 круг вдвое длиннее, и лишний шаг взят <b>не у телеметрии</b>: в каждом втором круге
+    /// место одометра занимает запрос BMS. Телеметрия остаётся ровно там же, где была, — две трети
+    /// всех запросов, 2,7 в секунду при заводских 250 мс; платит за BMS общий пробег, шаг которого
+    /// 10 метров и которому 1,3 опроса в секунду не нужны никогда.
+    /// <para>
+    /// Отчего именно каждый второй круг. Слот BMS чередует сводку и один адресный запрос
+    /// (<see cref="InMotionP6Bms.NextRequest"/>), то есть при 250 мс сводка приходит раз в 3 с, а
+    /// оригинал повторяет её раз в секунду — мы медленнее втрое, и это осознанно: напряжения паков и
+    /// банок за секунду не меняются, а каждый лишний слот отнимается у чего-то живого. Верхняя
+    /// граница шага (1000 мс) растягивает круг до 12 с — для банок это по-прежнему часто.
+    /// </para>
+    /// </summary>
+    private const int P6CycleLength = CycleLength * 2;
+    private const int P6CycleBmsStep = CycleLength + CycleStatsStep;
+
     /// <summary>Границы шага опроса — как у LoEUC, чей период тоже настройка. Ниже 250 мс начинается
     /// наша же прежняя болезнь, выше 1000 показания становятся ступенчатыми.</summary>
     private const int MinPollPeriodMs = 250;
@@ -100,6 +116,10 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     private readonly IWheelConfig _config;
     private readonly ILogger<InMotionDecoderV2_1> _logger;
     private readonly ITimer _pollTimer;
+
+    /// <summary>BMS P6 — свои запросы и свой разбор. Заводится всегда, а спрашивается только у P6:
+    /// решение принимает <see cref="NextRequest"/>, а не сам объект.</summary>
+    private readonly InMotionP6Bms _bms;
 
     /// <summary>Ступень лестницы; дошла до <see cref="StageCycle"/> — дальше круг без конца.</summary>
     private int _stage;
@@ -130,6 +150,9 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
         _config = config;
         _logger = loggerFactory.CreateLogger<InMotionDecoderV2_1>();
         _unpacker = new InMotionV2Unpacker(loggerFactory.CreateLogger<InMotionDecoderV2>());
+        // Своей категории журнала у BMS нет намеренно: он часть этой надстройки и виден в журнале
+        // как она — тем же порядком, каким распаковщик делит категорию с владеющим декодером.
+        _bms = new InMotionP6Bms(state, _logger);
 
         // Часы без таймеров: опрос порта молчит, расписание ведёт эта надстройка (см. doc класса).
         // Команды порт по-прежнему строит и шлёт, поэтому подписка на его записи остаётся.
@@ -159,7 +182,8 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     /// переспрашиваются, пока колесо не ответит (без них раскладка телеметрии неизвестна), версии,
     /// настройки и «бесполезные данные» спрашиваются по разу. Дальше расходимся: у порта телеметрия
     /// и статистика чередуются один к одному, здесь — круг DarknessBot, где одометр спрашивается
-    /// однажды за круг (<see cref="CycleLength"/>).
+    /// однажды за круг (<see cref="CycleLength"/>). У P6 круг вдвое длиннее, и в каждом втором место
+    /// одометра занимает BMS (<see cref="P6CycleLength"/>).
     /// <para>
     /// Ступень двигает ответ колеса, и это не возврат ответозависимости: от ответа зависит
     /// <b>что</b> спросят, а <b>когда</b> — только от таймера. Проверяется замком
@@ -189,10 +213,13 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
                 return InMotionV2Message.GetUselessData().WriteBuffer();
             default:
                 int step = _cycleStep;
-                _cycleStep = (step + 1) % CycleLength;
-                return step == CycleStatsStep
-                    ? InMotionV2Message.GetStatistics().WriteBuffer()
-                    : InMotionV2Message.GetRealTimeData().WriteBuffer();
+                // Круг P6 длиннее на один оборот, и лишний его шаг — BMS. У прочих моделей длина
+                // круга и его состав те же, что были: BMS-запросов они не видят вовсе.
+                _cycleStep = (step + 1) % (_layout == Layout.P6 ? P6CycleLength : CycleLength);
+
+                if (step % CycleLength != CycleStatsStep) return InMotionV2Message.GetRealTimeData().WriteBuffer();
+                if (step == P6CycleBmsStep && _layout == Layout.P6) return _bms.NextRequest();
+                return InMotionV2Message.GetStatistics().WriteBuffer();
         }
     }
 
@@ -265,6 +292,15 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
         int len = buffer[3];
         int command = buffer[4] & 0x7F;
 
+        // Ответ на адресный запрос BMS: свой конверт, и в нём на месте подкоманды стоит адрес
+        // платы, а не команда — читать этот кадр общими правилами нельзя. Порт о таком конверте не
+        // знает и молча его роняет; здесь он идёт в разбор, но только у P6, потому что только P6 мы
+        // о нём и спрашиваем.
+        if (flags == InMotionP6Bms.DirectEnvelope)
+        {
+            return _layout == Layout.P6 && _bms.ApplyDirect(buffer);
+        }
+
         if (flags == (int)InMotionV2Message.Flag.Initial
             && command == (int)InMotionV2Message.Command.MainInfo
             && len >= 6 && buffer[5] == 0x01)
@@ -287,6 +323,14 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
         if (command == (int)InMotionV2Message.Command.Diagnostic && _layout == Layout.P6)
         {
             return DecodeP6Diagnostics(buffer[5..(len + 4)]);
+        }
+
+        // Сводка BMS. Порт распознаёт её и возвращает false для всей линейки: у оригинала она
+        // сохраняется только при carType 131, и P6 в его таблице нет. Наш разбор — по тому же
+        // условию: сводка только у P6, прочим моделям — прежнее поведение порта.
+        if (command == (int)InMotionV2Message.Command.BatteryRealTimeInfo && _layout == Layout.P6)
+        {
+            return _bms.ApplySummary(buffer[5..(len + 4)]);
         }
 
         if (command != (int)InMotionV2Message.Command.RealTimeInfo) return _v2.Decode(wireFrame);
