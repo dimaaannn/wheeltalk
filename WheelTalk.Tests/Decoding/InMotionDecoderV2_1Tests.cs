@@ -144,6 +144,55 @@ public class InMotionDecoderV2_1Tests
         Assert.Equal(new CellCount(32, CellCountSource.UserSetting), snapshot.PackCells);
     }
 
+    /// <summary>Строит кадр диагностики (<c>Diagnostic</c>, flags 0x14) как он приходит с провода —
+    /// та же сборка, что <c>InMotionV2Message.WriteBuffer</c>, но здесь для входящего кадра, а не
+    /// исходящей команды.</summary>
+    private static byte[] BuildDiagnosticFrame(params byte[] data)
+    {
+        byte[] body = [0x14, (byte)(data.Length + 1), 0x03, .. data];
+        byte check = 0;
+        foreach (byte b in body) check ^= b;
+
+        List<byte> wire = [0xAA, 0xAA];
+        foreach (byte b in body)
+        {
+            if (b is 0xAA or 0xA5) wire.Add(0xA5);
+            wire.Add(b);
+        }
+        wire.Add(check);
+        return [.. wire];
+    }
+
+    /// <summary>Ровно то, ради чего затевалась надстройка: у P6 подкоманда диагностики доходит до
+    /// тревоги, а не отбрасывается, как в нетронутом V2.</summary>
+    [Fact]
+    public void P6_diagnostic_frame_becomes_an_alert()
+    {
+        var harness = DecoderHarness.ForInMotionV2_1();
+        var decoder = harness.Decoder.ProtocolDecoder;
+
+        decoder.Decode(Convert.FromHexString(CarTypeP6));
+        // Флаг #0 (байт 0, бит 0): "Phase current sensor fault", Error.
+        bool decoded = decoder.Decode(BuildDiagnosticFrame(0x01));
+
+        Assert.True(decoded);
+        Assert.Equal("Error: Phase current sensor fault", harness.Snapshot().Alert);
+    }
+
+    /// <summary>Порт не тронут: у опознанной модели таблицы оригинала диагностика по-прежнему
+    /// отбрасывается — ровно поведение <c>InMotionDecoderV2</c>, ноль вызовов установки тревоги.</summary>
+    [Fact]
+    public void Original_model_still_drops_diagnostic_frames()
+    {
+        var harness = DecoderHarness.ForInMotionV2_1();
+        var decoder = harness.Decoder.ProtocolDecoder;
+
+        decoder.Decode(Convert.FromHexString(CarTypeV11));
+        decoder.Decode(BuildDiagnosticFrame(0x01));
+
+        Assert.Equal("", harness.Snapshot().Alert);
+    }
+
     [Fact]
     public void Unknown_model_keeps_handshake_and_drops_telemetry()
     {

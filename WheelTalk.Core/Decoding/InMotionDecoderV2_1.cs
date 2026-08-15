@@ -173,6 +173,15 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
             return decoded;
         }
 
+        // Диагностику (subcmd 3) V2 распознаёт и отбрасывает для всей линейки — у остальных моделей
+        // тревоги идут из битов RealTimeInfo (InMotionDecoderV2.GetError). У P6 такого обхода нет,
+        // поэтому только для него подкоманда уходит в свой разбор; прочим моделям и порту это не
+        // трогаем.
+        if (command == (int)InMotionV2Message.Command.Diagnostic && _layout == Layout.P6)
+        {
+            return DecodeP6Diagnostics(buffer[5..(len + 4)]);
+        }
+
         if (command != (int)InMotionV2Message.Command.RealTimeInfo) return _v2.Decode(wireFrame);
 
         return _layout switch
@@ -185,6 +194,16 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
 
             _ => false,
         };
+    }
+
+    /// <summary>Пишет слова тревоги по раскладке <see cref="InMotionP6DiagnosticFlags"/>; пустая
+    /// подкоманда — пустая строка, тишина, а не молчаливое сохранение старой тревоги.</summary>
+    private bool DecodeP6Diagnostics(byte[] data)
+    {
+        var result = InMotionP6Diagnostics.Decode(data);
+        _state.SetAlert(result.AlertText);
+        if (result.HasUnknownBit) LogP6DiagnosticUnknownBit();
+        return true;
     }
 
     private void RememberModel(byte series, byte type)
@@ -228,4 +247,8 @@ public sealed partial class InMotionDecoderV2_1 : IWheelDecoder, IDisposable
     [LoggerMessage(EventId = LogEvents.Decoding.ImV2ModelUnknownId, EventName = LogEvents.Decoding.ImV2ModelUnknownName,
         Level = LogLevel.Warning, Message = "InMotion model {Series}, {Type} is not in the carType table — real-time telemetry left undecoded")]
     private partial void LogModelUnknown(int series, int type);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.ImV2P6DiagnosticUnknownBitId, EventName = LogEvents.Decoding.ImV2P6DiagnosticUnknownBitName,
+        Level = LogLevel.Warning, Message = "InMotion P6 diagnostic frame set a bit beyond the proven 45 flags")]
+    private partial void LogP6DiagnosticUnknownBit();
 }

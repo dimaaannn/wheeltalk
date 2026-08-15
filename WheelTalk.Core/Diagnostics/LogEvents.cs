@@ -195,5 +195,10 @@ public static class LogEvents
 
         public const int ImPasswordRetryId = 3024;
         public const string ImPasswordRetryName = "ImPasswordRetry";
+
+        /// <summary>P6: подкоманда диагностики принесла бит за пределами доказанных 45 —
+        /// раскладка производителя дальше не сверена, показать нечего, но и падать незачем.</summary>
+        public const int ImV2P6DiagnosticUnknownBitId = 3025;
+        public const string ImV2P6DiagnosticUnknownBitName = "ImV2P6DiagnosticUnknownBit";
     }
 }
