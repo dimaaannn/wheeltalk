@@ -86,6 +86,7 @@
   <data name="SettingsPageExperimentalNotice" xml:space="preserve"><value>Функции, не проверенные на дороге. Работают полностью. Со временем могут измениться</value></data>
   <data name="SettingsPageWheelDevice" xml:space="preserve"><value>Конфигурация колеса</value></data>
   <data name="SettingsPageWheelDeviceNotice" xml:space="preserve"><value>Так колесо настроено сейчас. Значения приходят от него и здесь не изменяются</value></data>
+  <data name="SettingsWheelDeviceUnavailable" xml:space="preserve"><value>Настройки недоступны</value></data>
   <data name="SettingsWheelDeviceEmpty" xml:space="preserve"><value>Подключитесь к колесу: свои настройки оно сообщает само</value></data>
   <data name="SettingsWheelDeviceOtherBrand" xml:space="preserve"><value>Настройки этого колеса мы читать не умеем</value></data>
   <data name="SettingsWheelDeviceNotReported" xml:space="preserve"><value>Это колесо не сообщает свои настройки</value></data>

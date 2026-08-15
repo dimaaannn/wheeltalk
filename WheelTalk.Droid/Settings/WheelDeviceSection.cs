@@ -31,20 +31,36 @@ internal static class WheelDeviceSection
     public static bool ShowsValues(WheelSettingsView view) => view == WheelSettingsView.Values;
 
     /// <summary>
-    /// Чем объяснить пустоту. <c>null</c> — объяснять нечего: ожидание короче десяти секунд молчит,
-    /// потому что сказать ему пока нечего, а показанные значения говорят сами за себя.
+    /// Чем объяснить пустоту. Ответ **один на все случаи** — «настройки недоступны» (решение
+    /// владельца 16.08.2026, правило на весь раздел любой марки: не реализовано, не знаем, что
+    /// показать, или иная ошибка — снаружи это одно и то же). Разные причины различает журнал, а
+    /// не экран: см. <see cref="Reason"/>.
     /// <para>
-    /// «Колесо другой марки» — на случай, когда страницу уже открыли, а колесо сменилось на чужое:
-    /// в корне карточки такого раздела нет вовсе, но пустой экран без слов на месте открытой
-    /// страницы был бы враньём (план 34 §5).
+    /// <c>null</c> — объяснять нечего: ожидание короче десяти секунд молчит, потому что сказать ему
+    /// пока нечего, а показанные значения говорят сами за себя.
+    /// <para>
+    /// Прежде здесь стояло четыре разных текста; они сохранены как причины в <see cref="Reason"/>.
     /// </para>
     /// </summary>
     public static string? TextKey(WheelSettingsView view) => view switch
     {
-        WheelSettingsView.Offline => "SettingsWheelDeviceEmpty",
-        WheelSettingsView.OtherBrand => "SettingsWheelDeviceOtherBrand",
-        WheelSettingsView.NotReported => "SettingsWheelDeviceNotReported",
-        WheelSettingsView.NoAnswer => "SettingsWheelDeviceNoAnswer",
-        _ => null,
+        WheelSettingsView.Values => null,
+        WheelSettingsView.Waiting => null,
+        _ => "SettingsWheelDeviceUnavailable",
+    };
+
+    /// <summary>
+    /// Подробность для журнала — то, чего человеку не говорят. Наружу у всех этих случаев один
+    /// ответ, и без такой строки разбор жалобы «у меня пусто» упирается в текст, одинаковый для
+    /// пяти разных причин.
+    /// </summary>
+    public static string Reason(WheelSettingsView view) => view switch
+    {
+        WheelSettingsView.Offline => "связи с колесом нет",
+        WheelSettingsView.OtherBrand => "колесо марки, чьи настройки читать не умеем",
+        WheelSettingsView.NotReported => "прошивка страниц настроек не шлёт (кадр короче байта номера страницы)",
+        WheelSettingsView.NoAnswer => "связь живая, кадра настроек нет дольше десяти секунд",
+        WheelSettingsView.Values => "колесо ответило, но ни одного поля не показано — все закрыты сентинелом",
+        _ => "причина не разобрана",
     };
 }

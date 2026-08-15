@@ -245,4 +245,19 @@ public static class LogEvents
         public const int Frame01NoBmsSlotId = 3033;
         public const string Frame01NoBmsSlotName = "Frame01NoBmsSlot";
     }
+
+    /// <summary>События раздела «Конфигурация колеса» — показа настроек, сообщённых самим колесом.</summary>
+    public static class WheelSettings
+    {
+        /// <summary>
+        /// Настройки колеса показать нечем, и человеку сказано одно общее «настройки недоступны»
+        /// (решение владельца 16.08.2026 — правило на весь раздел, любой марки). Наружу выходит
+        /// один ответ, а <b>причина пишется сюда подробно</b>: связи нет, марка чужая, прошивка
+        /// страниц не шлёт, ответа нет за десять секунд, или колесо ответило, но все поля закрыло
+        /// сентинелом. Иначе разбор жалобы «у меня пусто» упирается в текст, одинаковый для пяти
+        /// разных причин.
+        /// </summary>
+        public const int UnavailableId = 3040;
+        public const string UnavailableName = "WheelSettings.Unavailable";
+    }
 }

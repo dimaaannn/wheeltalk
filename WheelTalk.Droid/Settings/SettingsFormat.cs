@@ -128,14 +128,17 @@ internal static class SettingsFormat
     /// которой у этого колеса нет, оно и не присылает (сентинел прячет строку), и обещать её числом
     /// в сводке значило бы соврать раньше, чем человек откроет страницу.
     /// <para>
-    /// Ноль строк — кадр настроек ещё не пришёл; тогда сводка говорит то же, что и пустой список, и
-    /// не притворяется счётчиком.
+    /// Ноль строк — сводка говорит «настройки недоступны» (слово владельца 16.08.2026), и это
+    /// один ответ на два случая: связи нет вовсе и связь есть, но колесо не сообщило ни одной
+    /// настройки — все поля пришли сентинелом. Прежде тут стояло «Подключитесь к колесу», и во
+    /// втором случае это было прямой ложью: человек подключён, телеметрия идёт, а карточка советует
+    /// подключиться. Случай редкий, но врал бы он именно тем, что уводит поиск причины не туда.
     /// </para>
     /// </summary>
     private static string SummarizeWheelDevice(SettingsBinder binder, string wheelModel)
     {
         int shown = binder.Page(SettingsPage.WheelDevice, binder.LiveScope).Sum(section => section.Count());
-        if (shown == 0) return AppStrings.SettingsWheelDeviceEmpty;
+        if (shown == 0) return AppStrings.SettingsWheelDeviceUnavailable;
 
         string values = Plural.Of(shown,
             AppStrings.SettingsValuesCount1, AppStrings.SettingsValuesCount2, AppStrings.SettingsValuesCount5);

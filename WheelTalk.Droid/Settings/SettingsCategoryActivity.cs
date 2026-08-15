@@ -24,6 +24,8 @@ using WheelTalk.Dashboard.Droid.Screen;
 using WheelTalk.Droid.Ui;
 
 using WheelTalk.Droid.App;
+using Microsoft.Extensions.Logging;
+using WheelTalk.Core.Diagnostics;
 
 namespace WheelTalk.Droid.Settings;
 
@@ -416,6 +418,25 @@ public sealed class SettingsCategoryActivity : Activity
     private static string? EmptyTextKey(SettingsPage page, WheelSettingsView view) =>
         page == SettingsPage.WheelDevice ? WheelDeviceSection.TextKey(view) : "SettingsEmpty";
 
+    /// <summary>
+    /// Причина, по которой настроек колеса не показать, — в журнал. Наружу у всех случаев один
+    /// ответ, и разобрать жалобу «у меня пусто» без этой строки нечем.
+    /// </summary>
+    private static void LogSettingsUnavailable(WheelSettingsView view)
+    {
+        try
+        {
+            MainApplication.Services.GetRequiredService<ILogger<SettingsCategoryActivity>>()
+                .LogInformation("{Event} — настройки колеса не показаны: {Reason} (состояние {View})",
+                    LogEvents.WheelSettings.UnavailableName, WheelDeviceSection.Reason(view), view);
+        }
+        catch (Exception)
+        {
+            // Контейнера может не быть (экран поднят раньше приложения). Ронять показ из-за строки
+            // журнала нельзя — она тут ради разбора, а не ради работы.
+        }
+    }
+
     // ---- Scope (общее / это колесо) ----------------------------------------------------------
 
     /// <summary>
@@ -615,6 +636,11 @@ public sealed class SettingsCategoryActivity : Activity
             var empty = new TextView(this) { Text = TranslateExtension.Get(emptyKey) };
             empty.Alpha = 0.7f;
             _content.AddView(empty);
+
+            // Человеку — одно «настройки недоступны», журналу — почему именно (решение владельца
+            // 16.08.2026). Пишется на смене состояния, а не на каждой отрисовке: сюда приходят
+            // только после Rebuild, а он идёт лишь когда состояние сменилось.
+            if (_page == SettingsPage.WheelDevice) LogSettingsUnavailable(_shownView);
         }
     }
 
