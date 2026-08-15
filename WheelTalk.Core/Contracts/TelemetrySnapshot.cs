@@ -115,6 +115,14 @@ public sealed record TelemetrySnapshot
     /// </summary>
     public Settings.Device.WheelSettingsSnapshot? WheelSettings { get; init; }
 
+    /// <summary>
+    /// Байт 31 кадра телеметрии Veteran — режим езды, как его называет производитель. Сырой:
+    /// у старых колёс это три положения (1/2/3), у Sherman L — <c>0x80</c>, и общего правила
+    /// толкования мы пока не доказали (см. <see cref="Decoding.WheelState.RideModeRaw"/>).
+    /// <c>null</c> — кадра телеметрии Veteran в этой сессии ещё не было.
+    /// </summary>
+    public byte? RideModeRaw { get; init; }
+
     // KingSong-only fields — Veteran/Gotway never write WheelState's backing properties, so these
     // stay at their defaults ("", 0) for those protocols.
 

@@ -112,6 +112,25 @@ public sealed class WheelState
 
     public void SetWheelSettings(Settings.Device.WheelSettingsSnapshot settings) => WheelSettings = settings;
 
+    /// <summary>
+    /// Режим езды, как его прислало колесо в байте 31 кадра телеметрии (Veteran). Байт сырой:
+    /// смысл его зависит от модели, и толковать его здесь было бы догадкой — что известно и что
+    /// нет, расписано у <see cref="VeteranDecoder"/>. <c>null</c> — кадра телеметрии ещё не было
+    /// (у прочих марок его не будет вовсе).
+    /// <para>
+    /// Живёт здесь, а не в <see cref="WheelSettings"/>, потому что источник другой: снимок
+    /// настроек — это одна страница 8 одного мгновения (раз в 4 секунды), а этот байт приходит с
+    /// каждым кадром телеметрии. Подмешать его в снимок значило бы показать состояние, которого у
+    /// колеса в один момент не было.
+    /// </para>
+    /// <para>
+    /// С <see cref="ModeStr"/> не путать: то — режим KingSong, число другой шкалы и другой марки.
+    /// </para>
+    /// </summary>
+    public byte? RideModeRaw { get; private set; }
+
+    public void SetRideModeRaw(byte rideMode) => RideModeRaw = rideMode;
+
     public void ResetRideTime()
     {
         if (_rideStartTime == 0)
@@ -316,6 +335,7 @@ public sealed class WheelState
         Bms1 = Bms1,
         Bms2 = Bms2,
         WheelSettings = WheelSettings,
+        RideModeRaw = RideModeRaw,
         Name = Name,
         ModeStr = ModeStr,
         FanStatus = FanStatus,

@@ -16,6 +16,28 @@ public sealed partial class VeteranDecoder : IWheelDecoder
 {
     private const int WaitingTimeMs = 100;
 
+    /// <summary>
+    /// Байт режима езды в кадре телеметрии. Отсчёт — от начала кадра вместе с заголовком, тот же,
+    /// что у остальных полей <see cref="Decode"/>.
+    /// <para>
+    /// Читается <b>один байт, а не 16-битное слово с 30</b>, как у оригинала
+    /// (<c>VeteranAdapter.java:51</c>): байт 30 — старшая часть трёхбайтового кода версии
+    /// (<c>BtManager.java:372</c>, там же он склеивается с 28 и 29), и распаковщик держит его
+    /// равным 0x00 или 0x07 (<c>VeteranUnpacker.cs:51</c>). Слово с 30 смешивает версию с режимом
+    /// и потому бессмысленно — у оригинала оно и не используется никем.
+    /// </para>
+    /// <para>
+    /// Что байт значит — известно наполовину, поэтому наверх он идёт сырым. Родное приложение
+    /// зовёт его <c>rideMode</c> (<c>BtManager.java:377</c>) и читает двояко, по модели колеса
+    /// (<c>SetRideModeActivity.java:70-78</c>): у колеса с тремя положениями это 1/2/3
+    /// («Soft»/«Medium»/«Strong», <c>HomepageFragment.java:324</c>), у колеса с плавной шкалой —
+    /// то же значение со смещением. Наши записи вторую половину не подтверждают: Sherman L шлёт
+    /// <c>0x80</c> во всех 597 кадрах поездки 28.07.2026, а плавную жёсткость сообщает страницей 8
+    /// (94). Толкование — работа этапа 4 плана 34, не этого чтения.
+    /// </para>
+    /// </summary>
+    private const int RideModeIndex = 31;
+
     private readonly WheelState _state;
     private readonly IWheelConfig _config;
     private readonly TimeProvider _timeProvider;
@@ -105,6 +127,7 @@ public sealed partial class VeteranDecoder : IWheelDecoder
                 ver / 1000, ver % 1000 / 100, ver % 100);
             int pitchAngle = MathsUtil.SignedShortFromBytesBE(buff, 32);
             int hwPwm = MathsUtil.ShortFromBytesBE(buff, 34);
+            byte rideMode = buff[RideModeIndex];
 
             DecodeSmartBms(buff);
 
@@ -133,6 +156,7 @@ public sealed partial class VeteranDecoder : IWheelDecoder
             _state.SetChargingStatus(chargeMode);
             _state.SetSleepTimer(autoOffSec);
             _state.SetAngle(pitchAngle / 100.0);
+            _state.SetRideModeRaw(rideMode);
             if (_config.HwPwm)
             {
                 _state.SetOutput(hwPwm);

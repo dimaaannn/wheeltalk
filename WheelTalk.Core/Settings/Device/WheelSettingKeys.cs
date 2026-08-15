@@ -51,10 +51,14 @@ public static class WheelSettingKeys
     /// <summary>Опора расчёта напряжения заряда, по умолчанию 145.</summary>
     public const string MaxChargeVolBase = "maxChargeVolBase";
 
-    /// <summary>Помощь при подъёме и спуске, 0..100.</summary>
+    /// <summary>Помощь при разгоне и торможении, 0..100. Имя ключа обманчиво («up or down»
+    /// читается как подъём и спуск), но производитель подписывает это «Acceleration and
+    /// deceleration assist» — <c>docs/originals-reference-data.md</c> §14.1, опкод 31.</summary>
     public const string UpOrDownSpeedHelper = "upOrDownSpeedHelper";
 
-    /// <summary>Ускорение подъёма, 0..100.</summary>
+    /// <summary>Снижение акселерометра, 0..100. Имя ключа снова обманчиво («up speed» читается
+    /// как ускорение подъёма), у производителя — «Accelerometer reduction»
+    /// (<c>docs/originals-reference-data.md</c> §14.1, опкод 33).</summary>
     public const string UpSpeedCul = "upSpeedCul";
 
     /// <summary>Тревога по давлению тормоза, 80..125.</summary>
