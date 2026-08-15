@@ -103,6 +103,14 @@ public sealed record TelemetrySnapshot
     /// <summary>Model name derived from protocol version (e.g. "Sherman L").</summary>
     public string Model { get; init; } = "";
 
+    /// <summary>
+    /// Поколение колеса числом, как его сообщил сам кадр (Veteran: старшая часть кода версии,
+    /// 6 — Sherman L, 4 — Patton). <see cref="Model"/> — это же число, переведённое в имя таблицей;
+    /// спрашивающему форму посылки нужно число (план 34 §6, шаг 4.3). <c>0</c> — кадра ещё не было
+    /// или марка о поколении не говорит.
+    /// </summary>
+    public int ProtocolVersion { get; init; }
+
     public WheelType WheelType { get; init; } = WheelType.Veteran;
 
     public SmartBms Bms1 { get; init; } = new();

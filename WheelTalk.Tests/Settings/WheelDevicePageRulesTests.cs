@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging.Abstractions;
 using WheelTalk.Core.Decoding;
 using WheelTalk.Core.Settings.Device;
@@ -17,14 +17,16 @@ public class WheelDevicePageRulesTests
 {
     private const string PageFile = "WheelTalk.Droid/Settings/Catalogue/WheelDevicePage.cs";
 
-    /// <summary>Пятнадцать полей страницы 8 (план 34 §1.4) без <c>maxChargeVolBase</c>: его показ
-    /// владелец отложил 16.08.2026 до сбора данных о смысле поля (§12.0).</summary>
-    private const int Rows = 15;
+    /// <summary>Шестнадцать строк: пятнадцать полей страницы 8 (план 34 §1.4) без
+    /// <c>maxChargeVolBase</c> — его показ владелец отложил 16.08.2026 до сбора данных о смысле
+    /// поля (§12.0) — плюс режим езды старых колёс, который приходит не страницей, а байтом 31
+    /// кадра телеметрии (шаг 4.2; <see cref="PedalHardnessByGenerationTests"/>).</summary>
+    private const int Rows = 16;
 
     /// <summary>
     /// (а) <b>Капкан К4.</b> Каждая строка — «сообщено колесом». Забытый признак увёл бы настройку в
     /// слои: она вернулась бы из хранилища при следующем запуске и показалась состоянием колеса,
-    /// которого колесо не подтверждало. Замок держит признак не пятнадцать раз, а один — описания
+    /// которого колесо не подтверждало. Замок держит признак не шестнадцать раз, а один — описания
     /// создаются единственной фабрикой, и мимо неё их в файле нет.
     /// </summary>
     [Fact]
@@ -42,7 +44,7 @@ public class WheelDevicePageRulesTests
     /// <summary>
     /// (б) Настройки, которой у колеса нет, на экране не бывает: видимость строки — «снимок знает
     /// это поле». Правило проверено с двух сторон — условием в описании и настоящим кадром, где
-    /// одно из пятнадцати полей пришло сентинелом.
+    /// одно из пятнадцати полей страницы 8 пришло сентинелом.
     /// </summary>
     [Fact]
     public void A_row_is_hidden_when_the_wheel_kept_silent_about_the_field()
@@ -52,7 +54,7 @@ public class WheelDevicePageRulesTests
         var snapshot = ShermanL();
 
         Assert.False(snapshot[WheelSettingKeys.BrakePressureAlarm].Supported);
-        foreach (string key in PageKeys().Where(key => key != WheelSettingKeys.BrakePressureAlarm))
+        foreach (string key in SnapshotKeys().Where(key => key != WheelSettingKeys.BrakePressureAlarm))
         {
             Assert.True(snapshot[key].Supported, $"{key}: колесо сообщило значение, строка должна быть видна");
         }
@@ -68,11 +70,14 @@ public class WheelDevicePageRulesTests
         Assert.Contains("Current = () => Text(kind, value(field), decimals)", RowBody());
         Assert.Contains("Key = KeyPrefix + field", RowBody());
 
-        var keys = PageKeys();
-        Assert.Equal(Rows, keys.Count);
+        Assert.Equal(Rows, PageKeys().Count);
 
         var snapshot = ShermanL();
-        foreach (string key in keys) Assert.True(snapshot.Values.ContainsKey(key), $"снимок не знает поля {key}");
+        foreach (string key in SnapshotKeys()) Assert.True(snapshot.Values.ContainsKey(key), $"снимок не знает поля {key}");
+
+        // Единственное значение страницы не из снимка: режим езды приходит кадром телеметрии, и
+        // страницы 8 у колёс, которым эта строка нужна, не бывает вовсе (шаг 4.2).
+        Assert.DoesNotContain(WheelSettingKeys.RideMode, snapshot.Values.Keys);
 
         // Столбец «Sherman L» раскладки §1.4 — те самые числа, что увидит человек на реплее.
         Assert.Equal(94, snapshot[WheelSettingKeys.PedalHardness].Value);
@@ -192,6 +197,10 @@ public class WheelDevicePageRulesTests
         int next = build.IndexOf("Row(Value,", at, StringComparison.Ordinal);
         return next < 0 ? build[at..] : build[at..next];
     }
+
+    /// <summary>Поля страницы 8: всё, что страница показывает, кроме режима езды, — он не оттуда.</summary>
+    private static IEnumerable<string> SnapshotKeys() =>
+        PageKeys().Where(key => key != WheelSettingKeys.RideMode);
 
     /// <summary>Поля протокола, которые страница показывает, — именами из <see cref="WheelSettingKeys"/>.</summary>
     private static IReadOnlyList<string> PageKeys() =>

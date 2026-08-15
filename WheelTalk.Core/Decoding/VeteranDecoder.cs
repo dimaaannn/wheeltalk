@@ -145,6 +145,9 @@ public sealed partial class VeteranDecoder : IWheelDecoder
             }
 
             _state.SetVersion(version);
+            // Поколение уходит наверх числом, а не только именем модели: у формы посылки и у
+            // набора настроек оно спрашивается числом (план 34 §6, шаг 4.3).
+            _state.SetProtocolVersion(_protocolVersion);
             _state.SetSpeed(speed);
             _state.SetTopSpeed(speed);
             _state.SetWheelDistance(distance);

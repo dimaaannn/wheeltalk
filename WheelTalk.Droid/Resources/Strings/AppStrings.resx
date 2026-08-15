@@ -537,6 +537,8 @@
   <data name="SheetSectionPhone" xml:space="preserve"><value>Телефон</value></data>
   <data name="SheetSectionGo" xml:space="preserve"><value>Ссылки</value></data>
   <data name="SettingWheelDevicePedalHardness" xml:space="preserve"><value>Ride mode setting</value></data>
+  <data name="SettingWheelDeviceRideMode" xml:space="preserve"><value>Ride Mode setting</value></data>
+  <data name="SettingWheelDeviceRideModeHint" xml:space="preserve"><value>Жёсткость педалей у колёс без плавной шкалы — колесо сообщает её положением. Число показано как пришло: правило, по которому его читают тремя положениями или шкалой, лежит в серверной карточке колеса производителя, а не в кадре</value></data>
   <data name="SettingWheelDeviceGyro" xml:space="preserve"><value>Calibration</value></data>
   <data name="SettingWheelDeviceGyroHint" xml:space="preserve"><value>Состояние калибровки гироскопа, как его сообщило колесо. Запускать калибровку приложение не умеет — только показывает</value></data>
   <data name="SettingWheelDeviceTransportMode" xml:space="preserve"><value>Transportation mode</value></data>

@@ -1,4 +1,4 @@
-using WheelTalk.Core.Settings.Device;
+﻿using WheelTalk.Core.Settings.Device;
 
 namespace WheelTalk.Core.Decoding;
 
@@ -22,8 +22,14 @@ public static class VeteranSettingsPage
     public const int PageNumber = 8;
 
     /// <summary>«Такой настройки у этого колеса нет» (<c>ControlSettingData.java:5</c>). Родное
-    /// приложение по одному этому байту прячет строку, по каждому полю отдельно.</summary>
-    private const byte NoSuchSetting = 0x80;
+    /// приложение по одному этому байту прячет строку, по каждому полю отдельно.
+    /// <para>
+    /// Открыт наружу, потому что тем же байтом говорит «нет» и режим езды из кадра телеметрии
+    /// (байт 31): Sherman L шлёт там <c>0x80</c> во всех 597 кадрах записи 28.07.2026, а жёсткость
+    /// педалей сообщает этой страницей. Один смысл — одно число, и второго такого в коде быть не
+    /// должно.
+    /// </para></summary>
+    public const byte NoSuchSetting = 0x80;
 
     /// <summary>
     /// Раскладка страницы (план 34 §1.4), по возрастанию индекса. Знаковое поле ровно одно —

@@ -1,5 +1,6 @@
-using System.Globalization;
+﻿using System.Globalization;
 using WheelTalk.Core.Contracts;
+using WheelTalk.Core.Decoding;
 using WheelTalk.Core.Settings;
 using WheelTalk.Core.Settings.Device;
 
@@ -29,6 +30,14 @@ namespace WheelTalk.Droid.Settings.Catalogue;
 /// Единственное поле раскладки §1.4, которого здесь нет, — <c>maxChargeVolBase</c>: решением
 /// владельца 16.08.2026 (§12.0) оно отложено до того, как его смысл соберут разбором.
 /// </para>
+/// <para>
+/// Одна строка приходит не страницей 8, а кадром телеметрии, — режим езды старых колёс
+/// (<see cref="WheelSettingKeys.RideMode"/>, шаг 4.2 плана). Она и жёсткость педалей —
+/// <b>одно и то же место экрана у разных поколений</b>: видна ровно одна из двух, и решает это
+/// сентинел, а не таблица моделей (§1.3). Так же поступает и родное приложение —
+/// <c>ControlActivity.initControlData</c> прячет одну строку и показывает другую по одной проверке
+/// жёсткости педалей.
+/// </para>
 /// </summary>
 internal static class WheelDevicePage
 {
@@ -54,8 +63,9 @@ internal static class WheelDevicePage
     /// </param>
     public static IReadOnlyList<SettingDescriptor> Build(Func<TelemetrySnapshot?> lastFrame)
     {
-        WheelSettingValue Value(string field) =>
-            lastFrame()?.WheelSettings?[field] ?? WheelSettingValue.Missing();
+        WheelSettingValue Value(string field) => field == WheelSettingKeys.RideMode
+            ? RideMode(lastFrame())
+            : lastFrame()?.WheelSettings?[field] ?? WheelSettingValue.Missing();
 
         // Строки идут тремя смысловыми кучками, а внутри кучки — порядком байтов страницы 8 (§1.4):
         // так строка экрана сверяется с раскладкой без перевода. Секция у всех одна, поэтому кучки
@@ -65,6 +75,13 @@ internal static class WheelDevicePage
             // ---- Педали и езда -----------------------------------------------------------
             Row(Value, WheelSettingKeys.PedalHardness, ReportedSection, "SettingWheelDevicePedalHardness",
                 SettingKind.Number, max: 100, unit: "UnitPercent"),
+            // Подмена предыдущей строки у колёс без плавной шкалы. Подпись — своя, оригинальная:
+            // у производителя это отдельный экран «Ride Mode setting» (`ride_mode`), и от почти
+            // такой же подписи жёсткости педалей («Ride mode setting», `padle_soft_setting`) он
+            // отличается одной заглавной буквой — обе перенесены как есть
+            // (originals-reference-data.md §14.1). Одновременно их не бывает, путать нечего.
+            Row(Value, WheelSettingKeys.RideMode, ReportedSection, "SettingWheelDeviceRideMode",
+                SettingKind.Number, min: 1, max: 3, hint: "SettingWheelDeviceRideModeHint"),
             Row(Value, WheelSettingKeys.Gyro, ReportedSection, "SettingWheelDeviceGyro",
                 SettingKind.Number, max: 2, hint: "SettingWheelDeviceGyroHint"),
             Row(Value, WheelSettingKeys.TransportMode, ReportedSection, "SettingWheelDeviceTransportMode",
@@ -114,9 +131,53 @@ internal static class WheelDevicePage
     }
 
     /// <summary>
+    /// Режим езды старых колёс — байт 31 кадра телеметрии (<see cref="TelemetrySnapshot.RideModeRaw"/>),
+    /// единственное значение страницы не из снимка настроек.
+    /// <para>
+    /// <b>Строка есть ровно там, где нет плавной шкалы</b> — два «нет» подряд, и оба сказаны
+    /// колесом. Первое: сам байт не сентинел. Sherman L шлёт в нём <c>0x80</c> во всех 597 кадрах
+    /// записи, а жёсткость педалей сообщает страницей 8 — то же «такой настройки нет», что и на
+    /// странице (<see cref="VeteranSettingsPage.NoSuchSetting"/>). Второе: колесо не сообщило
+    /// плавной жёсткости. Молчание страницы 8 тоже «не сообщило», и это не оплошность: у колёс
+    /// старше пятого поколения страницы настроек нет вовсе
+    /// (<c>VeteranDecoder.DecodeSmartBms</c> — <c>_protocolVersion &lt; 5</c>), а строка нужна
+    /// именно им. Родное приложение решает так же: <c>controlSettingData == null ||
+    /// getPedalHardness() == 128</c> (<c>ControlActivity.initControlData</c>).
+    /// </para>
+    /// <para>
+    /// <b>Число идёт сырым, без толкования.</b> Родное приложение читает этот байт двояко — три
+    /// положения 1/2/3 либо плавная шкала со смещением (<c>SetRideModeActivity.java:70-78</c>), —
+    /// и выбирает <b>не по кадру</b>: признак <c>isContinuousSoftHardSet</c> берётся из карточки
+    /// колеса, которую приложение скачивает с сервера производителя и ищет по коду версии железа
+    /// (<c>CarBaseInfo</c>, <c>CarDataManager.getCarInfoByHardVersion</c>). Ни карточки, ни её
+    /// заменителя у нас нет, а наших данных три точки — Abrams 3, Patton 2, Lynx 180. Догадка
+    /// поверх трёх точек стоила бы райдеру неверно понятой жёсткости педалей, поэтому показываем
+    /// то, что пришло (решение владельца «как есть, ничего не выдумывать»).
+    /// </para>
+    /// <para>
+    /// Когда признак найдётся, три положения подписываются <b>«Soft» / «Medium» / «Strong»</b> —
+    /// <c>R.array.ride_mode</c>, которым родное приложение показывает <i>значение</i> и в меню
+    /// настроек, и на приборной панели. Расхождение, отмеченное в
+    /// <c>docs/originals-reference-data.md</c> §14.1, разрешается этим же: «Hard»
+    /// (<c>mode_hard</c>) — подпись <i>кнопки записи</i> на экране правки, а наша строка читает.
+    /// Уточнение к §14.1: «Strong» стоит не только на приборной панели — тем же массивом подписан
+    /// и пункт меню настроек (<c>ControlActivity.java:383</c>).
+    /// </para>
+    /// </summary>
+    private static WheelSettingValue RideMode(TelemetrySnapshot? frame)
+    {
+        if (frame?.RideModeRaw is not { } raw) return WheelSettingValue.Missing();
+
+        bool noSuchSetting = raw == VeteranSettingsPage.NoSuchSetting
+            || frame.WheelSettings?[WheelSettingKeys.PedalHardness].Supported == true;
+
+        return noSuchSetting ? WheelSettingValue.Missing(raw) : WheelSettingValue.Reported(raw, raw);
+    }
+
+    /// <summary>
     /// Одна строка страницы. <b>Единственное место, где описание этой страницы создаётся</b>:
-    /// признак «сообщено колесом», условие видимости и чтение снимка — общие у всех пятнадцати, и
-    /// повторить их пятнадцать раз значит однажды повторить четырнадцать (капкан К4).
+    /// признак «сообщено колесом», условие видимости и чтение снимка — общие у всех шестнадцати, и
+    /// повторить их шестнадцать раз значит однажды повторить пятнадцать (капкан К4).
     /// <para>
     /// <see cref="SettingDescriptor.IsVisible"/> — «снимок знает это поле». Настройки, которой у
     /// колеса нет, на экране не бывает: сентинел <c>0x80</c> прячет строку по каждому полю

@@ -71,6 +71,15 @@ public sealed class WheelState
     public int Output { get; private set; }
     public string Version { get; private set; } = "";
     public string Model { get; private set; } = "";
+
+    /// <summary>
+    /// Поколение колеса — старшая часть кода версии из кадра телеметрии (Veteran:
+    /// <c>ver / 1000</c>, байты 28-29). <b>Факт, а не догадка о модели</b>: <see cref="Model"/>
+    /// выводится из этого же числа таблицей имён, и там, где важна форма посылки, спрашивать надо
+    /// число, а не имя (план 34 §6, шаг 4.3 — семейство 004 принимает не то же, что Sherman L).
+    /// <c>0</c> — кадра телеметрии ещё не было либо марка о поколении не говорит вовсе.
+    /// </summary>
+    public int ProtocolVersion { get; private set; }
     public WheelType WheelType { get; set; } = WheelType.Unknown;
     public int Temperature2 { get; private set; }
     public bool WheelAlarm { get; private set; }
@@ -186,6 +195,8 @@ public sealed class WheelState
     public void SetVersion(string value) => Version = value;
 
     public void SetModel(string model) => Model = model;
+
+    public void SetProtocolVersion(int version) => ProtocolVersion = version;
 
     public void SetTemperature2(int value) => Temperature2 = value;
 
@@ -331,6 +342,7 @@ public sealed class WheelState
         Alert = Alert,
         Version = Version,
         Model = Model,
+        ProtocolVersion = ProtocolVersion,
         WheelType = WheelType,
         Bms1 = Bms1,
         Bms2 = Bms2,

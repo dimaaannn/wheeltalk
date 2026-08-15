@@ -63,4 +63,13 @@ public static class WheelSettingKeys
 
     /// <summary>Тревога по давлению тормоза, 80..125.</summary>
     public const string BrakePressureAlarm = "brakePressureAlarm";
+
+    /// <summary>
+    /// Режим езды старых колёс — <b>единственный ключ не со страницы 8</b>: значение приходит
+    /// байтом 31 кадра телеметрии (<c>rideMode</c> у производителя, <c>BtManager.java:377</c>) и
+    /// живёт в <c>TelemetrySnapshot.RideModeRaw</c>. Ключ заведён здесь, потому что для показа это
+    /// такая же сообщённая колесом настройка, как остальные: у колёс без плавной шкалы педалей
+    /// (<see cref="PedalHardness"/> пришла сентинелом) она заменяет её собой — план 34 §6, шаг 4.2.
+    /// </summary>
+    public const string RideMode = "rideMode";
 }
