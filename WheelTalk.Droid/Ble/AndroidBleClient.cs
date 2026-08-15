@@ -101,6 +101,14 @@ public sealed class AndroidBleClient : ITransport
     private BluetoothGatt? _gatt;
     private BluetoothGattCharacteristic? _notifyCharacteristic;
     private BluetoothGattCharacteristic? _writeCharacteristic;
+
+    /// <summary>
+    /// Каким типом записи говорит нынешний линк — его называет <see cref="SelectCharacteristics"/>
+    /// вместе с парой характеристик. <c>volatile</c> по той же причине, что и
+    /// <see cref="_attMtu"/>: пишет сессия, читают binder-потоки.
+    /// </summary>
+    private volatile GattWriteType _writeType = GattWriteType.NoResponse;
+
     private bool _disconnecting;
 
     /// <summary>
@@ -284,8 +292,10 @@ public sealed class AndroidBleClient : ITransport
         _notifyCharacteristic = null;
         _writeCharacteristic = null;
         // Следующий линк начнёт переговоры о MTU заново — унаследованное значение соврало бы о
-        // размере записи ровно в том случае, когда переговоры не состоятся.
+        // размере записи ровно в том случае, когда переговоры не состоятся. Тип записи — по тому же
+        // правилу: он свойство линка, а не клиента, и наследовать его нечему.
         _attMtu = DefaultAttMtu;
+        _writeType = GattWriteType.NoResponse;
         Interlocked.Exchange(ref _tooLongReported, 0);
 
         // Обнулено до Disconnect()/Close() — колбэки этого адаптера, ещё стоящие в очереди Android,
@@ -366,16 +376,20 @@ public sealed class AndroidBleClient : ITransport
             throw new WriteTooLongException(cmd.Length, limit);
         }
 
+        // Тип записи — свойство линка (см. SelectCharacteristics), а не литерал: InMotion пишется с
+        // подтверждением, остальные — без.
+        var writeType = _writeType;
+
         if (OperatingSystem.IsAndroidVersionAtLeast(33))
         {
             // BluetoothStatusCodes.Success == 0 (Android 33+ API contract); comparing to the
             // literal avoids depending on whether that enum is bound in this SDK level.
-            int status = gatt.WriteCharacteristic(characteristic, cmd, (int)GattWriteType.NoResponse);
+            int status = gatt.WriteCharacteristic(characteristic, cmd, (int)writeType);
             return status == 0;
         }
 
 #pragma warning disable CA1422 // pre-33 API, still the only one available on the target device
-        characteristic.WriteType = GattWriteType.NoResponse;
+        characteristic.WriteType = writeType;
         characteristic.SetValue(cmd);
         return gatt.WriteCharacteristic(characteristic);
 #pragma warning restore CA1422
@@ -383,7 +397,15 @@ public sealed class AndroidBleClient : ITransport
 
     private void OnFrame(byte[] bytes) => DataReceived?.Invoke(bytes);
 
-    private readonly record struct CharacteristicPair(BluetoothGattCharacteristic Notify, BluetoothGattCharacteristic Write);
+    /// <summary>
+    /// Пара характеристик линка и тип записи, которым по нему говорят. Третье поле здесь потому,
+    /// что тип записи — свойство выбранной пары, а не знание о протоколе: ядру и декодерам о нём
+    /// знать нечего (мастер-план §8а, <c>docs/polling-architecture-review.md</c> §5.2).
+    /// </summary>
+    private readonly record struct CharacteristicPair(
+        BluetoothGattCharacteristic Notify,
+        BluetoothGattCharacteristic Write,
+        GattWriteType WriteType);
 
     /// <summary>
     /// Picks the notify/write pair from whatever discovery found — plan 21 phase 0.1. Checked in
@@ -391,22 +413,53 @@ public sealed class AndroidBleClient : ITransport
     /// under an InMotion V1 tree that additionally exposes FFE4/FFE9, but no profile in the table
     /// exposes both FFE1 and Nordic UART, so a single priority list is enough, no family lookup
     /// needed here.
+    /// <para>
+    /// Тип записи ложится на те же три ветви ветвь в ветвь (план 36 Л2, мастер-план §8а):
+    /// <b>FFE1</b> — Begode/Veteran/KingSong, без подтверждения; <b>FFE4/FFE9</b> — InMotion V1 и
+    /// <b>Nordic UART</b> — InMotion V2, <b>с подтверждением</b>. Так же делит их DarknessBot, и
+    /// InMotion — единственная марка, которую он выделил (51 запись нового адаптера и 13 старого,
+    /// все с подтверждением, против пяти прочих марок без). Подтверждаемая запись сама держит
+    /// темп: следующая не уйдёт, пока колесо не ответило, — потому это <b>кандидат №1 в причину
+    /// отвала V14</b>. Гипотеза до замера.
+    /// </para>
+    /// <para>
+    /// <c>GattWriteType.Default</c> — это и есть запись с подтверждением (ATT Write Request); имя
+    /// со словом «Response» носит противоположный тип.
+    /// </para>
     /// </summary>
     private static CharacteristicPair? SelectCharacteristics(BluetoothGatt gatt)
     {
         BluetoothGattCharacteristic? Find(Java.Util.UUID uuid) =>
             (gatt.Services ?? []).Select(s => s.GetCharacteristic(uuid)).FirstOrDefault(c => c is not null);
 
-        if (Find(Ffe1Uuid) is { } ffe1) return new CharacteristicPair(ffe1, ffe1);
+        if (Find(Ffe1Uuid) is { } ffe1) return new CharacteristicPair(ffe1, ffe1, GattWriteType.NoResponse);
 
-        if (Find(Ffe4Uuid) is { } ffe4 && Find(Ffe9Uuid) is { } ffe9) return new CharacteristicPair(ffe4, ffe9);
+        if (Find(Ffe4Uuid) is { } ffe4 && Find(Ffe9Uuid) is { } ffe9)
+        {
+            return new CharacteristicPair(ffe4, ffe9, GattWriteType.Default);
+        }
 
         if (Find(NordicNotifyUuid) is { } nordicNotify && Find(NordicWriteUuid) is { } nordicWrite)
         {
-            return new CharacteristicPair(nordicNotify, nordicWrite);
+            return new CharacteristicPair(nordicNotify, nordicWrite, GattWriteType.Default);
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Тип записи, который характеристика и вправду объявляет. Подтверждаемую запись просить можно
+    /// только у той, у кого поднят <see cref="GattProperty.Write"/>: у колеса с урезанным профилем
+    /// такая запись не пройдёт вовсе, и команды пропали бы молча. Не объявляет — остаёмся на записи
+    /// без подтверждения и говорим об этом одной строкой.
+    /// </summary>
+    private static GattWriteType SupportedWriteType(BluetoothGattCharacteristic write, GattWriteType wanted, ILogger logger)
+    {
+        if (wanted != GattWriteType.Default || write.Properties.HasFlag(GattProperty.Write)) return wanted;
+
+        logger.LogWarning("Ble.WriteTypeFallback — характеристика {Uuid} не объявляет запись с подтверждением, шлём без",
+            write.Uuid);
+        return GattWriteType.NoResponse;
     }
 
     /// <summary>Advertisement callback — hands devices over through a channel, deduplicated by address.</summary>
@@ -502,7 +555,7 @@ public sealed class AndroidBleClient : ITransport
             logger.LogInformation("Ble.ServicesDiscovered {Status} {Count}", status, gatt?.Services?.Count ?? 0);
 
             var pair = gatt is null ? null : SelectCharacteristics(gatt);
-            if (pair is not { Notify: var notify, Write: var write })
+            if (pair is not { Notify: var notify, Write: var write, WriteType: var writeType })
             {
                 // Не отказ транспорта, а чужой профиль. Раньше здесь падало подключение, и сессия
                 // принималась гоняться за устройством, с которым говорить нечем. Теперь линк
@@ -515,6 +568,8 @@ public sealed class AndroidBleClient : ITransport
 
             client._notifyCharacteristic = notify;
             client._writeCharacteristic = write;
+            client._writeType = SupportedWriteType(write, writeType, logger);
+            logger.LogInformation("Ble.WriteType {WriteType}", client._writeType);
             gatt!.SetCharacteristicNotification(notify, enable: true);
 
             // SetCharacteristicNotification alone only opens the local side: without writing the
