@@ -9,6 +9,7 @@ using Android.Views;
 using Android.Widget;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Resources.Strings;
@@ -44,7 +45,12 @@ public sealed class SettingsActivity : Activity
         (SettingsPage.Application, "SettingsPageApplication"),
         (SettingsPage.Display, "SettingsPageDisplay"),
 
-        // Пятой и последней: не тема наравне с четырьмя, а отметка зрелости (план 28). Стоит внизу
+        // Конфигурация колеса — последней из тем и перед «Тестовыми функциями» (решение владельца
+        // 15.08.2026, план 34 §12 п.7). Внизу потому, что это не наши настройки: править там нечего,
+        // читают её тогда, когда пришли смотреть именно на колесо.
+        (SettingsPage.WheelDevice, "SettingsPageWheelDevice"),
+
+        // Последней: не тема наравне с прочими, а отметка зрелости (план 28). Стоит внизу
         // потому, что заходить туда незачем, пока не понадобилось именно новое.
         (SettingsPage.Experimental, "SettingsPageExperimental"),
     ];
@@ -58,6 +64,7 @@ public sealed class SettingsActivity : Activity
     private LayeredSettings _settings = null!;
     private WheelOptions _wheel = null!;
     private WheelIdentity _identity = null!;
+    private WheelSession _session = null!;
 
     private readonly List<TextView> _summaryLabels = new(Categories.Length);
 
@@ -79,6 +86,7 @@ public sealed class SettingsActivity : Activity
         _settings = MainApplication.Services.GetRequiredService<LayeredSettings>();
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
         _identity = MainApplication.Services.GetRequiredService<WheelIdentity>();
+        _session = MainApplication.Services.GetRequiredService<WheelSession>();
 
         var root = BuildLayout();
         SetContentView(root);
@@ -106,9 +114,14 @@ public sealed class SettingsActivity : Activity
             : AppStrings.SettingsScopeGlobal);
         _scopeDot.Background = Dot(picked ? this.Picked() : this.TextSecondary());
 
+        // Как колесо себя назвало — из последнего кадра, а не из алиаса: сводка «Конфигурации
+        // колеса» говорит о модели, которую опознал протокол, и подменять её именем, данным
+        // человеком, значило бы приписать чужие настройки не тому колесу.
+        string model = _session.LastSnapshot?.Model ?? "";
+
         for (int i = 0; i < Categories.Length; i++)
         {
-            _summaryLabels[i].SetText(SettingsFormat.Summarize(_binder, Categories[i].Page));
+            _summaryLabels[i].SetText(SettingsFormat.Summarize(_binder, Categories[i].Page, model));
             ShowOwnCount(_ownBadges[i], Categories[i].Page);
         }
     }

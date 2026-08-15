@@ -12,7 +12,10 @@ using Google.Android.Material.Button;
 using Google.Android.Material.Chip;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using WheelTalk.Core.Contracts;
+using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
+using WheelTalk.Core.Settings.Device;
 using WheelTalk.Dashboard.Droid;
 using WheelTalk.Droid;
 using WheelTalk.Droid.Configuration;
@@ -73,6 +76,7 @@ public sealed class SettingsCategoryActivity : Activity
     private const int HighlightMs = 1200;
 
     private SettingsBinder _binder = null!;
+    private WheelSession _session = null!;
     private WheelOptions _wheel = null!;
     private SettingsPage _page;
 
@@ -117,6 +121,21 @@ public sealed class SettingsCategoryActivity : Activity
     /// </summary>
     private readonly OwnedWindow _windows = new();
 
+    /// <summary>
+    /// Подписка на телеметрию — только у «Конфигурации колеса» и только пока страница на виду
+    /// (план 34, шаг 2.6). Остальным пяти страницам она не нужна: их значения меняет человек, и
+    /// перестроение уже стоит после каждой правки.
+    /// </summary>
+    private IDisposable? _liveSettings;
+
+    /// <summary>
+    /// Время снимка, по которому собран нынешний список. Мерка «пришло ли что-то новое»: колесо шлёт
+    /// телеметрию много чаще, чем страницу настроек (Veteran — раз в 4 секунды на шестнадцать
+    /// кадров), и перестраивать список на каждый кадр значило бы дёргать экран впустую сорок раз
+    /// из сорока одного.
+    /// </summary>
+    private DateTimeOffset? _shownAt;
+
     protected override void OnDestroy()
     {
         _windows.Close();
@@ -132,6 +151,7 @@ public sealed class SettingsCategoryActivity : Activity
         Title = string.Format(CultureInfo.CurrentCulture, AppStrings.ScreenTitleFormat, AppStrings.SettingsTitle);
 
         _binder = MainApplication.Services.GetRequiredService<SettingsBinder>();
+        _session = MainApplication.Services.GetRequiredService<WheelSession>();
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
         _viewScope = _wheel.Address;
         _page = (SettingsPage)(Intent?.GetIntExtra(ExtraPage, (int)SettingsPage.Application) ?? (int)SettingsPage.Application);
@@ -156,6 +176,57 @@ public sealed class SettingsCategoryActivity : Activity
 
         Rebuild();
         RevealPending();
+        WatchWheel();
+    }
+
+    /// <summary>
+    /// Подписка живёт ровно столько, сколько страница на виду: снятая только в <c>OnDestroy</c>, она
+    /// перестраивала бы разметку экрана, которого никто не смотрит, и держала бы страницу живой в
+    /// стопке.
+    /// </summary>
+    protected override void OnStop()
+    {
+        _liveSettings?.Dispose();
+        _liveSettings = null;
+        base.OnStop();
+    }
+
+    /// <summary>
+    /// Слушать колесо — только «Конфигурации колеса»: это единственная страница, значения которой
+    /// меняет не человек, а само колесо, и без подписки её числа замерли бы на первом кадре
+    /// (план 34, шаг 2.6).
+    /// <para>
+    /// Кадр приходит с потока разбора, поэтому решение выносится на поток разметки: <c>Rebuild</c>
+    /// собирает вью, а их с чужого потока не трогают.
+    /// </para>
+    /// </summary>
+    private void WatchWheel()
+    {
+        if (_page != SettingsPage.WheelDevice || _liveSettings is not null) return;
+
+        _liveSettings = _session.Telemetry.Subscribe(frame => RunOnUiThread(() => ShowFreshSettings(frame)));
+    }
+
+    /// <summary>
+    /// Перестроить список — <b>только на новом снимке настроек и только при закрытых окнах</b>.
+    /// <para>
+    /// Первое условие: страница настроек едет отдельным кадром раз в 4 секунды, а телеметрия — куда
+    /// чаще, и <see cref="WheelSettingsSnapshot.ReceivedAt"/> у неприкосновенного снимка тот же
+    /// самый. Сравнивать сами значения не нужно: снимок целиком заменяется следующим кадром и
+    /// временем отвечает за всё своё содержимое.
+    /// </para>
+    /// <para>
+    /// Второе: перестроение сносит разметку под открытым листом значения, а лист живёт своим окном
+    /// и переживёт своего хозяина осиротевшим. Пропущенный кадр не потеря — следующий придёт через
+    /// те же 4 секунды.
+    /// </para>
+    /// </summary>
+    private void ShowFreshSettings(TelemetrySnapshot frame)
+    {
+        if (frame.WheelSettings?.ReceivedAt is not { } received || received == _shownAt) return;
+        if (_windows.IsOpen) return;
+
+        Rebuild();
     }
 
     /// <summary>
@@ -243,6 +314,7 @@ public sealed class SettingsCategoryActivity : Activity
         SettingsPage.Warnings => "SettingsPageWarnings",
         SettingsPage.Display => "SettingsPageDisplay",
         SettingsPage.Experimental => "SettingsPageExperimental",
+        SettingsPage.WheelDevice => "SettingsPageWheelDevice",
         _ => "SettingsPageApplication",
     };
 
@@ -252,12 +324,29 @@ public sealed class SettingsCategoryActivity : Activity
     /// «здесь можно что-то сломать». Сказать надо ровно обратное — строки работают полностью,
     /// страница <b>только помечает</b>.
     /// <para>
+    /// Второе — у «Конфигурации колеса»: список выглядит как всякий другой, а правится, в отличие
+    /// от всякого другого, ничем. Молчание об этом человек истолковал бы единственным доступным
+    /// способом — «не нажимается, значит сломано».
+    /// </para>
+    /// <para>
     /// У остальных четырёх пояснения нет: их названия говорят сами за себя, а надпись над каждым
     /// списком — это строка, которую перестают читать.
     /// </para>
     /// </summary>
-    private static string? PageNoticeKey(SettingsPage page) =>
-        page == SettingsPage.Experimental ? "SettingsPageExperimentalNotice" : null;
+    private static string? PageNoticeKey(SettingsPage page) => page switch
+    {
+        SettingsPage.Experimental => "SettingsPageExperimentalNotice",
+        SettingsPage.WheelDevice => "SettingsPageWheelDeviceNotice",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Что сказать, когда показывать нечего. У «Конфигурации колеса» пустота — не «настроек нет», а
+    /// «колесо ещё не сказало»: до первого кадра список пуст намеренно (решение владельца, план 34
+    /// §12 п.1), и серый список с пустыми значениями обещал бы то, чего колесо не подтверждало.
+    /// </summary>
+    private static string EmptyTextKey(SettingsPage page) =>
+        page == SettingsPage.WheelDevice ? "SettingsWheelDeviceEmpty" : "SettingsEmpty";
 
     // ---- Scope (общее / это колесо) ----------------------------------------------------------
 
@@ -265,9 +354,18 @@ public sealed class SettingsCategoryActivity : Activity
     /// "Общее" and the wheel already selected — not a list of every wheel ever seen (variant B's
     /// deliberate cut from variant A, settings-redesign.md §4 "Цена"): смотреть можно только общий
     /// слой да слой выбранного колеса, и оба известны без поиска.
+    /// <para>
+    /// У «Конфигурации колеса» переключателя нет вовсе (план 34, шаг 2.5): её значения приходят от
+    /// колеса и в наши слои не пишутся ни в какой области, так что переключать нечего. Долгое
+    /// нажатие на строку там тоже молчит, и это не второй запрет, а тот же самый — лист «Где
+    /// хранить» отсекает <see cref="HasLayers"/> по признаку
+    /// <see cref="SettingDescriptor.ReportedByWheel"/>.
+    /// </para>
     /// </summary>
-    private View BuildScopeRow()
+    private View? BuildScopeRow()
     {
+        if (_page == SettingsPage.WheelDevice) return null;
+
         var container = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
         container.SetGravity(GravityFlags.CenterVertical);
         int padH = this.Dp(16);
@@ -387,6 +485,10 @@ public sealed class SettingsCategoryActivity : Activity
 
     private void Rebuild()
     {
+        // Метка ставится ДО чтения строк: кадр, пришедший посреди сборки, вызовет тогда лишнее
+        // перестроение, а не потеряется молча. Лишнее дешевле пропущенного.
+        _shownAt = _session.LastSnapshot?.WheelSettings?.ReceivedAt;
+
         // Ползунки прослушивания рисуются с нуля, значит и звучать после перестроения нечему.
         Silence();
 
@@ -429,7 +531,7 @@ public sealed class SettingsCategoryActivity : Activity
 
         if (sections.Count == 0)
         {
-            var empty = new TextView(this) { Text = AppStrings.SettingsEmpty };
+            var empty = new TextView(this) { Text = TranslateExtension.Get(EmptyTextKey(_page)) };
             empty.Alpha = 0.7f;
             _content.AddView(empty);
         }
@@ -1535,7 +1637,7 @@ public sealed class SettingsCategoryActivity : Activity
         var root = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Vertical };
         root.SetBackgroundColor(this.Surface());
 
-        root.AddView(BuildScopeRow());
+        if (BuildScopeRow() is { } scope) root.AddView(scope);
         if (BuildSectionChips() is { } chips) root.AddView(chips);
 
         _scroll = new ScrollView(this);

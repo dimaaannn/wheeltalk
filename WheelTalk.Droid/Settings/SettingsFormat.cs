@@ -93,8 +93,19 @@ internal static class SettingsFormat
     /// на странице настроек (план 29 §29.3).
     /// </para>
     /// </summary>
-    public static string Summarize(SettingsBinder binder, SettingsPage page)
+    /// <param name="wheelModel">
+    /// Как колесо себя назвало («Sherman L») — из последнего кадра телеметрии. Нужен одной
+    /// <see cref="SettingsPage.WheelDevice"/>: у остальных страниц сводка о наших слоях, и модель
+    /// колеса к ней отношения не имеет. Пусто — колесо ещё не назвалось.
+    /// </param>
+    public static string Summarize(SettingsBinder binder, SettingsPage page, string wheelModel)
     {
+        // Страница, где всё сказано колесом, общей сводкой была бы нема: и заголовок, и хвост
+        // отсеивают ReportedByWheel — своих значений у такой строки не бывает, считать нечего
+        // (план 34 §4, шаг 2.4). Она говорит другое: чьи это настройки и сколько их подтвердило
+        // само колесо.
+        if (page == SettingsPage.WheelDevice) return SummarizeWheelDevice(binder, wheelModel);
+
         string scope = binder.LiveScope;
         var descriptors = binder.Page(page, scope).SelectMany(section => section).ToList();
 
@@ -110,5 +121,25 @@ internal static class SettingsFormat
                 AppStrings.SettingsSummaryCount1, AppStrings.SettingsSummaryCount2, AppStrings.SettingsSummaryCount5);
 
         return head.Length > 0 ? $"{head} · {tail}" : tail;
+    }
+
+    /// <summary>
+    /// «Sherman L · 15 значений». Считаются <b>показанные</b> строки, а не все описанные: настройки,
+    /// которой у этого колеса нет, оно и не присылает (сентинел прячет строку), и обещать её числом
+    /// в сводке значило бы соврать раньше, чем человек откроет страницу.
+    /// <para>
+    /// Ноль строк — кадр настроек ещё не пришёл; тогда сводка говорит то же, что и пустой список, и
+    /// не притворяется счётчиком.
+    /// </para>
+    /// </summary>
+    private static string SummarizeWheelDevice(SettingsBinder binder, string wheelModel)
+    {
+        int shown = binder.Page(SettingsPage.WheelDevice, binder.LiveScope).Sum(section => section.Count());
+        if (shown == 0) return AppStrings.SettingsWheelDeviceEmpty;
+
+        string values = Plural.Of(shown,
+            AppStrings.SettingsValuesCount1, AppStrings.SettingsValuesCount2, AppStrings.SettingsValuesCount5);
+
+        return wheelModel.Length > 0 ? $"{wheelModel} · {values}" : values;
     }
 }

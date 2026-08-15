@@ -63,6 +63,11 @@ public static class SettingsCatalogue
             // одним изменённым полем Page; ключи, признаки и условия переехали нетронутыми.
             .. ExperimentalPage.Build(context.Wheel, context.Dashboard, context.Channels,
                 context.PreviewAlarm, context.LastFrame, context.SaveCells),
+
+            // Шестая — то, как настроено само колесо (план 34 §2). Единственное, что ей нужно, уже
+            // есть в контексте: последний кадр, из которого она берёт снимок настроек. Новой
+            // проводки страница не просит — ни своего экрана, ни своего пути доставки.
+            .. WheelDevicePage.Build(context.LastFrame),
         ];
     }
 
