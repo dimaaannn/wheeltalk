@@ -41,8 +41,11 @@ public class InMotionDecoderV2Tests
         Assert.Equal(24.01, snapshot.SpeedKmh, 2);
         Assert.Equal(27, snapshot.TemperatureC);
         Assert.Equal(30, snapshot.Temperature2C);
-        Assert.Equal(-176, snapshot.ImuTemp);
-        Assert.Equal(-176, snapshot.CpuTemp);
+        // Сырой байт 0x00 на этом кадре: старая портовая формула (b & 0xff) + 80 - 256 давала
+        // -176 (капкан «горячей зоны», см. port-deviations.md); формула производителя (знаковый
+        // байт + 80) для того же нулевого байта даёт 80.
+        Assert.Equal(80, snapshot.ImuTemp);
+        Assert.Equal(80, snapshot.CpuTemp);
         Assert.Equal(1184.0, snapshot.MotorPower, 2);
         Assert.Equal(65.00, snapshot.CurrentLimit, 2);
         Assert.Equal(55.00, snapshot.SpeedLimit, 2);

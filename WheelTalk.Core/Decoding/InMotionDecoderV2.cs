@@ -131,6 +131,20 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         _state.SetBatteryLevel(percent, CellInputs());
     }
 
+    /// <summary>
+    /// Температура одного байта InMotion V2 (mos/board/cpu/imu/motor — 26 мест, шесть раскладок
+    /// плюс P6). Порт WheelLog берёт байт беззнаковым: <c>(b &amp; 0xff) + 80 - 256</c> — на деле то
+    /// же самое, что и знаковый байт + 80 для любого исходного значения. Формула производителя
+    /// (blutter-разбор P6, docs/inmotion-loeuc-comparison.md, «Формула температуры») — прямо
+    /// знаковый байт + 80, без промежуточного маскирования в 0xff. Обе формулы алгебраически
+    /// совпадают только при <c>b &gt;= 0x80</c> (диапазон -48…+79 °C — рабочая норма, где держались
+    /// оба наших дампа P6) и расходятся ровно на 256 при <c>b &lt; 0x80</c> (перегрев, +80…+207 °C у
+    /// производителя против -176…-97 °C у порта). Отклонение от WheelLog к производителю записано —
+    /// docs/port-deviations.md. Общий метод вместо 26 копий: следующее расхождение такого рода
+    /// правится в одном месте, не построчно.
+    /// </summary>
+    internal static int DecodeTemperatureC(byte raw) => (sbyte)raw + 80;
+
     /// <summary>Port of setModel(Model) (InmotionAdapterV2.java:180-182) — production code calls
     /// this from the wheel-type handshake (<see cref="DecodeMainInfo"/>); the original also uses it
     /// directly from its own test suite to exercise one model's real-time-info layout without
@@ -274,14 +288,14 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         int motPower = MathsUtil.SignedShortFromBytesLE(data, 10);
         int mileage = MathsUtil.ShortFromBytesLE(data, 12) * 10;
         int batLevel = data[16] & 0x7f;
-        int mosTemp = (data[17] & 0xff) + 80 - 256;
-        int boardTemp = (data[20] & 0xff) + 80 - 256;
+        int mosTemp = DecodeTemperatureC(data[17]);
+        int boardTemp = DecodeTemperatureC(data[20]);
         int pitchAngle = MathsUtil.SignedShortFromBytesLE(data, 22);
         int rollAngle = MathsUtil.SignedShortFromBytesLE(data, 26);
         int dynSpeedLimit = MathsUtil.ShortFromBytesLE(data, 28);
         int dynCurrentLimit = MathsUtil.ShortFromBytesLE(data, 30);
-        int cpuTemp = (data[34] & 0xff) + 80 - 256;
-        int imuTemp = (data[35] & 0xff) + 80 - 256;
+        int cpuTemp = DecodeTemperatureC(data[34]);
+        int imuTemp = DecodeTemperatureC(data[35]);
         int pwm = MathsUtil.ShortFromBytesLE(data, 36);
 
         ApplyRealTimeCore(voltage, current, speed, torque, motPower, batPower, mileage, batLevel,
@@ -315,10 +329,10 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         int batLevel = MathsUtil.ShortFromBytesLE(data, 28);
         int dynSpeedLimit = MathsUtil.ShortFromBytesLE(data, 34);
         int dynCurrentLimit = MathsUtil.ShortFromBytesLE(data, 36);
-        int mosTemp = (data[42] & 0xff) + 80 - 256;
-        int boardTemp = (data[45] & 0xff) + 80 - 256;
-        int cpuTemp = (data[46] & 0xff) + 80 - 256;
-        int imuTemp = (data[47] & 0xff) + 80 - 256;
+        int mosTemp = DecodeTemperatureC(data[42]);
+        int boardTemp = DecodeTemperatureC(data[45]);
+        int cpuTemp = DecodeTemperatureC(data[46]);
+        int imuTemp = DecodeTemperatureC(data[47]);
 
         _state.SetVoltage(voltage);
         _state.SetTorque(torque / 100.0);
@@ -368,10 +382,10 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         int batLevel = MathsUtil.ShortFromBytesLE(data, 24);
         int dynSpeedLimit = MathsUtil.ShortFromBytesLE(data, 30);
         int dynCurrentLimit = MathsUtil.ShortFromBytesLE(data, 32);
-        int mosTemp = (data[40] & 0xff) + 80 - 256;
-        int motTemp = (data[41] & 0xff) + 80 - 256;
-        int cpuTemp = (data[44] & 0xff) + 80 - 256;
-        int imuTemp = (data[45] & 0xff) + 80 - 256;
+        int mosTemp = DecodeTemperatureC(data[40]);
+        int motTemp = DecodeTemperatureC(data[41]);
+        int cpuTemp = DecodeTemperatureC(data[44]);
+        int imuTemp = DecodeTemperatureC(data[45]);
 
         _state.SetVoltage(voltage);
         _state.SetTorque(torque / 100.0);
@@ -422,10 +436,10 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         int batLevel2 = MathsUtil.ShortFromBytesLE(data, 36);
         int dynSpeedLimit = MathsUtil.ShortFromBytesLE(data, 40);
         int dynCurrentLimit = MathsUtil.ShortFromBytesLE(data, 50);
-        int mosTemp = (data[58] & 0xff) + 80 - 256;
-        int motTemp = (data[59] & 0xff) + 80 - 256;
-        int cpuTemp = (data[62] & 0xff) + 80 - 256;
-        int imuTemp = (data[63] & 0xff) + 80 - 256;
+        int mosTemp = DecodeTemperatureC(data[58]);
+        int motTemp = DecodeTemperatureC(data[59]);
+        int cpuTemp = DecodeTemperatureC(data[62]);
+        int imuTemp = DecodeTemperatureC(data[63]);
 
         _state.SetVoltage(voltage);
         _state.SetTorque(torque / 100.0);
@@ -475,10 +489,10 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         int batLevel2 = MathsUtil.ShortFromBytesLE(data, 36);
         int dynSpeedLimit = MathsUtil.ShortFromBytesLE(data, 40);
         int dynCurrentLimit = MathsUtil.ShortFromBytesLE(data, 50);
-        int mosTemp = (data[58] & 0xff) + 80 - 256;
-        int motTemp = (data[59] & 0xff) + 80 - 256;
-        int cpuTemp = (data[62] & 0xff) + 80 - 256;
-        int imuTemp = (data[63] & 0xff) + 80 - 256;
+        int mosTemp = DecodeTemperatureC(data[58]);
+        int motTemp = DecodeTemperatureC(data[59]);
+        int cpuTemp = DecodeTemperatureC(data[62]);
+        int imuTemp = DecodeTemperatureC(data[63]);
 
         _state.SetVoltage(voltage);
         _state.SetTorque(torque / 100.0);
@@ -535,10 +549,10 @@ public sealed partial class InMotionDecoderV2 : IWheelDecoder, IDisposable
         int batLevel2 = MathsUtil.ShortFromBytesLE(data, 36);
         int dynSpeedLimit = MathsUtil.ShortFromBytesLE(data, 40);
         int dynCurrentLimit = MathsUtil.ShortFromBytesLE(data, 50);
-        int mosTemp = (data[58] & 0xff) + 80 - 256;
-        int motTemp = (data[59] & 0xff) + 80 - 256;
-        int cpuTemp = (data[62] & 0xff) + 80 - 256;
-        int imuTemp = (data[63] & 0xff) + 80 - 256;
+        int mosTemp = DecodeTemperatureC(data[58]);
+        int motTemp = DecodeTemperatureC(data[59]);
+        int cpuTemp = DecodeTemperatureC(data[62]);
+        int imuTemp = DecodeTemperatureC(data[63]);
 
         _state.SetVoltage(voltage);
         _state.SetTorque(torque / 100.0);

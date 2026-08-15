@@ -57,8 +57,8 @@ internal static class InMotionP6RealTime
 
         // Смещение и шаг — общие для всей V2. Обе растут за время дампа монотонно, мотор быстрее
         // силовой части (+6 °C против +1 °C), как и должно быть после езды.
-        int mosTemp = (data[58] & 0xff) + 80 - 256;
-        int motTemp = (data[59] & 0xff) + 80 - 256;
+        int mosTemp = InMotionDecoderV2.DecodeTemperatureC(data[58]);
+        int motTemp = InMotionDecoderV2.DecodeTemperatureC(data[59]);
 
         state.SetVoltage(voltage);
         state.SetCurrent(current);
