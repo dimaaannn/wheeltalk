@@ -78,4 +78,11 @@ public interface IVeteranSettingsCommands
     /// <summary>Яркость экрана колеса, 0..100 %. Опкод 20/<c>0x14</c>, b6=2 — тот же опкод, что у
     /// служебного чтения журнала (b6=0). <c>ScreenBacklightSettingActivity.java:30</c>.</summary>
     byte[]? BuildSetScreenBacklight(int percent);
+
+    /// <summary>Режим низкого напряжения, тумблер. Опкод 25/<c>0x19</c>, b5/b6 = 1/2 —
+    /// <c>ControlActivity.java:446-448</c>, вызов <c>:352</c> (<c>z ? 1 : 0</c>). Тот же опкод носит
+    /// запись пароля с b5/b6 = <b>0/5</b> (<c>Util.genPwdCmd</c>, <c>Util.java:257-273</c>: она берёт
+    /// построитель синхронизации времени и прибавляет к его опкоду 7, оттого и b5/b6 у неё чужие).
+    /// Пароль запрещён навсегда (план §8) — но запрещена комбинация, а не опкод.</summary>
+    byte[] BuildSetLowVoltageMode(bool enabled);
 }

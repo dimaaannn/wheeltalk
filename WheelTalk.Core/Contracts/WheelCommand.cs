@@ -45,4 +45,6 @@ public abstract record WheelCommand
     public sealed record SetStopPower(int Percent) : WheelCommand;
     /// <summary>Яркость экрана колеса, 0..100 %.</summary>
     public sealed record SetScreenBacklight(int Percent) : WheelCommand;
+    /// <summary>Режим низкого напряжения (тумблер) — опкод 25, тот же, что у записи пароля.</summary>
+    public sealed record SetLowVoltageMode(bool Enabled) : WheelCommand;
 }

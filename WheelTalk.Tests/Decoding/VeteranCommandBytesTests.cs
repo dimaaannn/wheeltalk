@@ -9,6 +9,11 @@ namespace WheelTalk.Tests.Decoding;
 /// <see cref="VeteranDecoder"/>'s six command builders <b>actually</b> send today, sverено с
 /// <c>docs/originals-reference-data.md</c> §7 (сводная таблица LeaperKim). No behaviour changes
 /// here — a mismatch with §7 is recorded in a comment and left for the owner, per plan 35 §8.
+/// <para>
+/// Внизу файла живёт замок на служебные и опасные команды (§7.5). Он метёт уже <b>всё</b>
+/// исходящее декодера, а не одни эти шесть построителей: запись настроек села на те же опкоды, и
+/// именно там законная команда отличается от запрещённой одним байтом.
+/// </para>
 /// </summary>
 public class VeteranCommandBytesTests
 {
@@ -192,52 +197,138 @@ public class VeteranCommandBytesTests
     // --- §7.5 lock: dangerous/service commands never leave this decoder ---
 
     /// <summary>
-    /// Замок на §7.5 ("Служебные и опасные команды"): чтение журнала (opcode 20/0x14, коллизия со
-    /// `screenBacklightRate`), пароль/блокировка (opcode 25/0x19, переиспользует билдер
-    /// синхронизации времени) и вход в режим прошивки (сырой текст `"AT+RINTOPRO"`) не должны
-    /// уходить с этим декодером ни при каком построителе. VeteranDecoder не реализует ни один
-    /// численный `Ld`-кадр настроек вообще (только фиксированный опкод-14 бип), так что замок
-    /// сегодня тривиален — тест фиксирует это как инвариант на будущее: появится билдер настройки,
-    /// эта проверка первой заметит опкод 20/25 или текст прошивки, случайно ушедший на волю.
+    /// Запрещённая команда производителя. Ключ — <b>не опкод</b>, а различающие байты при нём
+    /// (b5, b6), а где и этого мало — ещё и форма хвоста. Опкод сам по себе командой не является
+    /// (<c>leaperkim-official-app.md</c> §4.2): 20 несёт и чтение журнала, и яркость экрана; 25 — и
+    /// пароль, и режим низкого напряжения; 22 — и выключение колеса, и угол защиты от падения.
+    /// Запрет по опкоду поэтому запрещал бы заодно законную запись настройки — а такой замок рано
+    /// или поздно снимут, потому что он мешает работе. Точный — не мешает и остаётся.
+    /// </summary>
+    private sealed record ForbiddenCommand(string Name, byte Opcode, byte Byte5, byte Byte6, Func<byte[], bool>? TailShape = null)
+    {
+        public bool Matches(byte[] frame) =>
+            frame.Length > 7 && frame[4] == Opcode && frame[5] == Byte5 && frame[6] == Byte6
+            && (TailShape is null || TailShape(frame));
+    }
+
+    /// <summary>Заполнитель тела (<c>Byte.MIN_VALUE</c>). В старых (<c>Lk</c>) кадрах шестого байта
+    /// как поля нет вовсе — там стоит он.</summary>
+    private const byte Filler = 0x80;
+
+    /// <summary>
+    /// Что этому декодеру запрещено отправлять навсегда — §7.5 <c>originals-reference-data.md</c> и
+    /// §8 плана импорта: прошивка (необратима при обрыве, образ без подписи), выключение колеса
+    /// (физический эффект на ходу), пароль (программного сброса забытого PIN в приложении нет) и
+    /// служебные команды, которые оригинал шлёт сам. Заводского сброса в этом протоколе нет вовсе —
+    /// сброс поездки (<c>CLEARMETER</c>) не он, его мы шлём осознанно.
+    /// </summary>
+    private static readonly ForbiddenCommand[] ForbiddenCommands =
+    [
+        new("пароль/блокировка колеса (genPwdCmd, Util.java:257-273)", Opcode: 25, Byte5: 0, Byte6: 5),
+        new("синхронизация времени (getTimeBytes, Util.java:234)", Opcode: 18, Byte5: 0, Byte6: 5),
+        new("чтение журнала, новый кадр (CMD_READ_LOG_NEW, BtManager.java:89)", Opcode: 20, Byte5: 1, Byte6: 0),
+        new("чтение журнала, старый кадр (CMD_READ_LOG, BtManager.java:80)", Opcode: 20, Byte5: 1, Byte6: Filler),
+        new("выключение колеса, новый кадр (CMD_SET_CLOSE_IN_10_NEW, BtManager.java:90)", Opcode: 22, Byte5: 1, Byte6: 0, PowerOff),
+        new("выключение колеса, старый кадр (CMD_SET_CLOSE_IN_10, BtManager.java:81)", Opcode: 22, Byte5: 1, Byte6: Filler, PowerOff),
+    ];
+
+    /// <summary>
+    /// Единственное место, где различающих байт не хватает: выключение колеса и запись угла защиты
+    /// от падения совпадают по байтам 0-6 целиком и по длине (§4.2, «самая опасная пара»). Отличает
+    /// их хвост: у выключения два последних байта тела жёстко зашиты <c>01 80</c>, у угла последний
+    /// байт — само значение 35..75, а предпоследний — обычный заполнитель. Тело кончается за 4 байта
+    /// CRC, отсюда индексы с конца.
+    /// </summary>
+    private static bool PowerOff(byte[] frame) => frame[^6] == 1 && frame[^5] == Filler;
+
+    /// <summary>Вход в режим прошивки уходит сырым текстом, минуя кадры вовсе
+    /// (<c>BtManager.java:39</c>) — потому и проверяется отдельно от таблицы комбинаций.</summary>
+    private static readonly byte[] FirmwareEntry = Encoding.ASCII.GetBytes("AT+RINTOPRO");
+
+    /// <summary>
+    /// Замок: ни один построитель декодера — ни старый порт, ни запись настроек — не отдаёт
+    /// служебную или опасную команду. Метётся <b>весь</b> набор исходящего
+    /// (<see cref="VeteranOutgoingFrames"/>), включая настройки на тех же опасных опкодах: замок и
+    /// стоит затем, чтобы поймать соскользнувший байт именно там, где законная команда и запрещённая
+    /// различаются одним байтом.
     /// </summary>
     [Fact]
-    public void NeverEmits_ServiceOrFirmwareOpcodes()
+    public void NeverEmits_ServiceOrFirmwareCommands()
     {
-        var harness = DecoderHarness.ForVeteran();
-        var decoder = ProtocolDecoder(harness);
-        harness.FeedHex( // Sherman L — puts the decoder on the "new protocol" branch too
-            "dc5a5c53397afffe0aa400000df10000000a0b3d",
-            "0e0e0000037a035217730064000e00b480c80000",
-            "808080808080058080808080800ff30ff50ff50f",
-            "f50ff50fef0ff20ff30ff30ff30ff30fed0ff30f",
-            "f40ff5378c5145");
+        var decoder = ProtocolDecoder(VeteranOutgoingFrames.NewProtocolWheel());
 
-        byte[]?[] allOutgoing =
-        [
-            decoder.BuildWheelBeep(),
-            decoder.BuildResetTrip(),
-            decoder.BuildSetLightState(true),
-            decoder.BuildSetLightState(false),
-            decoder.BuildSwitchFlashlight(),
-            decoder.BuildUpdatePedalsMode(0),
-            decoder.BuildUpdatePedalsMode(1),
-            decoder.BuildUpdatePedalsMode(2),
-            decoder.BuildCalibrate(),
-        ];
-
-        byte[] firmwareEntry = Encoding.ASCII.GetBytes("AT+RINTOPRO");
-        foreach (byte[]? frame in allOutgoing)
+        foreach (byte[] outgoing in VeteranOutgoingFrames.Everything(decoder))
         {
-            if (frame is null) continue;
+            Assert.DoesNotContain(FirmwareEntry, ElevenByteWindows(outgoing));
 
-            Assert.DoesNotContain(firmwareEntry, ElevenByteWindows(frame));
-            if (frame.Length >= 5 && frame[0] == 'L' && (frame[1] == 'k' || frame[1] == 'd') && frame[2] == 'A' && frame[3] == 'p')
+            foreach (byte[] frame in SplitFrames(outgoing))
             {
-                Assert.NotEqual(20, frame[4]); // CMD_READ_LOG (§7.5:519)
-                Assert.NotEqual(25, frame[4]); // genPwdCmd (§7.5:520)
+                ForbiddenCommand? hit = Array.Find(ForbiddenCommands, f => f.Matches(frame));
+                Assert.True(hit is null, $"Кадр {Convert.ToHexString(frame)} — это {hit?.Name}");
             }
         }
     }
+
+    /// <summary>
+    /// Замок не спит: каждое правило проверено на подлинном кадре производителя — том самом, ради
+    /// которого правило и заведено. Без этой проверки таблицу можно было бы обессмыслить опечаткой в
+    /// одном байте, и <see cref="NeverEmits_ServiceOrFirmwareCommands"/> остался бы зелёным.
+    /// Пароль и синхронизация времени несут дату отправки; здесь взята 16.08.2026 12:34:56, UTC+3 —
+    /// правило смотрит только на опкод и байты 5-6, тело для него безразлично.
+    /// </summary>
+    [Theory]
+    [InlineData("4C6441701900051A08100C22380301E24001000000501BB794")] // пароль, Util.java:257-273
+    [InlineData("4C6441701200051A08100C223803FA764F16")]               // синхронизация времени, Util.java:234
+    [InlineData("4C64417014010080808080808080800157B1E3EC")]           // CMD_READ_LOG_NEW, BtManager.java:89
+    [InlineData("4C6B4170140180808080808080808001E53C2970")]           // CMD_READ_LOG, BtManager.java:80
+    [InlineData("4C64417016010080808080808080808001807F2B4D17")]       // CMD_SET_CLOSE_IN_10_NEW, BtManager.java:90
+    [InlineData("4C6B41701601808080808080808080800180D96E1122")]       // CMD_SET_CLOSE_IN_10, BtManager.java:81
+    public void ForbiddenRules_CatchTheManufacturersOwnFrames(string hex)
+    {
+        byte[] frame = Convert.FromHexString(hex);
+
+        Assert.Equal((byte)frame.Length, frame[4]); // эталон сам держит инвариант «длина = опкод»
+        Assert.Contains(ForbiddenCommands, f => f.Matches(frame));
+    }
+
+    /// <summary>
+    /// Обратная сторона того же замка: на всех трёх опасных опкодах законная запись настройки
+    /// проходит. Иначе точность была бы мнимой — запрет опкода целиком проходил бы этот файл, но
+    /// запирал бы яркость экрана (20) и режим низкого напряжения (25) заодно с журналом и паролем.
+    /// Угол защиты от падения (22) ещё не реализован — его эталон взят из
+    /// <c>SetFallProtectionAngleActivity.java:64</c> и стоит здесь как обещание очереди C: запрет на
+    /// опкоде 22 держится формой хвоста, а не самим опкодом.
+    /// </summary>
+    [Fact]
+    public void ForbiddenRules_LetLegitimateSettingsThroughOnTheSameOpcodes()
+    {
+        var wheel = (IVeteranSettingsCommands)ProtocolDecoder(VeteranOutgoingFrames.NewProtocolWheel());
+        byte[] fallProtectionAngle = Convert.FromHexString("4C644170160100808080808080808080803708B6C232");
+
+        Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(wheel.BuildSetLowVoltageMode(true)));
+        Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(wheel.BuildSetScreenBacklight(100)!));
+        Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(fallProtectionAngle));
+    }
+
+    /// <summary>Парные команды уходят двумя самостоятельными кадрами в одном буфере — режем по
+    /// инварианту «длина = опкод», иначе вторая половина осталась бы непроверенной. Текстовые
+    /// команды (<c>CLEARMETER</c>, <c>SetLightON</c>) кадрами не являются и до таблицы комбинаций не
+    /// доходят вовсе: их стережёт проверка на текст входа в прошивку.</summary>
+    private static IEnumerable<byte[]> SplitFrames(byte[] buffer)
+    {
+        for (int start = 0; start + 5 <= buffer.Length && IsFrameHeader(buffer, start);)
+        {
+            int length = buffer[start + 4];
+            if (length < 5 || start + length > buffer.Length) yield break; // форма чужая — не гадаем
+
+            yield return buffer[start..(start + length)];
+            start += length;
+        }
+    }
+
+    private static bool IsFrameHeader(byte[] buffer, int start) =>
+        buffer[start] == 'L' && (buffer[start + 1] == 'k' || buffer[start + 1] == 'd')
+        && buffer[start + 2] == 'A' && buffer[start + 3] == 'p';
 
     /// <summary>Helper for the firmware-string containment check above: yields every contiguous
     /// 11-byte window so `Assert.DoesNotContain` (which needs matching element types) can compare

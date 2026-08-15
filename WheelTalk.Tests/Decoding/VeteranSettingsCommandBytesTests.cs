@@ -128,6 +128,23 @@ public class VeteranSettingsCommandBytesTests
         AssertFrame(expectedHex, NewWheel().BuildSetScreenBacklight(percent));
 
     /// <summary>
+    /// `low_voltage_mode`, опкод 25/<c>0x19</c>, <b>b5/b6 = 1/2</b>, тумблер — литерал
+    /// <c>ControlActivity.java:446-448</c>, вызов <c>:352</c> (<c>sendLowVolCmd(z ? 1 : 0)</c>).
+    /// Тринадцать заполнителей между b6 и значением — их в литерале ровно столько, и это сходится
+    /// с инвариантом «длина = опкод»: 4+1+1+1+13+1+4 = 25.
+    /// <para>
+    /// Тот же опкод носит запись пароля (<c>Util.genPwdCmd</c>, <c>Util.java:257-273</c>) с
+    /// b5/b6 = 0/5 — потому эта настройка проверяется ещё и замком
+    /// <see cref="VeteranCollisionGuardTests"/>, а не одними байтами.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(true, "4C644170190102808080808080808080808080800140700CAB")]
+    [InlineData(false, "4C644170190102808080808080808080808080800037773C3D")]
+    public void SetLowVoltageMode_MatchesOfficialFrame(bool enabled, string expectedHex) =>
+        AssertFrame(expectedHex, NewWheel().BuildSetLowVoltageMode(enabled));
+
+    /// <summary>
     /// `speed_alarm`, опкод 17/<c>0x11</c>, парой <c>Lk</c>+<c>Ld</c> — <c>SetAlarmSpeedActivity.java:67</c>,
     /// значение = ползунок + 10 (<c>:62-67</c>), диапазон 10..120 км/ч.
     /// <para>

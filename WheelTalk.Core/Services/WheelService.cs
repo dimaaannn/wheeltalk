@@ -181,6 +181,7 @@ public sealed partial class WheelService : IDisposable
             WheelCommand.SetSpeedAlarm c => VeteranSettings(protocolDecoder)?.BuildSetSpeedAlarm(c.SpeedKmh),
             WheelCommand.SetStopPower c => VeteranSettings(protocolDecoder)?.BuildSetStopPower(c.Percent),
             WheelCommand.SetScreenBacklight c => VeteranSettings(protocolDecoder)?.BuildSetScreenBacklight(c.Percent),
+            WheelCommand.SetLowVoltageMode c => VeteranSettings(protocolDecoder)?.BuildSetLowVoltageMode(c.Enabled),
 
             _ => null,
         };

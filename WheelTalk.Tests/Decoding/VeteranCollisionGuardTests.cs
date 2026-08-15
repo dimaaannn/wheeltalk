@@ -26,33 +26,9 @@ public class VeteranCollisionGuardTests
     private static IVeteranSettingsCommands NewWheel() => (IVeteranSettingsCommands)DecoderHarness.ForVeteran().Decoder.ProtocolDecoder;
 
     /// <summary>Все кадры записи настроек, что декодер вообще способен построить, — по каждому
-    /// допустимому значению каждой команды. Сюда обязан попадать каждый новый билдер: тесты ниже
-    /// метут именно этот список.</summary>
-    private static IEnumerable<byte[]> EverySettingsFrame()
-    {
-        var wheel = NewWheel();
-
-        yield return wheel.BuildSetUnitSystem(true);
-        yield return wheel.BuildSetUnitSystem(false);
-        yield return wheel.BuildSetHighSpeedMode(true);
-        yield return wheel.BuildSetHighSpeedMode(false);
-        for (int v = 0; v <= 100; v++)
-        {
-            yield return wheel.BuildSetKeyToneVolume(v)!;
-            yield return wheel.BuildSetAccelerationHelper(v)!;
-            yield return wheel.BuildSetAccelerationReduction(v)!;
-            yield return wheel.BuildSetScreenBacklight(v)!;
-        }
-        for (int v = 0; v <= 120; v++) yield return wheel.BuildSetMaxChargeVoltage(v)!;
-        for (int v = 80; v <= 125; v++) yield return wheel.BuildSetBrakeOverpressureAlarm(v)!;
-        for (int v = -15; v <= 15; v++) yield return wheel.BuildSetVoltageCorrection(v)!;
-        for (int v = 30; v <= 100; v++) yield return wheel.BuildSetStopPower(v)!;
-        for (int v = 10; v <= 120; v++)
-        {
-            yield return wheel.BuildSetStopSpeed(v)!;
-            yield return wheel.BuildSetSpeedAlarm(v)!;
-        }
-    }
+    /// допустимому значению каждой команды. Список общий с замком на служебные команды
+    /// (<see cref="VeteranOutgoingFrames"/>): новый билдер должен попадать под оба замка сразу.</summary>
+    private static IEnumerable<byte[]> EverySettingsFrame() => VeteranOutgoingFrames.EverySettingsWrite(NewWheel());
 
     // ==================== Опкод 17: отбой педалей против тревоги скорости ====================
 
@@ -148,6 +124,26 @@ public class VeteranCollisionGuardTests
         }
     }
 
+    // ==================== Опкод 25: режим низкого напряжения против записи пароля ====================
+
+    /// <summary>
+    /// Запись пароля берёт построитель синхронизации времени и прибавляет к его опкоду 7
+    /// (18 → 25, <c>Util.java:257-273</c>), оттого и несёт чужие для настройки b5/b6 = 0/5. Пароль
+    /// нам запрещён навсегда (план §8: программного сброса забытого PIN в приложении нет) — здесь
+    /// утверждается, что тумблер низкого напряжения ни одним своим значением его не изображает.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Opcode25_LowVoltageMode_NeverLooksLikePassword(bool enabled)
+    {
+        byte[] frame = NewWheel().BuildSetLowVoltageMode(enabled);
+
+        Assert.Equal(25, frame[4]);
+        Assert.Equal(1, frame[5]); // пароль несёт здесь 0
+        Assert.Equal(2, frame[6]); // пароль несёт здесь 5
+    }
+
     // ==================== Общие правила на весь набор ====================
 
     /// <summary>
@@ -189,17 +185,23 @@ public class VeteranCollisionGuardTests
 
     /// <summary>
     /// Замок вперёд: очередь C (опкод 22 — режим транспортировки, выключение, угол защиты от
-    /// падения) и запись пароля (опкод 25) этой работой <b>не</b> реализованы, и ни один
-    /// существующий билдер не смеет случайно родить кадр с этими опкодами. Когда очередь C дойдёт
-    /// до кода, этот тест обязан быть пересмотрен осознанно, а не молча пройти мимо.
+    /// падения) этой работой <b>не</b> реализована, и ни один существующий билдер не смеет случайно
+    /// родить кадр с этим опкодом. Когда очередь C дойдёт до кода, тест обязан быть пересмотрен
+    /// осознанно, а не молча пройти мимо: запрет опкода целиком сменится запретом комбинации
+    /// «питание» — как это уже сделано для опкода 25 в
+    /// <c>VeteranCommandBytesTests.NeverEmits_ServiceOrFirmwareCommands</c>.
+    /// <para>
+    /// Опкод 25 из этого запрета вышел: <c>low_voltage_mode</c> — законная настройка производителя
+    /// (<c>ControlActivity.java:446-448</c>), а запрещён на нём пароль, то есть комбинация 0/5, а не
+    /// опкод. Её стережёт <see cref="Opcode25_LowVoltageMode_NeverLooksLikePassword"/>.
+    /// </para>
     /// </summary>
     [Fact]
-    public void NoBuilderYetEmits_Opcode22Or25()
+    public void NoBuilderYetEmits_Opcode22()
     {
         foreach (byte[] frame in EverySettingsFrame())
         {
             Assert.NotEqual(22, frame[4]); // питание / transport_mode / fallProtectionAngle (§1.4)
-            Assert.NotEqual(25, frame[4]); // low_voltage_mode делит опкод с записью пароля (§8)
         }
     }
 }
