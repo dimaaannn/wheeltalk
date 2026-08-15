@@ -3,6 +3,7 @@ using Android.Graphics;
 using Android.Util;
 using Android.Views;
 using Android.Widget;
+using WheelTalk.Core.Battery;
 using WheelTalk.Core.Contracts;
 using WheelTalk.Droid.Resources.Strings;
 
@@ -44,11 +45,31 @@ internal sealed class TelemetryTable
         Func<TelemetrySnapshot, bool> Shown);
 
     private static bool Always(TelemetrySnapshot s) => true;
-    private static bool Veteran(TelemetrySnapshot s) => s.WheelType == WheelType.Veteran;
-    private static bool Gotway(TelemetrySnapshot s) => s.WheelType == WheelType.GotWay;
 
     /// <summary>Пакет отвечает: молчащий BMS отдаёт нули по всему, включая напряжение.</summary>
     private static bool HasBms(SmartBms bms) => bms.Voltage > 0 || bms.MaxCell > 0;
+
+    /// <summary>Кто из марок кладёт в пакет банки 1—4 температуры (Sherman L все шесть сразу, Begode
+    /// только эти четыре, P6 — по ответу платы). Кто из семейств что сообщает — <see cref="WheelReports"/>,
+    /// здесь лишь объединение трёх маркеров ради одного предиката на два поля.</summary>
+    private static bool ReportsTemp1To4(TelemetrySnapshot s) =>
+        WheelReports.Veteran(s) || WheelReports.Gotway(s) || WheelReports.InMotionV2(s);
+
+    /// <summary>Банки 5—6 — только там, где хвост ответа шире четырёх датчиков: Begode пишет ровно
+    /// четыре и на пятой с шестой навсегда остаётся 0, показывать которые было бы неправдой.</summary>
+    private static bool ReportsTemp5And6(TelemetrySnapshot s) => WheelReports.Veteran(s) || WheelReports.InMotionV2(s);
+
+    /// <summary>Слово источника ряда ячеек для человека — тот же словарь, что у кнопки «рассчитать»
+    /// (<c>ExperimentalPage.CellsSourceName</c>), плюс ступень «задано вручную», которой кнопка не
+    /// видит никогда (она берёт ответ без верхней ступени каскада).</summary>
+    private static string CellsSourceWord(CellCountSource source) => source switch
+    {
+        CellCountSource.UserSetting => AppStrings.SettingCellsSourceManual,
+        CellCountSource.SmartBms => AppStrings.SettingCellsSourceBms,
+        CellCountSource.Protocol => AppStrings.SettingCellsSourceProtocol,
+        CellCountSource.VoltageWithPercent => AppStrings.SettingCellsSourcePercent,
+        _ => AppStrings.SettingCellsSourceGuess,
+    };
 
     private static readonly Field[] Fields =
     [
@@ -56,12 +77,18 @@ internal sealed class TelemetryTable
             s => string.Format(AppStrings.ValueSpeedKmh, s.SpeedKmh), Always),
         new(AppStrings.TelemetrySectionMotion, AppStrings.TelemetryTopSpeed,
             s => string.Format(AppStrings.ValueSpeedKmh, s.TopSpeedKmh), Always),
+        new(AppStrings.TelemetrySectionMotion, AppStrings.MetricSpeedLimit,
+            s => string.Format(AppStrings.ValueSpeedKmh, s.SpeedLimit), WheelReports.KingSong),
         new(AppStrings.TelemetrySectionMotion, AppStrings.TelemetryPwm,
             s => $"{s.Pwm:F1} %", Always),
         new(AppStrings.TelemetrySectionMotion, AppStrings.TelemetryMaxPwm,
             s => $"{s.MaxPwm:F1} %", Always),
+        new(AppStrings.TelemetrySectionMotion, AppStrings.MetricHardwarePwm,
+            s => $"{s.Output} %", WheelReports.KingSong),
         new(AppStrings.TelemetrySectionMotion, AppStrings.TelemetryAngle,
-            s => $"{s.Angle:F1} °", Veteran),
+            s => $"{s.Angle:F1} °", WheelReports.Veteran),
+        new(AppStrings.TelemetrySectionMotion, AppStrings.MetricRoll,
+            s => $"{s.Roll:F1} °", WheelReports.InMotion),
 
         new(AppStrings.TelemetrySectionPower, AppStrings.TelemetryVoltage,
             s => $"{s.VoltageV:F2} В", Always),
@@ -76,12 +103,25 @@ internal sealed class TelemetryTable
         // Код зарядки колесо отдаёт числом; смысла кроме «идёт / не идёт» мы за ним не знаем, и
         // придумывать его тут не будем.
         new(AppStrings.TelemetrySectionPower, AppStrings.TelemetryCharging,
-            s => s.ChargingStatus != 0 ? AppStrings.Yes : AppStrings.No, Veteran),
+            s => s.ChargingStatus != 0 ? AppStrings.Yes : AppStrings.No, WheelReports.Veteran),
+        new(AppStrings.TelemetrySectionPower, AppStrings.MetricCurrentLimit,
+            s => $"{s.CurrentLimit:F1} А", WheelReports.InMotionV2),
+        new(AppStrings.TelemetrySectionPower, AppStrings.MetricTorque,
+            s => $"{s.Torque:F1} Н·м", WheelReports.InMotionV2),
+        new(AppStrings.TelemetrySectionPower, AppStrings.MetricMotorPower,
+            s => $"{s.MotorPower:F0} Вт", WheelReports.InMotionV2),
 
         new(AppStrings.TelemetrySectionHeat, AppStrings.TelemetryBoardTemp,
             s => $"{s.TemperatureC} °C", Always),
         new(AppStrings.TelemetrySectionHeat, AppStrings.TelemetryMotorTemp,
-            s => $"{s.Temperature2C} °C", Gotway),
+            s => $"{s.Temperature2C} °C", WheelReports.Gotway),
+        new(AppStrings.TelemetrySectionHeat, AppStrings.MetricCpuTemp,
+            s => $"{s.CpuTemp} °C", WheelReports.InMotionV2),
+        new(AppStrings.TelemetrySectionHeat, AppStrings.MetricImuTemp,
+            s => $"{s.ImuTemp} °C", WheelReports.InMotion),
+        // Тот же код «крутится / не крутится», что и зарядка Veteran выше — своего смысла не знаем.
+        new(AppStrings.TelemetrySectionHeat, AppStrings.MetricFanStatus,
+            s => s.FanStatus != 0 ? AppStrings.Yes : AppStrings.No, WheelReports.KingSong),
 
         new(AppStrings.TelemetrySectionDistance, AppStrings.TelemetryTrip,
             s => string.Format(AppStrings.ValueTripKm, s.WheelDistanceKm), Always),
@@ -92,14 +132,28 @@ internal sealed class TelemetryTable
 
         new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryModel,
             s => s.Model, s => s.Model.Length > 0),
+        // Имя из Bluetooth-объявления — не то же самое, что модель: KS-S18-0205 против «S18».
+        new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryName,
+            s => s.Name, s => s.Name.Length > 0),
         new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryFirmware,
             s => s.Version, s => s.Version.Length > 0),
         new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryProtocol,
             s => s.WheelType.ToString(), Always),
+        // Тот же словарь и то же число, что кнопка «рассчитать» в настройках — тут просто без
+        // кнопки, каскад уже посчитан декодером.
+        new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryCellsRow,
+            s => string.Format(AppStrings.SettingCellsFound, s.PackCells.Cells, CellsSourceWord(s.PackCells.Source)),
+            s => s.PackCells.IsKnown),
+        new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryMode,
+            s => s.ModeStr, s => s.ModeStr.Length > 0),
+        new(AppStrings.TelemetrySectionWheel, AppStrings.MetricCpuLoad,
+            s => $"{s.CpuLoad} %", WheelReports.KingSong),
+        new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetrySerial,
+            s => s.Serial, s => s.Serial.Length > 0),
         new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetrySleep,
-            s => string.Format(AppStrings.ValueSeconds, s.SleepTimerSec), Veteran),
+            s => string.Format(AppStrings.ValueSeconds, s.SleepTimerSec), WheelReports.Veteran),
         new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryAlarm,
-            s => s.WheelAlarm ? AppStrings.Yes : AppStrings.No, Gotway),
+            s => s.WheelAlarm ? AppStrings.Yes : AppStrings.No, WheelReports.Gotway),
         // Строка сообщения приходит не всегда даже у Begode — пустую показывать незачем.
         new(AppStrings.TelemetrySectionWheel, AppStrings.TelemetryAlert,
             s => s.Alert, s => s.Alert.Length > 0),
@@ -123,6 +177,40 @@ internal sealed class TelemetryTable
             s => $"{pack(s).CellDiff:F3} В", s => pack(s).MaxCell > 0),
         new(section, AppStrings.TelemetryBmsHealth,
             s => $"{pack(s).Health} %", s => HasBms(pack(s)) && pack(s).Health > 0),
+        new(section, AppStrings.TelemetryBmsAvgCell,
+            s => $"{pack(s).AvgCell:F3} В", s => pack(s).MaxCell > 0),
+        new(section, AppStrings.TelemetryBmsMinCellNum,
+            s => $"{pack(s).MinCellNum}", s => pack(s).MaxCell > 0),
+        new(section, AppStrings.TelemetryBmsMaxCellNum,
+            s => $"{pack(s).MaxCellNum}", s => pack(s).MaxCell > 0),
+        new(section, AppStrings.TelemetryBmsTemp1,
+            s => $"{pack(s).Temp1:F1} °C", s => HasBms(pack(s)) && ReportsTemp1To4(s)),
+        new(section, AppStrings.TelemetryBmsTemp2,
+            s => $"{pack(s).Temp2:F1} °C", s => HasBms(pack(s)) && ReportsTemp1To4(s)),
+        new(section, AppStrings.TelemetryBmsTemp3,
+            s => $"{pack(s).Temp3:F1} °C", s => HasBms(pack(s)) && ReportsTemp1To4(s)),
+        new(section, AppStrings.TelemetryBmsTemp4,
+            s => $"{pack(s).Temp4:F1} °C", s => HasBms(pack(s)) && ReportsTemp1To4(s)),
+        new(section, AppStrings.TelemetryBmsTemp5,
+            s => $"{pack(s).Temp5:F1} °C", s => HasBms(pack(s)) && ReportsTemp5And6(s)),
+        new(section, AppStrings.TelemetryBmsTemp6,
+            s => $"{pack(s).Temp6:F1} °C", s => HasBms(pack(s)) && ReportsTemp5And6(s)),
+        // Ноль здесь — «ещё не пришло», а не «ноль циклов»: декодер сам не пишет 0 поверх счётчика
+        // (InMotionP6Bms.ApplyRealtime), так что нулём этому полю и оставаться, пока правда не пришла.
+        new(section, AppStrings.TelemetryBmsFullCycles,
+            s => $"{pack(s).FullCycles}", s => pack(s).FullCycles > 0),
+        // Ёмкости приходят вместе, одним и тем же ответом (InMotionP6Bms.ApplyRealtime, только P6):
+        // завод — первый ненулевой признак, что ответ действительно был.
+        new(section, AppStrings.TelemetryBmsFactoryCap,
+            s => $"{pack(s).FactoryCap} мА·ч", s => pack(s).FactoryCap > 0),
+        new(section, AppStrings.TelemetryBmsRemCap,
+            s => $"{pack(s).RemCap} мА·ч", s => pack(s).FactoryCap > 0),
+        // Половина пакета — только у Begode (GotwayDecoder.DecodeFrame01): чётный/нечётный номер BMS
+        // пишет то одну половину, то другую в один и тот же объект пакета.
+        new(section, AppStrings.TelemetryBmsSemiVoltage1,
+            s => $"{pack(s).SemiVoltage1:F1} В", s => WheelReports.Gotway(s) && pack(s).SemiVoltage1 != 0),
+        new(section, AppStrings.TelemetryBmsSemiVoltage2,
+            s => $"{pack(s).SemiVoltage2:F1} В", s => WheelReports.Gotway(s) && pack(s).SemiVoltage2 != 0),
     ];
 
     private readonly List<(Field Field, View Row, TextView Value)> _rows = [];

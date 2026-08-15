@@ -159,6 +159,7 @@
   <data name="SettingCellsSourceProtocol" xml:space="preserve"><value>по модели колеса</value></data>
   <data name="SettingCellsSourcePercent" xml:space="preserve"><value>по напряжению и заряду</value></data>
   <data name="SettingCellsSourceGuess" xml:space="preserve"><value>расчёт по напряжению</value></data>
+  <data name="SettingCellsSourceManual" xml:space="preserve"><value>задано вручную</value></data>
   <data name="SettingCellsGuessWarning" xml:space="preserve"><value>Это догадка: она верна, когда колесо заряжено почти полностью, а иначе занижает ряд.</value></data>
   <data name="SettingCellsGuessLowCharge" xml:space="preserve"><value>Сейчас заряд {0} %, и на таком число скорее занижено. Зарядите колесо и рассчитайте заново.</value></data>
   <data name="SettingCellsCalculateAction" xml:space="preserve"><value>Рассчитать</value></data>
@@ -480,6 +481,24 @@
   <data name="TelemetryBmsCells" xml:space="preserve"><value>Ячейка, мин / макс</value></data>
   <data name="TelemetryBmsSpread" xml:space="preserve"><value>Разброс ячеек</value></data>
   <data name="TelemetryBmsHealth" xml:space="preserve"><value>Состояние</value></data>
+  <data name="TelemetryBmsTemp1" xml:space="preserve"><value>Темп. 1</value></data>
+  <data name="TelemetryBmsTemp2" xml:space="preserve"><value>Темп. 2</value></data>
+  <data name="TelemetryBmsTemp3" xml:space="preserve"><value>Темп. 3</value></data>
+  <data name="TelemetryBmsTemp4" xml:space="preserve"><value>Темп. 4</value></data>
+  <data name="TelemetryBmsTemp5" xml:space="preserve"><value>Темп. 5</value></data>
+  <data name="TelemetryBmsTemp6" xml:space="preserve"><value>Темп. 6</value></data>
+  <data name="TelemetryBmsFullCycles" xml:space="preserve"><value>Циклы заряда</value></data>
+  <data name="TelemetryBmsFactoryCap" xml:space="preserve"><value>Ёмкость (завод)</value></data>
+  <data name="TelemetryBmsRemCap" xml:space="preserve"><value>Остаток ёмкости</value></data>
+  <data name="TelemetryBmsAvgCell" xml:space="preserve"><value>Средняя ячейка</value></data>
+  <data name="TelemetryBmsMinCellNum" xml:space="preserve"><value>№ мин. ячейки</value></data>
+  <data name="TelemetryBmsMaxCellNum" xml:space="preserve"><value>№ макс. ячейки</value></data>
+  <data name="TelemetryBmsSemiVoltage1" xml:space="preserve"><value>Полупакет 1</value></data>
+  <data name="TelemetryBmsSemiVoltage2" xml:space="preserve"><value>Полупакет 2</value></data>
+  <data name="TelemetryName" xml:space="preserve"><value>Имя</value></data>
+  <data name="TelemetryMode" xml:space="preserve"><value>Режим</value></data>
+  <data name="TelemetrySerial" xml:space="preserve"><value>Серийный номер</value></data>
+  <data name="TelemetryCellsRow" xml:space="preserve"><value>Ряд ячеек</value></data>
   <data name="ButtonData" xml:space="preserve"><value>Данные</value></data>
   <data name="ButtonRides" xml:space="preserve"><value>Поездки</value></data>
   <data name="SettingWarnBatterySaver" xml:space="preserve"><value>Отключить экономию заряда</value></data>
