@@ -136,6 +136,32 @@ public sealed class SettingsCategoryActivity : Activity
     /// </summary>
     private DateTimeOffset? _shownAt;
 
+    /// <summary>
+    /// Состояние «Конфигурации колеса», по которому собран нынешний экран (план 34 §5). Держится
+    /// затем же, зачем <see cref="_shownAt"/>: сторож тикает раз в секунду, а перестраивать список
+    /// надо только когда ответ раздела стал другим.
+    /// </summary>
+    private WheelSettingsView _shownView = WheelSettingsView.Waiting;
+
+    /// <summary>
+    /// С какого мгновения страница ждёт ответа колеса — от появления экрана. Отсюда отсчитываются
+    /// десять секунд молчания, пока снимка не было вовсе (<see cref="WheelSettingsState.Silence"/>).
+    /// </summary>
+    private DateTimeOffset _watchingSince;
+
+    /// <summary>
+    /// Сторож молчания: связь может остаться живой, а кадр настроек — перестать приходить, и тогда
+    /// нового кадра, от которого перестроиться, не будет по определению. Раз в секунду, пока
+    /// страница на виду, и только у «Конфигурации колеса».
+    /// </summary>
+    private readonly Handler _silenceWatch = new(Looper.MainLooper!);
+    private readonly Action _tick;
+    private const int SilenceTickMs = 1000;
+
+    private TimeProvider _clock = null!;
+
+    public SettingsCategoryActivity() => _tick = Tick;
+
     protected override void OnDestroy()
     {
         _windows.Close();
@@ -152,6 +178,7 @@ public sealed class SettingsCategoryActivity : Activity
 
         _binder = MainApplication.Services.GetRequiredService<SettingsBinder>();
         _session = MainApplication.Services.GetRequiredService<WheelSession>();
+        _clock = MainApplication.Services.GetRequiredService<TimeProvider>();
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
         _viewScope = _wheel.Address;
         _page = (SettingsPage)(Intent?.GetIntExtra(ExtraPage, (int)SettingsPage.Application) ?? (int)SettingsPage.Application);
@@ -174,9 +201,15 @@ public sealed class SettingsCategoryActivity : Activity
         // которого в приложении больше нет.
         if (_viewScope.Length > 0) _viewScope = _wheel.Address;
 
+        // Ожидание отсчитывается от появления экрана, а не от создания активности: вернувшись на
+        // страницу через час, человек спрашивает колесо заново, и приговор «значения не получены»
+        // должен быть о нынешнем разговоре.
+        _watchingSince = _clock.GetUtcNow();
+
         Rebuild();
         RevealPending();
         WatchWheel();
+        WatchSilence();
     }
 
     /// <summary>
@@ -188,6 +221,7 @@ public sealed class SettingsCategoryActivity : Activity
     {
         _liveSettings?.Dispose();
         _liveSettings = null;
+        _silenceWatch.RemoveCallbacks(_tick);
         base.OnStop();
     }
 
@@ -205,6 +239,33 @@ public sealed class SettingsCategoryActivity : Activity
         if (_page != SettingsPage.WheelDevice || _liveSettings is not null) return;
 
         _liveSettings = _session.Telemetry.Subscribe(frame => RunOnUiThread(() => ShowFreshSettings(frame)));
+    }
+
+    /// <summary>
+    /// Три состояния раздела из четырёх наступают <b>без всякого кадра</b>: связь оборвалась, кадр
+    /// не пришёл за десять секунд, показанный снимок состарился (план 34 §5). Подписка на
+    /// телеметрию о них не узнает по определению — узнаёт этот сторож, тикающий раз в секунду.
+    /// <para>
+    /// Секунда выбрана не ради точности вердикта, а ради его своевременности: он сам о десяти
+    /// секундах, и опоздание на секунду ничего не стоит, тогда как реже — экран сколько-то времени
+    /// показывал бы устаревшее.
+    /// </para>
+    /// </summary>
+    private void WatchSilence()
+    {
+        if (_page != SettingsPage.WheelDevice) return;
+
+        _silenceWatch.RemoveCallbacks(_tick);
+        _silenceWatch.PostDelayed(_tick, SilenceTickMs);
+    }
+
+    private void Tick()
+    {
+        // Перестроение только на смене ответа: пока состояние прежнее, тикать экрану нечем — числа
+        // обновляет подписка на телеметрию.
+        if (!_windows.IsOpen && WheelDeviceSection.Resolve(_session, _watchingSince, _clock) != _shownView) Rebuild();
+
+        _silenceWatch.PostDelayed(_tick, SilenceTickMs);
     }
 
     /// <summary>
@@ -342,11 +403,18 @@ public sealed class SettingsCategoryActivity : Activity
 
     /// <summary>
     /// Что сказать, когда показывать нечего. У «Конфигурации колеса» пустота — не «настроек нет», а
-    /// «колесо ещё не сказало»: до первого кадра список пуст намеренно (решение владельца, план 34
-    /// §12 п.1), и серый список с пустыми значениями обещал бы то, чего колесо не подтверждало.
+    /// состояние разговора с колесом, и слово у каждого состояния своё (план 34 §5): нет связи,
+    /// колесо чужой марки, прошивка настроек не сообщает, ответа нет десять секунд. Серый список с
+    /// пустыми значениями не показывается ни в одном из них — он обещал бы то, чего колесо не
+    /// подтверждало (решение владельца, план 34 §12 п.1).
+    /// <para>
+    /// <c>null</c> — сказать пока нечего: первые секунды ожидания раздел молчит, потому что кадр
+    /// идёт раз в 4 секунды и «значения не получены» на первой из них было бы не ответом, а
+    /// нетерпением.
+    /// </para>
     /// </summary>
-    private static string EmptyTextKey(SettingsPage page) =>
-        page == SettingsPage.WheelDevice ? "SettingsWheelDeviceEmpty" : "SettingsEmpty";
+    private static string? EmptyTextKey(SettingsPage page, WheelSettingsView view) =>
+        page == SettingsPage.WheelDevice ? WheelDeviceSection.TextKey(view) : "SettingsEmpty";
 
     // ---- Scope (общее / это колесо) ----------------------------------------------------------
 
@@ -489,6 +557,13 @@ public sealed class SettingsCategoryActivity : Activity
         // перестроение, а не потеряется молча. Лишнее дешевле пропущенного.
         _shownAt = _session.LastSnapshot?.WheelSettings?.ReceivedAt;
 
+        // Чем раздел отвечает прямо сейчас (план 34 §5). У прочих пяти страниц вопроса нет: их
+        // значения лежат в наших слоях и никуда не деваются от обрыва связи.
+        _shownView = _page == SettingsPage.WheelDevice
+            ? WheelDeviceSection.Resolve(_session, _watchingSince, _clock)
+            : WheelSettingsView.Values;
+        bool showValues = WheelDeviceSection.ShowsValues(_shownView);
+
         // Ползунки прослушивания рисуются с нуля, значит и звучать после перестроения нечему.
         Silence();
 
@@ -499,8 +574,9 @@ public sealed class SettingsCategoryActivity : Activity
         _rowCards.Clear();
 
         // Внутри списка, а не над ним: прочитанное однажды пояснение должно уезжать вверх вместе с
-        // прокруткой, а не занимать экран у каждой строки.
-        if (PageNoticeKey(_page) is { } noticeKey)
+        // прокруткой, а не занимать экран у каждой строки. Над пустым списком пояснения нет:
+        // «так колесо настроено сейчас» говорят о значениях, а не об их отсутствии.
+        if (showValues && PageNoticeKey(_page) is { } noticeKey)
         {
             var notice = new TextView(this) { Text = TranslateExtension.Get(noticeKey) };
             notice.SetTextSize(ComplexUnitType.Sp, 13);
@@ -513,7 +589,12 @@ public sealed class SettingsCategoryActivity : Activity
 
         // Разделы — карточками, «дополнительные» — отдельной стопкой под свёрнутой строкой
         // (план настроек §3.2 и §3.3). Порядок и состав разделов прежние, из каталога.
-        var sections = _binder.Page(_page, _viewScope).ToList();
+        //
+        // Строки «Конфигурации колеса» читают последний снимок сессии, и он переживает и обрыв
+        // связи, и смену колеса. Поэтому список собирается ТОЛЬКО когда снимок свеж: иначе
+        // вчерашние значения молча остались бы на экране за сегодняшние — то самое, чего этап 3 и
+        // не допускает (план 34 §5).
+        List<IGrouping<string, SettingDescriptor>> sections = showValues ? _binder.Page(_page, _viewScope).ToList() : [];
         var plain = sections.Where(section => !section.First().Advanced).ToList();
         var advanced = sections.Where(section => section.First().Advanced).ToList();
 
@@ -529,9 +610,9 @@ public sealed class SettingsCategoryActivity : Activity
             }
         }
 
-        if (sections.Count == 0)
+        if (sections.Count == 0 && EmptyTextKey(_page, _shownView) is { } emptyKey)
         {
-            var empty = new TextView(this) { Text = TranslateExtension.Get(EmptyTextKey(_page)) };
+            var empty = new TextView(this) { Text = TranslateExtension.Get(emptyKey) };
             empty.Alpha = 0.7f;
             _content.AddView(empty);
         }

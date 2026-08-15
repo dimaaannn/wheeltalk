@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WheelTalk.Core.Services;
 using WheelTalk.Core.Settings;
+using WheelTalk.Core.Settings.Device;
 using WheelTalk.Droid.Configuration;
 using WheelTalk.Droid.Resources.Strings;
 using WheelTalk.Droid.Settings;
@@ -71,8 +72,28 @@ public sealed class SettingsActivity : Activity
     /// <summary>Ярлыки «N своих» по номеру карточки — переписываются на каждом появлении экрана вместе со сводками.</summary>
     private readonly List<TextView> _ownBadges = new(Categories.Length);
 
+    /// <summary>Сами карточки по номеру — нужны одной: «Конфигурацию колеса» у колеса чужой марки прячут целиком.</summary>
+    private readonly List<View> _cards = new(Categories.Length);
+
     private TextView _scopeLabel = null!;
     private View _scopeDot = null!;
+
+    private TimeProvider _clock = null!;
+
+    /// <summary>С какого мгновения экран ждёт ответа колеса — от появления, как и на самой странице раздела.</summary>
+    private DateTimeOffset _watchingSince;
+
+    /// <summary>
+    /// Сторож молчания «Конфигурации колеса» — тот же, что на странице раздела, и по той же
+    /// причине: связь может остаться живой, а кадр настроек перестать приходить, и тогда события,
+    /// от которого перерисоваться, не будет вовсе. Сводка карточки обязана не врать так же, как
+    /// список внутри неё.
+    /// </summary>
+    private readonly Handler _silenceWatch = new(Looper.MainLooper!);
+    private readonly Action _tick;
+    private const int SilenceTickMs = 1000;
+
+    public SettingsActivity() => _tick = Tick;
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -87,6 +108,7 @@ public sealed class SettingsActivity : Activity
         _wheel = MainApplication.Services.GetRequiredService<IOptions<WheelOptions>>().Value;
         _identity = MainApplication.Services.GetRequiredService<WheelIdentity>();
         _session = MainApplication.Services.GetRequiredService<WheelSession>();
+        _clock = MainApplication.Services.GetRequiredService<TimeProvider>();
 
         var root = BuildLayout();
         SetContentView(root);
@@ -96,7 +118,27 @@ public sealed class SettingsActivity : Activity
     protected override void OnStart()
     {
         base.OnStart();
+        _watchingSince = _clock.GetUtcNow();
         Show();
+
+        _silenceWatch.RemoveCallbacks(_tick);
+        _silenceWatch.PostDelayed(_tick, SilenceTickMs);
+    }
+
+    protected override void OnStop()
+    {
+        _silenceWatch.RemoveCallbacks(_tick);
+        base.OnStop();
+    }
+
+    /// <summary>
+    /// Тикает одна карточка из шести — «Конфигурация колеса»: её сводку меняет не человек, а
+    /// колесо, и молчанием тоже. Остальным пяти тикать незачем, их значения лежат в наших слоях.
+    /// </summary>
+    private void Tick()
+    {
+        ShowWheelDeviceCard();
+        _silenceWatch.PostDelayed(_tick, SilenceTickMs);
     }
 
     /// <summary>Summaries are recomputed on every appearance, not just once — a value changed on a category page has to show here on the way back, the same reason the MAUI root page re-read its scope label in OnAppearing.</summary>
@@ -121,9 +163,45 @@ public sealed class SettingsActivity : Activity
 
         for (int i = 0; i < Categories.Length; i++)
         {
+            if (Categories[i].Page == SettingsPage.WheelDevice) continue;
+
             _summaryLabels[i].SetText(SettingsFormat.Summarize(_binder, Categories[i].Page, model));
             ShowOwnCount(_ownBadges[i], Categories[i].Page);
         }
+
+        ShowWheelDeviceCard();
+    }
+
+    /// <summary>
+    /// Карточка «Конфигурации колеса» — единственная, которой может не быть вовсе: у колеса не той
+    /// марки, чьи настройки мы читать умеем, раздела нет ни серого, ни пустого, а никакого (решение
+    /// владельца 16.08.2026, план 34 §12.0 п. 4). Вход в раздел решает пара производитель-модель, и
+    /// решается это здесь, до всякого касания.
+    /// <para>
+    /// Сводка у остальных состояний — тем же словом, каким объяснится и сама страница: карточка,
+    /// пообещавшая «Sherman L · 14 значений» на оборванной связи, соврала бы раньше, чем человек
+    /// её откроет — значения-то в последнем снимке сессии лежат и обрыв переживают.
+    /// </para>
+    /// </summary>
+    private void ShowWheelDeviceCard()
+    {
+        int i = Array.FindIndex(Categories, category => category.Page == SettingsPage.WheelDevice);
+        if (i < 0 || _cards.Count <= i) return;
+
+        var view = WheelDeviceSection.Resolve(_session, _watchingSince, _clock);
+
+        _cards[i].Visibility = view == WheelSettingsView.OtherBrand ? ViewStates.Gone : ViewStates.Visible;
+        if (view == WheelSettingsView.OtherBrand) return;
+
+        // Пустая сводка — только у ожидания короче десяти секунд: сказать о разговоре, начавшемся
+        // секунду назад, пока нечего, а через секунду карточку перепишет сторож.
+        _summaryLabels[i].SetText(WheelDeviceSection.TextKey(view) is { } key
+            ? TranslateExtension.Get(key)
+            : WheelDeviceSection.ShowsValues(view)
+                ? SettingsFormat.Summarize(_binder, SettingsPage.WheelDevice, _session.LastSnapshot?.Model ?? "")
+                : "");
+
+        ShowOwnCount(_ownBadges[i], SettingsPage.WheelDevice);
     }
 
     /// <summary>
@@ -291,6 +369,10 @@ public sealed class SettingsActivity : Activity
         {
             LeftMargin = this.Dp(12),
         });
+
+        // Карточка запоминается целиком, а не одной своей сводкой: «Конфигурацию колеса» прячут
+        // вместе с отступом, а спрятанный ребёнок LinearLayout не занимает ни высоты, ни поля.
+        _cards.Add(card);
 
         return card;
     }

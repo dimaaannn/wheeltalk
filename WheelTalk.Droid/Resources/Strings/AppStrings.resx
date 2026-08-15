@@ -87,6 +87,9 @@
   <data name="SettingsPageWheelDevice" xml:space="preserve"><value>Конфигурация колеса</value></data>
   <data name="SettingsPageWheelDeviceNotice" xml:space="preserve"><value>Так колесо настроено сейчас. Значения приходят от него и здесь не изменяются</value></data>
   <data name="SettingsWheelDeviceEmpty" xml:space="preserve"><value>Подключитесь к колесу: свои настройки оно сообщает само</value></data>
+  <data name="SettingsWheelDeviceOtherBrand" xml:space="preserve"><value>Настройки этого колеса мы читать не умеем</value></data>
+  <data name="SettingsWheelDeviceNotReported" xml:space="preserve"><value>Это колесо не сообщает свои настройки</value></data>
+  <data name="SettingsWheelDeviceNoAnswer" xml:space="preserve"><value>Значения не получены</value></data>
   <data name="SettingsValuesCount1" xml:space="preserve"><value>{0} значение</value></data>
   <data name="SettingsValuesCount2" xml:space="preserve"><value>{0} значения</value></data>
   <data name="SettingsValuesCount5" xml:space="preserve"><value>{0} значений</value></data>
