@@ -262,7 +262,14 @@ public sealed partial class VeteranDecoder : IWheelDecoder
             // пустота — и разбираются в такой пустоте долго.
             bms.AvgCell = cellsForWheel > 0 ? totalVolt / cellsForWheel : 0;
         }
-        // pnum == 8: new packet, not yet recognized (matches Android TODO)
+        else if (pnum == VeteranSettingsPage.PageNumber)
+        {
+            // Здесь у оригинала расписка «new packet, not yet recognized» — страница настроек,
+            // которую разбирает только родное приложение производителя. Ветка заполняет расписку и
+            // не трогает ни одной из веток выше (план 34 §3, шаг 1.6).
+            var settings = VeteranSettingsPage.Parse(buff, _timeProvider.GetUtcNow());
+            if (settings is not null) _state.SetWheelSettings(settings);
+        }
     }
 
     /// <summary>Port of the battery-percent branches (VeteranAdapter.java:132-213).</summary>

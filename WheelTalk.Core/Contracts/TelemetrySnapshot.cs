@@ -108,6 +108,13 @@ public sealed record TelemetrySnapshot
     public SmartBms Bms1 { get; init; } = new();
     public SmartBms Bms2 { get; init; } = new();
 
+    /// <summary>
+    /// Настройки, о которых колесо рассказало само (Veteran, страница 8) — ссылка на неизменяемый
+    /// снимок, а не копия полей: страница приходит реже телеметрии и меняется целиком.
+    /// <c>null</c> — такого кадра в этой сессии ещё не было (у прочих марок он не приходит вовсе).
+    /// </summary>
+    public Settings.Device.WheelSettingsSnapshot? WheelSettings { get; init; }
+
     // KingSong-only fields — Veteran/Gotway never write WheelState's backing properties, so these
     // stay at their defaults ("", 0) for those protocols.
 

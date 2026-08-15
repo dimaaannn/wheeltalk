@@ -103,6 +103,15 @@ public sealed class WheelState
     public SmartBms Bms1 { get; } = new();
     public SmartBms Bms2 { get; } = new();
 
+    /// <summary>
+    /// Настройки, как их сообщило само колесо (Veteran, страница 8). <c>null</c> — такого кадра
+    /// ещё не было: у большинства марок его нет вовсе, а у Veteran он приходит раз в 4 секунды.
+    /// Снимок заменяется целиком — см. <see cref="Settings.Device.WheelSettingsSnapshot"/>.
+    /// </summary>
+    public Settings.Device.WheelSettingsSnapshot? WheelSettings { get; private set; }
+
+    public void SetWheelSettings(Settings.Device.WheelSettingsSnapshot settings) => WheelSettings = settings;
+
     public void ResetRideTime()
     {
         if (_rideStartTime == 0)
@@ -306,6 +315,7 @@ public sealed class WheelState
         WheelType = WheelType,
         Bms1 = Bms1,
         Bms2 = Bms2,
+        WheelSettings = WheelSettings,
         Name = Name,
         ModeStr = ModeStr,
         FanStatus = FanStatus,
