@@ -29,7 +29,8 @@ namespace WheelTalk.Core.Decoding;
 ///   unknown, ask for it (0x9B); name known, serial not, ask for that (0x63). Note where it sits:
 ///   <i>outside</i> <c>KingsongAdapter.decode()</c>, so the adapter's own <c>data.length >= 20</c>
 ///   and <c>AA 55</c> guards never gate it. <see cref="Decode"/> keeps that: the guards decide the
-///   return value, not whether the wheel gets asked.</item>
+///   return value, not whether the wheel gets asked. <b>Отклонение:</b> к этому запросу добавлены
+///   пол и потолок — см. <see cref="RequestMissingIdentity"/> и <c>docs/port-deviations.md</c>.</item>
 /// </list>
 /// Both halves were needed on a live KS-16S (03.08.2026): it answered a bare subscription with
 /// nine bytes of <c>AT+ULKTE</c> every 2,4 с and nothing else, forever.
@@ -72,15 +73,38 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     /// </summary>
     private static readonly TimeSpan BootstrapDelay = TimeSpan.FromMilliseconds(200);
 
+    /// <summary>Запрос имени колеса (<c>BluetoothService.kt:283</c>).</summary>
+    private const byte AskName = 0x9B;
+
+    /// <summary>Запрос серийного номера (<c>BluetoothService.kt:285</c>).</summary>
+    private const byte AskSerial = 0x63;
+
+    /// <summary>
+    /// Пол между запросами опознания и потолок попыток на ступень — <b>наше</b> ограничение поверх
+    /// порта, снятое с нашего же Begode (<see cref="GotwayDecoder"/>, <c>RunHandshakeAttempt</c>:
+    /// <c>_attempt &lt; 50</c> и <c>&gt; 40 мс</c>). Оригинал KingSong не ограничивает эти два
+    /// запроса ничем, и колесо, которое на них не отвечает, получало их с частотой уведомлений всю
+    /// поездку (мастер-план §5а). Бюджет ступени — 50 × 40 мс = 2 с, тот же, каким ждёт ответа
+    /// DarknessBot (40 попыток по 50 мс).
+    /// </summary>
+    private static readonly TimeSpan IdentityFloor = TimeSpan.FromMilliseconds(40);
+    private const int IdentityAttemptLimit = 50;
+
     private static readonly string[] Wheels84V =
         ["KS-18L", "KS-16X", "KS-16XF", "RW", "KS-18LH", "KS-18LY", "KS-S18", "KS-S16", "KS-S16P"];
 
     private readonly WheelState _state;
     private readonly IWheelConfig _config;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<KingsongDecoder> _logger;
     private readonly ITimer _bootstrapTimer;
 
     private int _lightMode = LightModeOff;
+
+    /// <summary>Что спрашивалось в прошлый раз — по смене видно, что колесо ответило.</summary>
+    private byte _asked;
+    private int _attempt;
+    private long _lastTryTimestamp;
 
     // Alarm-tier speeds and max speed (frame 0xA4/0xB5) — parsed but deliberately not persisted
     // anywhere this phase (see DecodeAlarmAndMaxSpeed).
@@ -96,6 +120,7 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     {
         _state = state;
         _config = config;
+        _timeProvider = timeProvider;
         _logger = logger;
         _state.WheelType = WheelType.KingSong;
 
@@ -147,11 +172,38 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
         _ => false,
     };
 
-    /// <summary>Спросить то из опознания, чего ещё нет: сначала имя (0x9B), потом серийник (0x63).</summary>
+    /// <summary>
+    /// Спросить то из опознания, чего ещё нет: сначала имя (0x9B), потом серийник (0x63).
+    /// <para>
+    /// Лестница — из оригинала, <b>пол и потолок — наши</b> (<see cref="IdentityFloor"/>): у
+    /// оригинала этот вызов стоит на каждом уведомлении без единого ограничения, и колесо, которое
+    /// не отвечает, спрашивалось до конца поездки. Семантика счёта — Begode: колесо ответило и
+    /// лестница шагнула на серийник → у ступени свой счёт с нуля (<c>_attempt = 0</c> на ответ
+    /// «GW»); всё названо → не спрашиваем вовсе (<c>_attempt = 1000</c> на ответ «NAME»);
+    /// потолок выбран → замолкаем навсегда, потому что подставить имя вместо колеса, в отличие от
+    /// Begode, нечем.
+    /// </para>
+    /// </summary>
     private void RequestMissingIdentity()
     {
-        if (_state.Name.Length == 0) RequestWrite(0x9B);
-        else if (_state.Serial.Length == 0) RequestWrite(0x63);
+        byte? missing = _state.Name.Length == 0 ? AskName
+            : _state.Serial.Length == 0 ? AskSerial
+            : null;
+
+        if (missing is not { } ask) return;
+
+        if (ask != _asked)
+        {
+            _asked = ask;
+            _attempt = 0;
+        }
+
+        if (_attempt >= IdentityAttemptLimit) return;
+        if (_timeProvider.GetElapsedTime(_lastTryTimestamp) <= IdentityFloor) return;
+
+        RequestWrite(ask);
+        _lastTryTimestamp = _timeProvider.GetTimestamp();
+        if (++_attempt == IdentityAttemptLimit) LogIdentityGaveUp(ask, IdentityAttemptLimit);
     }
 
     /// <summary>Frame 0xA9 — live data (KingsongAdapter.java:36-179).</summary>
@@ -495,4 +547,8 @@ public sealed partial class KingsongDecoder : IWheelDecoder, IDisposable
     [LoggerMessage(EventId = LogEvents.Decoding.HandshakeId, EventName = LogEvents.Decoding.HandshakeName,
         Level = LogLevel.Debug, Message = "Handshake {Kind} recognized: {Value}")]
     private partial void LogHandshake(string kind, string value);
+
+    [LoggerMessage(EventId = LogEvents.Decoding.KsIdentityGaveUpId, EventName = LogEvents.Decoding.KsIdentityGaveUpName,
+        Level = LogLevel.Warning, Message = "KingSong identity request 0x{Ask:X2} unanswered after {Attempts} tries — asking no more")]
+    private partial void LogIdentityGaveUp(byte ask, int attempts);
 }

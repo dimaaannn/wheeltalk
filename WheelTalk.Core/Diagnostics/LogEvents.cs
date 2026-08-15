@@ -200,5 +200,10 @@ public static class LogEvents
         /// раскладка производителя дальше не сверена, показать нечего, но и падать незачем.</summary>
         public const int ImV2P6DiagnosticUnknownBitId = 3025;
         public const string ImV2P6DiagnosticUnknownBitName = "ImV2P6DiagnosticUnknownBit";
+
+        /// <summary>KingSong: колесо не ответило на запрос опознания за отведённые попытки —
+        /// спрашивать перестали. Единственный след потолка в журнале.</summary>
+        public const int KsIdentityGaveUpId = 3026;
+        public const string KsIdentityGaveUpName = "KsIdentityGaveUp";
     }
 }

@@ -252,9 +252,120 @@ public class KingsongDecoderTests
 
         var asked = new List<byte[]>();
         harness.Decoder.ProtocolDecoder.WriteRequested += asked.Add;
+        // Кадр с именем сам был поводом спросить серийник, и та попытка ушла до подписки. Пол в
+        // 40 мс — наше ограничение (план 36 Л1), поэтому вторая попытка ждёт своей очереди.
+        harness.Time.Advance(TimeSpan.FromMilliseconds(50));
         harness.Decoder.ProtocolDecoder.Decode(Convert.FromHexString("aa5570176f009649d2020b0a39300f0ea9100000"));
 
         Assert.Equal([Empty(0x63)], asked);
+    }
+
+    /// <summary>
+    /// Замок плана 36 Л1: колесо, которое молчит в ответ на запрос опознания, получает его <b>не
+    /// чаще пола</b> (40 мс) — а не с частотой своих же уведомлений. До правки сотня уведомлений
+    /// давала сотню запросов (мастер-план §5а).
+    /// </summary>
+    [Fact]
+    public void Identity_requests_keep_the_floor_between_them()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        var asked = new List<byte[]>();
+        harness.Decoder.ProtocolDecoder.WriteRequested += asked.Add;
+
+        // Сто уведомлений подряд в одно и то же мгновение — так выглядит очередь кадров колеса.
+        for (int i = 0; i < 100; i++)
+        {
+            harness.Decoder.ProtocolDecoder.Decode(Convert.FromHexString("41542b554c4b544500"));
+        }
+
+        Assert.Equal([Empty(0x9B)], asked);
+
+        // Прошёл пол — уходит ровно одна следующая попытка.
+        harness.Time.Advance(TimeSpan.FromMilliseconds(41));
+        for (int i = 0; i < 100; i++)
+        {
+            harness.Decoder.ProtocolDecoder.Decode(Convert.FromHexString("41542b554c4b544500"));
+        }
+
+        Assert.Equal([Empty(0x9B), Empty(0x9B)], asked);
+    }
+
+    /// <summary>
+    /// Замок плана 36 Л1: потолок. Колесо, которое не назовёт имя никогда, получает не больше
+    /// пятидесяти запросов за всю поездку — образец наш же Begode (<c>GotwayDecoder.cs:498</c>).
+    /// </summary>
+    [Fact]
+    public void Identity_requests_stop_at_the_attempt_ceiling()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        var asked = new List<byte[]>();
+        harness.Decoder.ProtocolDecoder.WriteRequested += asked.Add;
+
+        // Двести поводов спросить, каждый заведомо позже пола — ограничивает только потолок.
+        for (int i = 0; i < 200; i++)
+        {
+            harness.Time.Advance(TimeSpan.FromMilliseconds(50));
+            harness.Decoder.ProtocolDecoder.Decode(Convert.FromHexString("41542b554c4b544500"));
+        }
+
+        Assert.Equal(50, asked.Count);
+        Assert.All(asked, request => Assert.Equal(Empty(0x9B), request));
+    }
+
+    /// <summary>
+    /// Замок плана 36 Л1: ответ колеса возвращает счёт к нулю — у ступени серийника свой полный
+    /// бюджет попыток, как у Begode на ответ «GW» (<c>GotwayDecoder.cs:170</c>).
+    /// </summary>
+    [Fact]
+    public void An_answer_gives_the_next_stage_its_own_budget()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        var decoder = harness.Decoder.ProtocolDecoder;
+        var asked = new List<byte[]>();
+        decoder.WriteRequested += asked.Add;
+
+        // Имя выбирает свой потолок целиком.
+        for (int i = 0; i < 60; i++)
+        {
+            harness.Time.Advance(TimeSpan.FromMilliseconds(50));
+            decoder.Decode(Convert.FromHexString("41542b554c4b544500"));
+        }
+
+        Assert.Equal(50, asked.Count);
+
+        // Колесо назвалось — дальше спрашивается серийник, и счёт начат заново.
+        harness.Time.Advance(TimeSpan.FromMilliseconds(50));
+        decoder.Decode(Convert.FromHexString("aa550253757065722d576865656c3132bb100000"));
+        for (int i = 0; i < 60; i++)
+        {
+            harness.Time.Advance(TimeSpan.FromMilliseconds(50));
+            decoder.Decode(Convert.FromHexString("41542b554c4b544500"));
+        }
+
+        Assert.Equal(50, asked.Count(request => request[16] == 0x63));
+    }
+
+    /// <summary>
+    /// Опознание названо целиком — запросов нет вовсе, сколько бы кадров ни пришло. Это поведение
+    /// оригинала, и потолок его не изменил.
+    /// </summary>
+    [Fact]
+    public void A_fully_identified_wheel_is_never_asked_again()
+    {
+        var harness = DecoderHarness.ForKingSong();
+        var decoder = harness.Decoder.ProtocolDecoder;
+        decoder.Decode(Convert.FromHexString("aa550253757065722d576865656c3132bb100000"));
+        decoder.Decode(Convert.FromHexString("aa554b696e6731323334353637383930b3313233"));
+
+        var asked = new List<byte[]>();
+        decoder.WriteRequested += asked.Add;
+        for (int i = 0; i < 20; i++)
+        {
+            harness.Time.Advance(TimeSpan.FromMilliseconds(50));
+            decoder.Decode(Convert.FromHexString("aa5570176f009649d2020b0a39300f0ea9100000"));
+        }
+
+        Assert.Empty(asked);
     }
 
     [Fact]
