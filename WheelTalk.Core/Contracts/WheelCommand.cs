@@ -48,8 +48,9 @@ public abstract record WheelCommand
     /// <summary>Режим низкого напряжения (тумблер) — опкод 25, тот же, что у записи пароля.</summary>
     public sealed record SetLowVoltageMode(bool Enabled) : WheelCommand;
 
-    /// <summary>Жёсткость педалей плавной шкалой, 0..100 — вторая, «новая» форма той же настройки,
-    /// что <see cref="SetPedalsMode"/> задаёт тремя положениями. Обе вместе колесу не шлются: какая
-    /// из двух ему подходит, решает <c>PedalGeneration</c> (план §5.3).</summary>
+    /// <summary>Жёсткость педалей плавной шкалой, 0..100 (опкод 15). Соседняя <see cref="SetPedalsMode"/>
+    /// — не она в другом виде, а <b>другая</b> настройка колеса («режим езды», опкод 12): у
+    /// производителя они взаимоисключающие и живут на разных строках экрана
+    /// (<c>docs/wheel-settings-architecture.md</c> §7).</summary>
     public sealed record SetPedalHardness(int Percent) : WheelCommand;
 }

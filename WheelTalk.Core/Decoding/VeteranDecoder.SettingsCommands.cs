@@ -98,26 +98,26 @@ public sealed partial class VeteranDecoder : IVeteranSettingsCommands
         return CombineFrames(legacy, modern);
     }
 
-    // --- Только для новых поколений: команда, которой у старых колёс нет вовсе ---
+    // --- Жёсткость педалей и поколение колеса ---
 
-    public PedalGeneration Pedals => PedalGenerations.FromProtocolVersion(ProtocolVersion);
+    /// <summary>Вид «режима езды» этого колеса — по версии протокола из телеметрии. К жёсткости
+    /// педалей отношения не имеет, см. <see cref="RideModeScales"/>.</summary>
+    public RideModeScale RideModeScale => RideModeScales.FromProtocolVersion(ProtocolVersion);
 
     /// <summary>
     /// Жёсткость педалей плавной шкалой, опкод 15 (<c>PedalSoftnessSettingActivity.java:37</c>,
     /// диапазон — <c>BaseSetProgressActivity.java:46</c> с <c>getProgressMax()==100</c> и
     /// тождественным <c>progressToCmdValue</c>).
     /// <para>
-    /// Отказ здесь двойной, и второе условие важнее первого: колесу не того поколения плавной
-    /// шкалы не существует — старый Sherman этот опкод не понимает, а Oryx/Lynx S/Nosfet не назвал
-    /// нам никто (§5.3 плана). Гейт стоит в билдере, а не у вызывающего: билдер — единственное
-    /// место, которое знает версию протокола этого самого колеса, и защищает он всех вызывающих
-    /// сразу, а не одного.
+    /// Поколение колеса здесь не спрашивается нарочно: у этого опкода шкала <b>всегда</b> плавная,
+    /// а есть ли настройка у колеса, говорит сентинел <c>128</c> в его собственной телеметрии
+    /// (<c>ControlActivity.java:392-395</c>) — признак точнее каталога моделей. Пока входящий кадр
+    /// настроек не разобран, спрашивать нечего и подменять сентинел таблицей поколений — значит
+    /// прятать настройку у колеса, которое ею владеет.
     /// </para>
     /// </summary>
     public byte[]? BuildSetPedalHardness(int percent) =>
-        Pedals == PedalGeneration.Continuous && InRange(percent, 0, 100)
-            ? BuildSettingWrite(opcode: 15, percent)
-            : null;
+        InRange(percent, 0, 100) ? BuildSettingWrite(opcode: 15, percent) : null;
 
     // --- Общая сборка ---
 

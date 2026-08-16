@@ -23,12 +23,7 @@ namespace WheelTalk.Tests.Decoding;
 /// </summary>
 public class VeteranCollisionGuardTests
 {
-    /// <summary>Колесо нового поколения (Sherman L, версия протокола 6): только такое строит все
-    /// команды разом, включая жёсткость педалей (план §5.3). Байты остальных команд от версии
-    /// протокола не зависят — она решает лишь, кому доступна педальная шкала и сколькими
-    /// половинами уходит тревога скорости (у версии 6, как и у пустого харнесса, — обеими).</summary>
-    private static IVeteranSettingsCommands NewWheel() =>
-        (IVeteranSettingsCommands)VeteranOutgoingFrames.NewProtocolWheel().Decoder.ProtocolDecoder;
+    private static IVeteranSettingsCommands NewWheel() => (IVeteranSettingsCommands)DecoderHarness.ForVeteran().Decoder.ProtocolDecoder;
 
     /// <summary>Все кадры записи настроек, что декодер вообще способен построить, — по каждому
     /// допустимому значению каждой команды. Список общий с замком на служебные команды

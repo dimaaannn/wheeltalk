@@ -161,7 +161,7 @@ public sealed partial class WheelService : IDisposable
             WheelCommand.Beep => protocolDecoder.BuildWheelBeep(),
             WheelCommand.SetLight l => protocolDecoder.BuildSetLightState(l.Enabled),
             WheelCommand.SwitchFlashlight => protocolDecoder.BuildSwitchFlashlight(),
-            WheelCommand.SetPedalsMode p => PedalGenerationKnown(protocolDecoder) ? protocolDecoder.BuildUpdatePedalsMode(p.Mode) : null,
+            WheelCommand.SetPedalsMode p => protocolDecoder.BuildUpdatePedalsMode(p.Mode),
             WheelCommand.ResetTrip => protocolDecoder.BuildResetTrip(),
             WheelCommand.Calibrate => protocolDecoder.BuildCalibrate(),
 
@@ -183,9 +183,10 @@ public sealed partial class WheelService : IDisposable
             WheelCommand.SetScreenBacklight c => VeteranSettings(protocolDecoder)?.BuildSetScreenBacklight(c.Percent),
             WheelCommand.SetLowVoltageMode c => VeteranSettings(protocolDecoder)?.BuildSetLowVoltageMode(c.Enabled),
 
-            // Гейта по поколению здесь нет нарочно: плавную шкалу отсеивает сам билдер, который
-            // один и знает версию протокола своего колеса. Дублировать проверку в диспетчере —
-            // заводить второе место, где правило можно разойтись с первым.
+            // Замка по поколению здесь нет нарочно: у опкода 15 шкала всегда плавная, а доступна ли
+            // настройка этому колесу — скажет сентинел входящего кадра настроек, не таблица моделей
+            // (docs/wheel-settings-architecture.md §7). Поколение решает вид «режима езды» —
+            // соседней команды, — и спрашивают его на показе строки, а не на отправке.
             WheelCommand.SetPedalHardness c => VeteranSettings(protocolDecoder)?.BuildSetPedalHardness(c.Percent),
 
             _ => null,
@@ -222,20 +223,6 @@ public sealed partial class WheelService : IDisposable
 
     /// <summary>Умеет ли этот декодер писать настройки в колесо. Сегодня умеет один — Veteran.</summary>
     private static IVeteranSettingsCommands? VeteranSettings(IWheelDecoder decoder) => decoder as IVeteranSettingsCommands;
-
-    /// <summary>
-    /// Знаем ли мы, как это колесо принимает настройку педалей (план §5.3). Три положения строит
-    /// порт WheelLog — файл, который о поколениях не знает и правке не подлежит, — потому его
-    /// педальная команда запирается здесь, снаружи. Колесо неизвестного поколения (Oryx, Lynx S,
-    /// Nosfet: каталога производителя на них нет) не получает ни одной из двух педальных команд:
-    /// не показать доступную настройку — неудобство, послать чужую — испорченная поездка.
-    /// <para>
-    /// Чужих протоколов развилка не касается: у Gotway и KingSong поколений педалей нет вовсе,
-    /// примерка интерфейса даёт <c>null</c>, и условие пропускает их так же, как до этой правки.
-    /// </para>
-    /// </summary>
-    private static bool PedalGenerationKnown(IWheelDecoder decoder) =>
-        VeteranSettings(decoder)?.Pedals != PedalGeneration.Unknown;
 
     /// <summary>«Сброс максимумов» — see <see cref="Decoder.ResetPeaks"/>. Purely local, no BLE write.</summary>
     public void ResetPeaks() => _decoder.ResetPeaks();
