@@ -16,8 +16,9 @@ namespace WheelTalk.Tests.Decoding;
 /// <b>Механизм поломки, который здесь ловится.</b> Однотипные кадры так и просятся под общий
 /// сборщик с параметрами <c>(опкод, b5, b6)</c>. Стоит завести такой — и один неверный аргумент на
 /// одном вызове даст кадр не той команды, причём ревью этого не увидит: у пары «выключить колесо» /
-/// «записать угол защиты от падения» совпадают первые семь байт целиком. Поэтому b6 в нашем
-/// сборщике не параметр, а константа 2, и эти тесты — красный CI на любую правку, которая сотрёт
+/// «записать угол защиты от падения» совпадают <b>шестнадцать байт из восемнадцати</b>, и в обеих
+/// половинах пары. Поэтому b6 в нашем общем сборщике не параметр, а константа 2, угол собран
+/// отдельными литеральными массивами, и эти тесты — красный CI на любую правку, которая сотрёт
 /// различие.
 /// </para>
 /// </summary>
@@ -149,8 +150,9 @@ public class VeteranCollisionGuardTests
     /// <summary>
     /// Опкод сам по себе никогда не служит единственным признаком команды: каждый кадр записи
     /// настройки несёт b5=1 и b6=2, и ровно этим отличается от всех соседей по своему опкоду.
-    /// Половины тревоги скорости — законное исключение (b6=0 и заполнитель), они проверены выше
-    /// отдельно.
+    /// Половины парных команд — тревоги скорости и угла защиты от падения — законное исключение
+    /// (b6=0 и заполнитель), их стерегут отдельные замки выше. Здесь они пропускаются по длине
+    /// буфера: пара — это два кадра подряд, и его длина опкоду не равна.
     /// </summary>
     [Fact]
     public void EverySettingsWrite_CarriesTheWriteMarkerInByte6()
@@ -183,25 +185,158 @@ public class VeteranCollisionGuardTests
         }
     }
 
+    // ============ Опкод 22: тройная коллизия — самая опасная пара протокола (план §1.4, §3) ============
+
+    /// <summary>Заполнитель тела кадра (<c>Byte.MIN_VALUE</c> у производителя).</summary>
+    private const byte Filler = 0x80;
+
     /// <summary>
-    /// Замок вперёд: очередь C (опкод 22 — режим транспортировки, выключение, угол защиты от
-    /// падения) этой работой <b>не</b> реализована, и ни один существующий билдер не смеет случайно
-    /// родить кадр с этим опкодом. Когда очередь C дойдёт до кода, тест обязан быть пересмотрен
-    /// осознанно, а не молча пройти мимо: запрет опкода целиком сменится запретом комбинации
-    /// «питание» — как это уже сделано для опкода 25 в
-    /// <c>VeteranCommandBytesTests.NeverEmits_ServiceOrFirmwareCommands</c>.
+    /// Питание/удержание — <b>дословные кадры производителя</b> (<c>CMD_SET_CLOSE_IN_10</c>,
+    /// <c>BtManager.java:81</c>, и <c>CMD_SET_CLOSE_IN_10_NEW</c>, <c>:90</c>), CRC32 досчитан
+    /// отдельно стандартным IEEE-алгоритмом. Мы их не строим и не будем никогда (план §8): здесь
+    /// они стоят образцом того, с чем нашим кадрам совпадать запрещено. Команда запускает
+    /// 10-секундный отсчёт до выключения колеса, повторная посылка сбрасывает отсчёт на новые
+    /// 10 секунд, отдельной отмены у неё нет вовсе (<c>originals-reference-data.md</c> §7.3.1).
+    /// </summary>
+    private static readonly string[] PowerOffFrames =
+    [
+        "4C6B41701601808080808080808080800180D96E1122", // Lk — старое поколение прошивок
+        "4C64417016010080808080808080808001807F2B4D17", // Ld — новое поколение
+    ];
+
+    /// <summary>
+    /// Замок не спит: эталон питания сам держит инвариант «длина = опкод» и несёт единицу в байте
+    /// 16 — том единственном байте, которым он отличается от записи угла. Без этой проверки опечатка
+    /// в эталоне обессмыслила бы все замки ниже, и они остались бы зелёными.
+    /// </summary>
+    [Fact]
+    public void Opcode22_PowerOffReference_IsWellFormedAndCarriesOneInByte16()
+    {
+        foreach (string hex in PowerOffFrames)
+        {
+            byte[] frame = Convert.FromHexString(hex);
+
+            Assert.Equal((byte)frame.Length, frame[4]);
+            Assert.Equal(22, frame[4]);
+            Assert.Equal(1, frame[5]);
+            Assert.Equal(1, frame[16]);       // у записи угла здесь всегда заполнитель
+            Assert.Equal(Filler, frame[17]);  // а у неё здесь — само значение угла
+        }
+    }
+
+    /// <summary>
+    /// <b>Главный замок этапа 5.</b> Ни один кадр угла защиты от падения не совпадает с кадром
+    /// питания — на всём диапазоне 35..75, обеими половинами пары, а не только при равных значениях.
     /// <para>
-    /// Опкод 25 из этого запрета вышел: <c>low_voltage_mode</c> — законная настройка производителя
-    /// (<c>ControlActivity.java:446-448</c>), а запрещён на нём пароль, то есть комбинация 0/5, а не
-    /// опкод. Её стережёт <see cref="Opcode25_LowVoltageMode_NeverLooksLikePassword"/>.
+    /// Почему совпадения не будет никогда: шестнадцать байт из восемнадцати у этих команд дословно
+    /// одинаковы (заголовок, опкод 22, b5=1, b6, девять заполнителей), различает их <b>только байт
+    /// 16</b> — у питания там жёсткая единица, у угла литеральный заполнитель <c>0x80</c>
+    /// (<c>SetFallProtectionAngleActivity.java:64</c>: значение пишется единственно в последний байт,
+    /// <c>progressToValue(i) = i + 35</c>, и ветки с зависимостью байта 16 от значения в источнике
+    /// нет ни одной). Потому здесь утверждается и неравенство целых кадров, и форма этого одного
+    /// байта: первое ловит совпадение, второе — причину, по которой его не бывает.
     /// </para>
     /// </summary>
     [Fact]
-    public void NoBuilderYetEmits_Opcode22()
+    public void Opcode22_FallProtectionAngle_NeverEqualsPowerOff_OverWholeRange()
     {
-        foreach (byte[] frame in EverySettingsFrame())
+        var wheel = NewWheel();
+
+        for (int degrees = 35; degrees <= 75; degrees++)
         {
-            Assert.NotEqual(22, frame[4]); // питание / transport_mode / fallProtectionAngle (§1.4)
+            foreach (byte[] half in VeteranOutgoingFrames.SplitFrames(wheel.BuildSetFallProtectionAngle(degrees)!))
+            {
+                Assert.Equal(22, half[4]);
+                Assert.DoesNotContain(Convert.ToHexString(half), PowerOffFrames);
+                Assert.Equal(Filler, half[16]);  // единственный различающий байт — и он не значение
+                Assert.Equal(degrees, half[^5]); // значение живёт только в последнем байте тела
+            }
         }
+    }
+
+    /// <summary>
+    /// Режим транспортировки из опасной пары выпадает: у него b6=2 против 0 (<c>Ld</c>) и
+    /// заполнителя (<c>Lk</c>) у обеих её половин — он отличим уже на седьмом байте, как обычные
+    /// коллизии очереди B. Утверждается и это, и полное неравенство кадров — с питанием и со всем
+    /// диапазоном угла разом.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Opcode22_TransportMode_NeverEqualsPowerOffNorFallProtectionAngle(bool enabled)
+    {
+        var wheel = NewWheel();
+        byte[] frame = wheel.BuildSetTransportMode(enabled);
+
+        Assert.Equal(22, frame[4]);
+        Assert.Equal(1, frame[5]);
+        Assert.Equal(2, frame[6]); // питание и угол несут здесь 0 либо заполнитель, но не 2
+        Assert.DoesNotContain(Convert.ToHexString(frame), PowerOffFrames);
+        Assert.DoesNotContain(Convert.ToHexString(frame), EveryFallProtectionAngleHalf(wheel));
+    }
+
+    /// <summary>
+    /// Опкод 22 больше не запрещён целиком — на нём живут две наши законные команды. Взамен запрета
+    /// стоит перечисление: каждый кадр с опкодом 22, который декодер вообще способен родить, обязан
+    /// быть либо режимом транспортировки, либо половиной пары угла защиты. <b>Третьей формы на этом
+    /// опкоде у нас нет</b> — третья форма производителя это питание, и первой же строкой
+    /// проверяется, что перечень его не впустил (иначе замок пропускал бы всё подряд).
+    /// </summary>
+    [Fact]
+    public void Opcode22_EveryFrameWeCanBuild_IsTransportModeOrFallProtectionAngle()
+    {
+        var wheel = NewWheel();
+        var allowed = EveryFallProtectionAngleHalf(wheel);
+        allowed.Add(Convert.ToHexString(wheel.BuildSetTransportMode(true)));
+        allowed.Add(Convert.ToHexString(wheel.BuildSetTransportMode(false)));
+
+        foreach (string powerOff in PowerOffFrames) Assert.DoesNotContain(powerOff, allowed);
+
+        foreach (byte[] outgoing in EverySettingsFrame())
+        {
+            foreach (byte[] frame in VeteranOutgoingFrames.SplitFrames(outgoing))
+            {
+                if (frame[4] != 22) continue;
+
+                Assert.Contains(Convert.ToHexString(frame), allowed);
+            }
+        }
+    }
+
+    /// <summary>Обе половины пары угла на всём диапазоне — множеством, чтобы сравнивать «ни один с
+    /// ни одним», а не только совпадающие значения.</summary>
+    private static HashSet<string> EveryFallProtectionAngleHalf(IVeteranSettingsCommands wheel)
+    {
+        var halves = new HashSet<string>();
+        for (int degrees = 35; degrees <= 75; degrees++)
+        {
+            foreach (byte[] half in VeteranOutgoingFrames.SplitFrames(wheel.BuildSetFallProtectionAngle(degrees)!))
+            {
+                halves.Add(Convert.ToHexString(half));
+            }
+        }
+        return halves;
+    }
+
+    /// <summary>
+    /// Признак записи настройки — <b>пара</b> (b5, b6) = (1, 2), а не один шестой байт. Правило
+    /// «b6=2 значит запись» ломается на кадре самого производителя:
+    /// <c>CMD_CLEAR_METER_NEW = {76, 100, 65, 112, 13, 0, 2, MIN, 1}</c> (<c>BtManager.java:85</c>) —
+    /// сброс поездки, где b6=2 при b5=<b>0</b>. Здесь это записано исполняемым: упростишь признак до
+    /// одного байта — и чужой кадр станет неотличим от записи настройки.
+    /// </summary>
+    [Fact]
+    public void WriteMarker_IsThePairOfBytes_NotByte6Alone()
+    {
+        byte[] clearMeterNew = Convert.FromHexString("4C6441700D00028001D4C081F2");
+        Assert.Equal((byte)clearMeterNew.Length, clearMeterNew[4]); // эталон держит инвариант §4
+
+        Assert.Equal(2, clearMeterNew[6]);    // по одному байту — «запись настройки»
+        Assert.NotEqual(1, clearMeterNew[5]); // по паре — чужая команда, и это верный ответ
+
+        byte[] transportMode = NewWheel().BuildSetTransportMode(true);
+        Assert.Equal(1, transportMode[5]);
+        Assert.Equal(2, transportMode[6]);
+        Assert.NotEqual(Convert.ToHexString(clearMeterNew), Convert.ToHexString(transportMode));
     }
 }

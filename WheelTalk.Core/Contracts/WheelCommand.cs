@@ -48,6 +48,14 @@ public abstract record WheelCommand
     /// <summary>Режим низкого напряжения (тумблер) — опкод 25, тот же, что у записи пароля.</summary>
     public sealed record SetLowVoltageMode(bool Enabled) : WheelCommand;
 
+    /// <summary>Режим транспортировки (тумблер) — опкод 22, тот же, что у выключения колеса.</summary>
+    public sealed record SetTransportMode(bool Enabled) : WheelCommand;
+
+    /// <summary>Угол защиты от падения, 35..75° — опкод 22. Кадр отличается от «выключить колесо»
+    /// одним байтом из восемнадцати, потому и собирается собственным методом декодера, а не общей
+    /// записью настройки: см. <c>IVeteranSettingsCommands.BuildSetFallProtectionAngle</c>.</summary>
+    public sealed record SetFallProtectionAngle(int Degrees) : WheelCommand;
+
     /// <summary>Жёсткость педалей плавной шкалой, 0..100 (опкод 15). Соседняя <see cref="SetPedalsMode"/>
     /// — не она в другом виде, а <b>другая</b> настройка колеса («режим езды», опкод 12): у
     /// производителя они взаимоисключающие и живут на разных строках экрана

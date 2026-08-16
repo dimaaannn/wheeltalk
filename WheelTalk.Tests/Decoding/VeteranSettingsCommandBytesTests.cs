@@ -203,6 +203,69 @@ public class VeteranSettingsCommandBytesTests
         AssertFrame("4C6B417011018080808080801E0DBDF5E4", Commands(harness).BuildSetSpeedAlarm(30));
     }
 
+    // ==================== Очередь C: тройная коллизия опкода 22 (§1.4) ====================
+
+    /// <summary>
+    /// `transport_mode`, опкод 22/<c>0x16</c>, b5/b6 = 1/2, тумблер — <c>ControlActivity.java:439</c>,
+    /// вызов <c>:342</c> (<c>z ? 1 : 0</c>, то есть 1 = режим транспортировки включён).
+    /// <para>
+    /// Единственный из трёх смыслов опкода 22, кто уходит <b>одиночным</b> кадром
+    /// (<c>sendBytesData</c>, без развилки поколений) и собирается общим сборщиком записи настройки:
+    /// пара (b5=1, b6=2) у него та же, что у шестнадцати прочих одиночных записей
+    /// (<c>originals-reference-data.md</c> §7.3.1, п. 4). Особой ветки он не заслуживает — и это
+    /// не послабление, а защита: в общем сборщике b6 зашит константой 2, а у выключения колеса он
+    /// 0 либо заполнитель, значит выключение этим путём непостроимо в принципе.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(true, "4C64417016010280808080808080808080012B37C934")]
+    [InlineData(false, "4C64417016010280808080808080808080005C30F9A2")]
+    public void SetTransportMode_MatchesOfficialFrame(bool enabled, string expectedHex) =>
+        AssertFrame(expectedHex, NewWheel().BuildSetTransportMode(enabled));
+
+    /// <summary>
+    /// `fallProtectionAngle`, опкод 22/<c>0x16</c>, пара <c>Lk</c>+<c>Ld</c>, 35..75° —
+    /// <c>SetFallProtectionAngleActivity.java:64</c> (оба литерала), диапазон — ползунок
+    /// <c>layout_set_safe_angle.xml:45</c> (<c>android:max="40"</c>) плюс смещение
+    /// <c>progressToValue(i) = i + 35</c> (<c>:17</c>).
+    /// <para>
+    /// <b>Самая опасная запись протокола.</b> С командой выключения колеса у неё совпадают
+    /// шестнадцать байт из восемнадцати, и в обеих половинах пары; различает только байт 16 — у
+    /// выключения там жёсткая единица, здесь литеральный заполнитель. Значение угла пишется
+    /// единственно в последний байт тела. Замок на это — <see cref="VeteranCollisionGuardTests"/>,
+    /// и он написан раньше самого билдера.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(35, "4C6B41701601808080808080808080808023B4294A7A", "4C6441701601008080808080808080808023126C164F")]
+    [InlineData(55, "4C6B41701601808080808080808080808037AEF39E07", "4C644170160100808080808080808080803708B6C232")]
+    [InlineData(75, "4C6B4170160180808080808080808080804BF740A310", "4C644170160100808080808080808080804B5105FF25")]
+    public void SetFallProtectionAngle_MatchesOfficialPairOfFrames(int degrees, string legacyHex, string modernHex)
+    {
+        byte[]? pair = Commands(VeteranOutgoingFrames.NewProtocolWheel()).BuildSetFallProtectionAngle(degrees);
+
+        Assert.NotNull(pair);
+        Assert.Equal(Convert.FromHexString(legacyHex + modernHex), pair);
+        AssertFrame(legacyHex, pair[..22]);
+        AssertFrame(modernHex, pair[22..]);
+    }
+
+    /// <summary>Семейству прошивок <c>004</c> (версия протокола 4, Patton) уходит только старая
+    /// половина — та же развилка <c>sendBytesDataCombine</c>, что у тревоги скорости выше.</summary>
+    [Fact]
+    public void SetFallProtectionAngle_OnFirmwareFamily004_SendsLegacyHalfOnly()
+    {
+        var harness = DecoderHarness.ForVeteran();
+        harness.FeedHex(
+            "dc5a5c452abe00003edc00008562003500000b5c",
+            "0dfe000002bc07d00fac000219fb0000006f0000",
+            "80808080808004000014ffffffffff32ee029109",
+            "df0fd303cb000000006f9a79c2");
+        Assert.Equal("004.0.12", harness.Snapshot().Version);
+
+        AssertFrame("4C6B41701601808080808080808080808037AEF39E07", Commands(harness).BuildSetFallProtectionAngle(55));
+    }
+
     // ==================== Границы диапазонов ====================
 
     /// <summary>
@@ -233,4 +296,21 @@ public class VeteranSettingsCommandBytesTests
         Assert.Null(wheel.BuildSetScreenBacklight(101));
         Assert.Null(wheel.BuildSetScreenBacklight(-1));
     }
+
+    /// <summary>
+    /// <b>Здесь мы строже производителя — осознанно</b> (<c>docs/port-deviations.md</c>). У него
+    /// проверки диапазона угла нет вовсе: границу 35..75 задаёт единственно вид ползунка
+    /// (<c>layout_set_safe_angle.xml:45</c>), а между ползунком и отправкой нет ни условия, ни
+    /// обрезания, ни отказа — кадр уходит на отпускание пальца. У нас негодное значение кадра не
+    /// рождает: команда на опкоде 22 стоит соседом выключения колеса, и «примерно верное» число
+    /// здесь стоит дороже молчания.
+    /// </summary>
+    [Theory]
+    [InlineData(34)]
+    [InlineData(76)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(128)] // 0x80 — заполнитель тела, значением быть не может по построению кадра
+    public void SetFallProtectionAngle_OutOfRange_ReturnsNull(int degrees) =>
+        Assert.Null(NewWheel().BuildSetFallProtectionAngle(degrees));
 }

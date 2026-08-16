@@ -55,7 +55,37 @@ public static class VeteranOutgoingFrames
         }
         // Жёсткость педалей — опкод 15, поколения колеса не спрашивает (архитектура настроек §7).
         for (int v = 0; v <= 100; v++) yield return wheel.BuildSetPedalHardness(v)!;
+        // Очередь C, опкод 22 — сосед выключения колеса. Диапазон угла берётся весь: замок обязан
+        // утверждать своё на каждом значении, а не на одном образце (план §3).
+        yield return wheel.BuildSetTransportMode(true);
+        yield return wheel.BuildSetTransportMode(false);
+        for (int v = 35; v <= 75; v++) yield return wheel.BuildSetFallProtectionAngle(v)!;
     }
+
+    /// <summary>
+    /// Парные команды уходят двумя самостоятельными кадрами в одном буфере — режем по инварианту
+    /// «длина = опкод», иначе вторая половина осталась бы непроверенной ни одним замком. Текстовые
+    /// команды (<c>CLEARMETER</c>, <c>SetLightON</c>) кадрами не являются и отсюда не выходят вовсе.
+    /// <para>
+    /// Резак общий для всех замков нарочно, по той же причине, что и список выше: два разных способа
+    /// нарезки — это два разных представления о том, что ушло на провод.
+    /// </para>
+    /// </summary>
+    public static IEnumerable<byte[]> SplitFrames(byte[] buffer)
+    {
+        for (int start = 0; start + 5 <= buffer.Length && IsFrameHeader(buffer, start);)
+        {
+            int length = buffer[start + 4];
+            if (length < 5 || start + length > buffer.Length) yield break; // форма чужая — не гадаем
+
+            yield return buffer[start..(start + length)];
+            start += length;
+        }
+    }
+
+    private static bool IsFrameHeader(byte[] buffer, int start) =>
+        buffer[start] == 'L' && (buffer[start + 1] == 'k' || buffer[start + 1] == 'd')
+        && buffer[start + 2] == 'A' && buffer[start + 3] == 'p';
 
     /// <summary>Команды старого порта <c>VeteranAdapter</c> — те, что были у нас до записи настроек.
     /// Часть из них уходит текстом, а не кадром (<c>CLEARMETER</c>, <c>SetLightON</c>), и замок на

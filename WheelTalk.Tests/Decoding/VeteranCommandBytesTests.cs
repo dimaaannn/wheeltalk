@@ -262,7 +262,7 @@ public class VeteranCommandBytesTests
         {
             Assert.DoesNotContain(FirmwareEntry, ElevenByteWindows(outgoing));
 
-            foreach (byte[] frame in SplitFrames(outgoing))
+            foreach (byte[] frame in VeteranOutgoingFrames.SplitFrames(outgoing))
             {
                 ForbiddenCommand? hit = Array.Find(ForbiddenCommands, f => f.Matches(frame));
                 Assert.True(hit is null, $"Кадр {Convert.ToHexString(frame)} — это {hit?.Name}");
@@ -295,41 +295,25 @@ public class VeteranCommandBytesTests
     /// <summary>
     /// Обратная сторона того же замка: на всех трёх опасных опкодах законная запись настройки
     /// проходит. Иначе точность была бы мнимой — запрет опкода целиком проходил бы этот файл, но
-    /// запирал бы яркость экрана (20) и режим низкого напряжения (25) заодно с журналом и паролем.
-    /// Угол защиты от падения (22) ещё не реализован — его эталон взят из
-    /// <c>SetFallProtectionAngleActivity.java:64</c> и стоит здесь как обещание очереди C: запрет на
-    /// опкоде 22 держится формой хвоста, а не самим опкодом.
+    /// запирал бы яркость экрана (20), режим низкого напряжения (25) и обе команды на 22-м заодно с
+    /// журналом, паролем и выключением колеса. Угол защиты от падения (22) — тот самый случай, ради
+    /// которого правилу и понадобилась форма хвоста: <b>обе</b> половины его пары совпадают с
+    /// выключением колеса по опкоду, b5 и b6, и расходятся только байтом 16.
     /// </summary>
     [Fact]
     public void ForbiddenRules_LetLegitimateSettingsThroughOnTheSameOpcodes()
     {
         var wheel = (IVeteranSettingsCommands)ProtocolDecoder(VeteranOutgoingFrames.NewProtocolWheel());
-        byte[] fallProtectionAngle = Convert.FromHexString("4C644170160100808080808080808080803708B6C232");
 
         Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(wheel.BuildSetLowVoltageMode(true)));
         Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(wheel.BuildSetScreenBacklight(100)!));
-        Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(fallProtectionAngle));
-    }
+        Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(wheel.BuildSetTransportMode(true)));
 
-    /// <summary>Парные команды уходят двумя самостоятельными кадрами в одном буфере — режем по
-    /// инварианту «длина = опкод», иначе вторая половина осталась бы непроверенной. Текстовые
-    /// команды (<c>CLEARMETER</c>, <c>SetLightON</c>) кадрами не являются и до таблицы комбинаций не
-    /// доходят вовсе: их стережёт проверка на текст входа в прошивку.</summary>
-    private static IEnumerable<byte[]> SplitFrames(byte[] buffer)
-    {
-        for (int start = 0; start + 5 <= buffer.Length && IsFrameHeader(buffer, start);)
+        foreach (byte[] half in VeteranOutgoingFrames.SplitFrames(wheel.BuildSetFallProtectionAngle(55)!))
         {
-            int length = buffer[start + 4];
-            if (length < 5 || start + length > buffer.Length) yield break; // форма чужая — не гадаем
-
-            yield return buffer[start..(start + length)];
-            start += length;
+            Assert.DoesNotContain(ForbiddenCommands, f => f.Matches(half));
         }
     }
-
-    private static bool IsFrameHeader(byte[] buffer, int start) =>
-        buffer[start] == 'L' && (buffer[start + 1] == 'k' || buffer[start + 1] == 'd')
-        && buffer[start + 2] == 'A' && buffer[start + 3] == 'p';
 
     /// <summary>Helper for the firmware-string containment check above: yields every contiguous
     /// 11-byte window so `Assert.DoesNotContain` (which needs matching element types) can compare

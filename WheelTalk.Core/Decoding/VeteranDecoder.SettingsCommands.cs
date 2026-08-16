@@ -24,10 +24,13 @@ public sealed partial class VeteranDecoder : IVeteranSettingsCommands
     /// (<c>leaperkim-official-app.md</c> §5.2) — потому и не может быть законным значением.</summary>
     private const byte Filler = 0x80;
 
-    /// <summary>Байт 6 = 2 — признак «запись обычной настройки». Ровно этим байтом настройка
-    /// отличается от чужой команды на том же опкоде: чтение журнала на 20-м, тревога скорости на
-    /// 17-м, синхронизация времени на 18-м, питание и угол защиты от падения на 22-м — все они
-    /// несут в шестом байте <b>не</b> 2 (<c>leaperkim-official-app.md</c> §4.2).</summary>
+    /// <summary>Байт 6 = 2 — вторая половина признака «запись обычной настройки». Признак этот —
+    /// <b>пара</b> (b5=1, b6=2), а не один байт: она стоит у шестнадцати одиночных кадров записи, а
+    /// правило «b6=2 значит запись» ломается на чужом кадре сброса поездки, где b6=2 при b5=0
+    /// (<c>CMD_CLEAR_METER_NEW</c>, <c>BtManager.java:85</c>). Обе половины признака зашиты в общем
+    /// сборщике константами, и ровно ими настройка отличается от чужой команды на том же опкоде:
+    /// чтение журнала на 20-м, тревога скорости на 17-м, синхронизация времени на 18-м, выключение
+    /// колеса и угол защиты от падения на 22-м (<c>leaperkim-official-app.md</c> §4.2).</summary>
     private const byte SettingWriteMarker = 2;
 
     /// <summary>Версия протокола, вычитанная из телеметрии (<c>VeteranDecoder.cs:95</c>). Свойство
@@ -94,6 +97,48 @@ public sealed partial class VeteranDecoder : IVeteranSettingsCommands
         // заполнитель), у Ld-половины он равен 0. Ни та, ни другая не совпадает с записью настройки.
         byte[] legacy = BuildFrame(LkHeader, opcode: 17, [1, Filler, Filler, Filler, Filler, Filler, Filler, (byte)speedKmh]);
         byte[] modern = BuildFrame(LdHeader, opcode: 17, [1, 0, Filler, Filler, Filler, Filler, Filler, (byte)speedKmh]);
+
+        return CombineFrames(legacy, modern);
+    }
+
+    // --- Очередь C: опкод 22, тройная коллизия ---
+
+    /// <summary>
+    /// Режим транспортировки — обычная одиночная запись настройки, и потому строится общим
+    /// сборщиком: пара (b5=1, b6=2) у него та же, что у шестнадцати прочих одиночных записей
+    /// (<c>ControlActivity.java:439</c>, разбор — <c>originals-reference-data.md</c> §7.3.1, п. 4).
+    /// <para>
+    /// Опкод у него, однако, тот же, что у выключения колеса. Общий сборщик здесь <b>не</b>
+    /// послабление, а самая надёжная из возможных защит: b6 в нём зашит константой 2, а у обеих
+    /// половин выключения он 0 либо заполнитель — значит выключение этим путём непостроимо в
+    /// принципе, каким бы ни был вызов.
+    /// </para>
+    /// </summary>
+    public byte[] BuildSetTransportMode(bool enabled) => BuildSettingWrite(opcode: 22, enabled ? 1 : 0);
+
+    /// <summary>
+    /// Угол защиты от падения, 35..75° — пара кадров, оба литералом с
+    /// <c>SetFallProtectionAngleActivity.java:64</c>. <b>Самая опасная запись протокола:</b> с
+    /// командой выключения колеса совпадают шестнадцать байт из восемнадцати, и в обеих половинах
+    /// пары. Различает единственный байт 16 — у выключения там жёсткая единица, здесь литеральный
+    /// заполнитель; значение угла пишется только в последний байт тела
+    /// (<c>progressToValue(i) = i + 35</c>), ветки с зависимостью байта 16 от значения в источнике
+    /// нет ни одной. Оттого массивы здесь выписаны целиком, а не собраны параметрами: параметр —
+    /// это место, где однажды окажется не то число.
+    /// <para>
+    /// Диапазон отвергается, а не обрезается, и это <b>строже производителя</b>: у него проверки
+    /// нет вовсе, границу задаёт вид ползунка (<c>layout_set_safe_angle.xml:45</c>). Осознанное
+    /// отклонение, записано в <c>docs/port-deviations.md</c>.
+    /// </para>
+    /// </summary>
+    public byte[]? BuildSetFallProtectionAngle(int degrees)
+    {
+        if (!InRange(degrees, 35, 75)) return null;
+
+        byte[] legacy = BuildFrame(LkHeader, opcode: 22,
+            [1, Filler, Filler, Filler, Filler, Filler, Filler, Filler, Filler, Filler, Filler, Filler, (byte)degrees]);
+        byte[] modern = BuildFrame(LdHeader, opcode: 22,
+            [1, 0, Filler, Filler, Filler, Filler, Filler, Filler, Filler, Filler, Filler, Filler, (byte)degrees]);
 
         return CombineFrames(legacy, modern);
     }

@@ -183,6 +183,13 @@ public sealed partial class WheelService : IDisposable
             WheelCommand.SetScreenBacklight c => VeteranSettings(protocolDecoder)?.BuildSetScreenBacklight(c.Percent),
             WheelCommand.SetLowVoltageMode c => VeteranSettings(protocolDecoder)?.BuildSetLowVoltageMode(c.Enabled),
 
+            // Опкод 22 — тот же, что у выключения колеса, и различие с ним тоньше всего в протоколе.
+            // Диспетчер здесь ничего не решает нарочно: обе ветки зовут именованный метод декодера,
+            // а форму кадра стережёт замок VeteranCollisionGuardTests. Угол вне 35..75 декодер не
+            // строит — команда штатно пропускается с записью в журнал.
+            WheelCommand.SetTransportMode c => VeteranSettings(protocolDecoder)?.BuildSetTransportMode(c.Enabled),
+            WheelCommand.SetFallProtectionAngle c => VeteranSettings(protocolDecoder)?.BuildSetFallProtectionAngle(c.Degrees),
+
             // Замка по поколению здесь нет нарочно: у опкода 15 шкала всегда плавная, а доступна ли
             // настройка этому колесу — скажет сентинел входящего кадра настроек, не таблица моделей
             // (docs/wheel-settings-architecture.md §7). Поколение решает вид «режима езды» —
