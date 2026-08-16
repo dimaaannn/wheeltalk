@@ -60,6 +60,24 @@ public static class VeteranOutgoingFrames
         yield return wheel.BuildSetTransportMode(true);
         yield return wheel.BuildSetTransportMode(false);
         for (int v = 35; v <= 75; v++) yield return wheel.BuildSetFallProtectionAngle(v)!;
+        // Очередь D. Наклон педалей — единственная парная команда со знаком: диапазон берётся весь,
+        // вместе с отрицательной половиной, где значение уходит дополнительным кодом.
+        for (int v = -80; v <= 80; v++) yield return wheel.BuildSetAngleTrim(v)!;
+        yield return StandingWheelCalibrateGyro();
+    }
+
+    /// <summary>
+    /// Кадр калибровки гироскопа — с заведомо стоящего колеса. Сам декодер строит её только на
+    /// нулевой скорости (запрет производителя, план §1.5), а фикстуры замков бывают и на ходу:
+    /// Sherman L выше катится назад со скоростью −0.2 км/ч. Спроси мы калибровку у него — она
+    /// вернула бы <c>null</c> и <b>тихо выпала бы из-под замков</b>, хотя на проводе у стоящего
+    /// колеса этот кадр появляется. Содержимое кадра от состояния колеса не зависит вовсе —
+    /// зависит только разрешение, потому взять его у стоящего честно.
+    /// </summary>
+    private static byte[] StandingWheelCalibrateGyro()
+    {
+        var standing = (IVeteranSettingsCommands)DecoderHarness.ForVeteran().Decoder.ProtocolDecoder;
+        return standing.BuildCalibrateGyro()!;
     }
 
     /// <summary>

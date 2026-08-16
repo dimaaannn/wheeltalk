@@ -266,6 +266,63 @@ public class VeteranSettingsCommandBytesTests
         AssertFrame("4C6B41701601808080808080808080808037AEF39E07", Commands(harness).BuildSetFallProtectionAngle(55));
     }
 
+    // ==================== Очередь D: парный кадр со знаком (§1.5) ====================
+
+    /// <summary>
+    /// `angle_trim`, опкод 16/<c>0x10</c>, пара <c>Lk</c>+<c>Ld</c>, −80..80 десятых градуса —
+    /// <c>SetAngelActivity.java:69</c> (оба литерала), диапазон и знак —
+    /// <c>progressToSendValue(i) = i − 80</c> (<c>:17</c>) при ползунке 0..160, показ на экране —
+    /// <c>progressToValue</c> = деление на 10 (<c>:63-65</c>).
+    /// <para>
+    /// Проверяются <b>обе границы и ноль</b>: отрицательная половина уходит дополнительным кодом
+    /// (−80 → <c>0xB0</c>), и именно она — то место, где ошибка знака прошла бы незамеченной на
+    /// положительных значениях. Опкод 16 в протоколе одинок: разбор всех 45 литералов
+    /// производителя не даёт на нём второй команды, потому замка на коллизию у него нет.
+    /// </para>
+    /// <para><b>На живом колесе не проверено</b> — решение владельца, план §0.1.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(-80, "4C6B417010018080808080B035869A80", "4C64417010010080808080B0B8CE7A9E")]
+    [InlineData(0, "4C6B41701001808080808000FEE7290C", "4C644170100100808080800073AFC912")]
+    [InlineData(80, "4C6B41701001808080808050958C78F8", "4C644170100100808080805018C498E6")]
+    public void SetAngleTrim_MatchesOfficialPairOfFrames(int tenthsOfDegree, string legacyHex, string modernHex)
+    {
+        byte[]? pair = Commands(VeteranOutgoingFrames.NewProtocolWheel()).BuildSetAngleTrim(tenthsOfDegree);
+
+        Assert.NotNull(pair);
+        Assert.Equal(Convert.FromHexString(legacyHex + modernHex), pair);
+        AssertFrame(legacyHex, pair[..16]);
+        AssertFrame(modernHex, pair[16..]);
+    }
+
+    /// <summary>Семейству прошивок <c>004</c> (версия протокола 4, Patton) уходит только старая
+    /// половина — та же развилка <c>sendBytesDataCombine</c>, что у тревоги скорости и угла защиты.
+    /// Значение взято отрицательное: на этой ветке проверяется и развилка, и знак разом.</summary>
+    [Fact]
+    public void SetAngleTrim_OnFirmwareFamily004_SendsLegacyHalfOnly()
+    {
+        var harness = DecoderHarness.ForVeteran();
+        harness.FeedHex(
+            "dc5a5c452abe00003edc00008562003500000b5c",
+            "0dfe000002bc07d00fac000219fb0000006f0000",
+            "80808080808004000014ffffffffff32ee029109",
+            "df0fd303cb000000006f9a79c2");
+        Assert.Equal("004.0.12", harness.Snapshot().Version);
+
+        AssertFrame("4C6B417010018080808080B035869A80", Commands(harness).BuildSetAngleTrim(-80));
+    }
+
+    /// <summary>Значение вне −80..80 кадра не рождает — ни с той, ни с другой стороны нуля.
+    /// <c>-128</c> здесь не просто «дальше границы»: в байте это <c>0x80</c>, тот самый заполнитель
+    /// тела, которым колесо помечает «настройки у меня нет».</summary>
+    [Theory]
+    [InlineData(-81)]
+    [InlineData(81)]
+    [InlineData(-128)]
+    [InlineData(128)]
+    public void SetAngleTrim_OutOfRange_ReturnsNull(int tenthsOfDegree) =>
+        Assert.Null(NewWheel().BuildSetAngleTrim(tenthsOfDegree));
+
     // ==================== Границы диапазонов ====================
 
     /// <summary>

@@ -195,6 +195,13 @@ public sealed partial class WheelService : IDisposable
             // (docs/wheel-settings-architecture.md §7). Поколение решает вид «режима езды» —
             // соседней команды, — и спрашивают его на показе строки, а не на отправке.
             WheelCommand.SetPedalHardness c => VeteranSettings(protocolDecoder)?.BuildSetPedalHardness(c.Percent),
+            WheelCommand.SetAngleTrim c => VeteranSettings(protocolDecoder)?.BuildSetAngleTrim(c.TenthsOfDegree),
+
+            // Калибровка гироскопа — не Calibrate выше в другом виде: та часть 1:1-порта, у которой
+            // билдера для Veteran нет вовсе. Запрет «только на стоящем колесе» стоит в декодере, а
+            // не здесь: скорость знает он, а диспетчеру знать протокольные условия незачем. На ходу
+            // билдер отдаёт null, и команда штатно пропускается с записью в журнал.
+            WheelCommand.CalibrateGyro => VeteranSettings(protocolDecoder)?.BuildCalibrateGyro(),
 
             _ => null,
         };

@@ -61,4 +61,16 @@ public abstract record WheelCommand
     /// производителя они взаимоисключающие и живут на разных строках экрана
     /// (<c>docs/wheel-settings-architecture.md</c> §7).</summary>
     public sealed record SetPedalHardness(int Percent) : WheelCommand;
+
+    /// <summary>Наклон педалей, −80..80 десятых градуса (опкод 16, парный кадр).</summary>
+    public sealed record SetAngleTrim(int TenthsOfDegree) : WheelCommand;
+
+    /// <summary>Калибровка гироскопа (опкод 21) — <b>не</b> <see cref="Calibrate"/> в другом виде.
+    /// Та — вариант 1:1-порта WheelLog, у которого калибровки Veteran нет вовсе и билдер честно
+    /// отдаёт <c>null</c>; эта собирается по байтам родного приложения производителя и уходит только
+    /// через <c>IVeteranSettingsCommands</c>. Один record на два поведения был бы ложью для обоих
+    /// (план импорта команд §2.4).
+    /// <para>Команда меняет поведение колеса самим фактом посылки и на движущемся колесе не
+    /// строится — запрет живёт в декодере, у которого есть скорость.</para></summary>
+    public sealed record CalibrateGyro : WheelCommand;
 }
