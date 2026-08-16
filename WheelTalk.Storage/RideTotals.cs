@@ -7,6 +7,10 @@ namespace WheelTalk.Storage;
 /// <see cref="Schema"/> v3 for why it is stored rather than recomputed, and plan 8 §3.1 for where
 /// each of these figures comes from.
 /// </summary>
+/// <param name="DistanceMetres">
+/// Сумма положительных приращений одометра за поездку, а не разность его концов — почему именно
+/// так, сказано в <c>RideTotalsWriter.Compute</c>.
+/// </param>
 /// <param name="Duration">Wall clock from the first row to the last, stops included.</param>
 /// <param name="Moving">Only the time above <see cref="RidingSpeedKmh"/>. What "average speed" is over.</param>
 public sealed record RideTotals(
@@ -54,8 +58,20 @@ public sealed record RideTotals(
 /// </summary>
 internal static class RideTotalsWriter
 {
-    /// <summary>The last few rows the odometer's end is taken from — the original looks at ten.</summary>
-    private const int TailRows = 10;
+    /// <summary>
+    /// Быстрее этого колесо не едет — 150 км/ч, в полтора раза сверх самого быстрого серийного.
+    /// Ею ограничивается одно приращение одометра: больше этого за прошедшее время колесо проехать
+    /// не могло, значит показание битое.
+    /// </summary>
+    private const double ImpossibleSpeedMetresPerSecond = 150.0 / 3.6;
+
+    /// <summary>
+    /// Скидка на короткий промежуток: между двумя показаниями может пройти доля секунды, и голая
+    /// «скорость × время» отсекла бы честный шаг счётчика. Сто метров — заведомо больше любого шага
+    /// (самый крупный у InMotion, десять метров) и заведомо меньше битого показания, которое
+    /// промахивается на километры.
+    /// </summary>
+    private const long OdometerStepAllowanceMetres = 100;
 
     /// <summary>
     /// Итоги поездки, или <c>null</c>, если считать не из чего — ни одной строки в её окне.
@@ -84,10 +100,10 @@ internal static class RideTotalsWriter
 
         DateTimeOffset first = default, last = default, previousAt = default;
         double previousSpeed = 0, previousPower = 0;
-        long firstOdometer = 0;
+        long previousOdometer = 0, distance = 0;
+        DateTimeOffset previousOdometerAt = default;
         double moving = 0, energy = 0;
         double maxSpeed = 0, maxPwm = 0, maxPower = 0, maxCurrent = 0;
-        var tail = new long[TailRows];
         int rows = 0;
 
         using var reader = command.ExecuteReader();
@@ -114,15 +130,49 @@ internal static class RideTotalsWriter
             maxCurrent = Math.Max(maxCurrent, Math.Abs(reader.GetInt64(3) / 100.0));
             maxPwm = Math.Max(maxPwm, Math.Abs(reader.GetInt64(4) / 100.0));
 
-            // A snapshot is written after any decoded frame, and the odometer arrives in only one
-            // of them — so the first rows of every connection carry a placeholder 0 no reader can
-            // tell from a wheel that genuinely reports zero. Every reconnect opens that gap again,
-            // mid-ride included: each connection attempt gets a fresh WheelState. Fixed here and
-            // not at write time, as in the original (TripParser.kt's firstTotalDistance): the
-            // stored row and the CSV export must keep saying what the wheel said. The first
-            // reading that says anything is where this ride started.
-            if (firstOdometer == 0 && odometer > 0) firstOdometer = odometer;
-            tail[rows % TailRows] = odometer;
+            // Дистанция — сумма положительных приращений одометра, а не разность его концов
+            // (мастер-план §14). Разность ломается всюду, где счётчик пошёл вниз посреди поездки:
+            // колесо перезагрузили, 16-битный счётчик переполнился, человек на ходу включил
+            // «поправку 0.875» у Begode — настройка живая, спрашивается на каждом кадре
+            // (GotwayDecoder.cs:115,437), и одометр разом теряет восьмую часть. После такого
+            // разность уходит в минус и обнуляет весь пробег; сумма приращений теряет ровно один
+            // шаг и считает дальше.
+            //
+            // Ноль здесь не показание: снимок пишется на любой разобранный кадр, а одометр приходит
+            // лишь в одном из них — первые строки каждого подключения несут заглушку, неотличимую
+            // от честного нуля. Переподключение открывает ту же щель посреди поездки: на каждую
+            // попытку заводится свежий WheelState. Лечится тут, а не при записи, как у оригинала
+            // (TripParser.kt, firstTotalDistance): строка в базе и выгрузка CSV обязаны говорить
+            // ровно то, что сказало колесо.
+            if (odometer > 0)
+            {
+                if (previousOdometer > 0)
+                {
+                    long step = odometer - previousOdometer;
+
+                    // Потолок шага — путь на невозможной скорости за время с прошлого показания.
+                    // Он и есть замена прежнему «максимуму по последним десяти строкам»: тот ловил
+                    // только битый хвост, да и то лишь заниженный — завышенное битое показание
+                    // максимум, наоборот, выбирал.
+                    double sinceReading = (at - previousOdometerAt).TotalSeconds;
+                    long allowed = Math.Max(
+                        OdometerStepAllowanceMetres,
+                        (long)(sinceReading * ImpossibleSpeedMetresPerSecond));
+
+                    if (step > 0 && step <= allowed) distance += step;
+                }
+
+                // Точка отсчёта переставляется на любое показание, а не только на зачтённое: после
+                // перезагрузки колеса или битого кадра счёт обязан продолжиться с того, что колесо
+                // говорит теперь. Иначе одно испорченное показание отменило бы весь остаток
+                // поездки. Время же держится за последним изменением, а не за последней строкой:
+                // одометр тикает реже кадров, и запас пути обязан копиться, пока счётчик стоит.
+                if (odometer != previousOdometer)
+                {
+                    previousOdometer = odometer;
+                    previousOdometerAt = at;
+                }
+            }
 
             previousAt = last = at;
             previousSpeed = speed;
@@ -131,11 +181,6 @@ internal static class RideTotalsWriter
         }
 
         if (rows == 0) return null;
-
-        // The end of the odometer off the last few rows rather than the very last one: a single
-        // garbled frame at the end would otherwise be the whole ride's distance. Also the original's.
-        long lastOdometer = tail.Take(Math.Min(rows, TailRows)).Max();
-        long distance = firstOdometer > 0 ? Math.Max(0, lastOdometer - firstOdometer) : 0;
 
         return new RideTotals(
             distance,

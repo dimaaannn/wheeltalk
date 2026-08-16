@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using WheelTalk.Core.Contracts;
+using WheelTalk.Core.Playback;
 using WheelTalk.Storage;
 using WheelTalk.Tests.TestSupport;
 
@@ -68,8 +70,8 @@ public class RideTotalsTests
     }
 
     /// <summary>
-    /// One garbled frame at the end must not become the whole ride. The end of the odometer comes
-    /// off the last ten rows, not off the last one.
+    /// One garbled frame at the end must not become the whole ride. Ноль в последней строке — не
+    /// показание, а заглушка, и приращений он не даёт ни до, ни после.
     /// </summary>
     [Fact]
     public async Task A_broken_last_row_does_not_take_the_distance_with_it()
@@ -80,6 +82,76 @@ public class RideTotalsTests
         ]);
 
         Assert.Equal(80, totals.DistanceMetres);
+    }
+
+    /// <summary>
+    /// <b>Синтетика.</b> Колесо перезагрузили посреди поездки, и одометр пошёл с нуля. Разностью
+    /// концов такая поездка выходит в 30 метров вместо 70: конец меньше начала, и <c>Math.Max</c>
+    /// прежней формулы обрезал бы её до нуля. Сумма приращений теряет ровно один шаг — тот, где
+    /// счётчик прыгнул вниз.
+    /// </summary>
+    [Fact]
+    public async Task A_wheel_restarted_mid_ride_keeps_the_kilometres_it_had_already_done()
+    {
+        var totals = await Record([
+            (Riding, 12_000), (Riding, 12_010), (Riding, 12_020), (Riding, 12_040),  // 40 м до перезагрузки
+            (Riding, 10), (Riding, 20), (Riding, 30), (Riding, 40),                   // счётчик начался заново
+        ]);
+
+        Assert.Equal(70, totals.DistanceMetres);
+    }
+
+    /// <summary>
+    /// <b>Синтетика.</b> Переполнение 16-битного счётчика — каждые 65,5 км. Ни один наш декодер
+    /// сегодня не отдаёт одометр уже 32 бит (<c>GotwayDecoder.DecodeFrameB</c>,
+    /// <c>VeteranDecoder</c>, <c>KingsongDecoder.DecodeLiveData</c>, обе ветки InMotion), так что
+    /// замок стоит на будущее — и на то, что формула обязана переживать любой прыжок вниз, а не
+    /// только знакомый.
+    /// </summary>
+    [Fact]
+    public async Task A_sixteen_bit_odometer_rolling_over_does_not_wipe_the_ride()
+    {
+        var totals = await Record([
+            (Riding, 65_500), (Riding, 65_510), (Riding, 65_530),  // 30 м до края 16 бит
+            (Riding, 5), (Riding, 15), (Riding, 45),               // 65 535 позади, счёт пошёл с нуля
+        ]);
+
+        Assert.Equal(70, totals.DistanceMetres);
+    }
+
+    /// <summary>
+    /// <b>Синтетика.</b> Битый кадр с <b>завышенным</b> одометром — то, чего прежняя защита не
+    /// ловила вовсе: «максимум по последним десяти строкам» такое показание не отбрасывал, а
+    /// выбирал, и поездка выходила длиной в мусор. Шаг больше того, что колесо могло проехать за
+    /// прошедшее время, не засчитывается, а счёт продолжается с того, что колесо говорит дальше.
+    /// </summary>
+    [Fact]
+    public async Task A_garbled_frame_with_a_huge_odometer_is_not_a_ride()
+    {
+        var totals = await Record([
+            (Riding, 12_000), (Riding, 12_010), (Riding, 12_020),
+            (Riding, 900_000_000),                                  // мусор в четырёх байтах
+            (Riding, 12_030), (Riding, 12_040),
+        ]);
+
+        // Двадцать метров до мусора и десять после: сам прыжок и возврат с него не в счёт.
+        Assert.Equal(30, totals.DistanceMetres);
+    }
+
+    /// <summary>
+    /// Секунда простоя между показаниями — это запас пути, а не повод отсечь шаг. Одометр тикает
+    /// реже кадров (у InMotion шаг десять метров и полтора опроса в секунду), и точка отсчёта по
+    /// времени держится за последним <b>изменением</b> счётчика, а не за последней строкой.
+    /// </summary>
+    [Fact]
+    public async Task An_odometer_that_ticks_slower_than_the_frames_is_not_clipped()
+    {
+        var totals = await Record([
+            (Riding, 12_000), (Riding, 12_000), (Riding, 12_000), (Riding, 12_000),
+            (Riding, 12_030),
+        ]);
+
+        Assert.Equal(30, totals.DistanceMetres);
     }
 
     /// <summary>
@@ -210,6 +282,55 @@ public class RideTotalsTests
         Assert.Equal(0, totals.DistanceMetres);
         Assert.Equal(0, totals.AverageSpeedKmh);
         Assert.Null(totals.ConsumptionWhPerKm);
+    }
+
+    /// <summary>
+    /// <b>Живая запись</b>, Sherman L 28.07.2026 — две минуты кадров, как их прислало колесо. На
+    /// чистой записи сумма приращений обязана сойтись с честной разностью концов: новая формула
+    /// отличается от прежней только там, где счётчик пошёл вниз, а здесь он не пошёл. Замок ловит
+    /// обратное — потолок шага, отсекающий что-то на настоящих данных.
+    /// </summary>
+    [Fact]
+    public async Task A_real_ride_adds_up_to_exactly_what_its_odometer_says()
+    {
+        var snapshots = await RealShermanRide();
+        long fromWheel =
+            snapshots[^1].TotalDistance - snapshots.First(s => s.TotalDistance > 0).TotalDistance;
+        Assert.True(fromWheel > 0, $"одометр обязан был сдвинуться, а сдвинулся на {fromWheel} м");
+
+        using var temp = new TempDatabase();
+        await using (var store = temp.Store(temp.Open()))
+        {
+            store.BeginRide();
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                store.Write(Mac, "Veteran", snapshots[i], Start.AddMilliseconds(200 * i));
+            }
+
+            await store.CloseRideAsync();
+        }
+
+        Assert.Equal(fromWheel, Totals(temp).DistanceMetres);
+    }
+
+    private static async Task<List<TelemetrySnapshot>> RealShermanRide()
+    {
+        var harness = DecoderHarness.ForVeteran(config => config.GotwayNegative = "0");
+        var snapshots = new List<TelemetrySnapshot>();
+
+        string fixture = Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "Fixtures", "shermanl_raw_ride_20260728.csv");
+        var transport = new ReplayTransport(
+            () => new StreamReader(fixture), TimeProvider.System, NullLogger<ReplayTransport>.Instance);
+        transport.DataReceived += frame =>
+        {
+            harness.Decoder.Feed(frame);
+            var snapshot = harness.Snapshot();
+            if (snapshot.VoltageRaw != 0) snapshots.Add(snapshot);
+        };
+        await transport.PlayAsync(realtime: false);
+
+        return snapshots;
     }
 
     private static async Task<RideTotals> Record(
